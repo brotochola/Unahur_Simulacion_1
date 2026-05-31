@@ -1,0 +1,691 @@
+<h2 class="sr-only">Benchmark ECS configurable: freelist vs boolean array con spawn/despawn dinámico</h2>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.42.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --color-background-primary: light-dark(rgba(255, 255, 255, 1), rgba(48, 48, 46, 1));
+    --color-background-secondary: light-dark(rgba(245, 244, 237, 1), rgba(38, 38, 36, 1));
+    --color-background-tertiary: light-dark(rgba(250, 249, 245, 1), rgba(20, 20, 19, 1));
+    --color-background-inverse: light-dark(rgba(20, 20, 19, 1), rgba(250, 249, 245, 1));
+    --color-background-ghost: light-dark(rgba(255, 255, 255, 0), rgba(48, 48, 46, 0));
+    --color-background-info: light-dark(rgba(214, 228, 246, 1), rgba(37, 62, 95, 1));
+    --color-background-danger: light-dark(rgba(247, 236, 236, 1), rgba(96, 42, 40, 1));
+    --color-background-success: light-dark(rgba(233, 241, 220, 1), rgba(27, 70, 20, 1));
+    --color-background-warning: light-dark(rgba(246, 238, 223, 1), rgba(72, 58, 15, 1));
+    --color-background-disabled: light-dark(rgba(255, 255, 255, 0.5), rgba(48, 48, 46, 0.5));
+    --color-text-primary: light-dark(rgba(20, 20, 19, 1), rgba(250, 249, 245, 1));
+    --color-text-secondary: light-dark(rgba(61, 61, 58, 1), rgba(194, 192, 182, 1));
+    --color-text-tertiary: light-dark(rgba(115, 114, 108, 1), rgba(156, 154, 146, 1));
+    --color-text-inverse: light-dark(rgba(255, 255, 255, 1), rgba(20, 20, 19, 1));
+    --color-text-info: light-dark(rgba(50, 102, 173, 1), rgba(128, 170, 221, 1));
+    --color-text-danger: light-dark(rgba(127, 44, 40, 1), rgba(238, 136, 132, 1));
+    --color-text-success: light-dark(rgba(38, 91, 25, 1), rgba(122, 185, 72, 1));
+    --color-text-warning: light-dark(rgba(90, 72, 21, 1), rgba(209, 160, 65, 1));
+    --color-text-disabled: light-dark(rgba(20, 20, 19, 0.5), rgba(250, 249, 245, 0.5));
+    --color-text-ghost: light-dark(rgba(115, 114, 108, 0.5), rgba(156, 154, 146, 0.5));
+    --color-border-primary: light-dark(rgba(31, 30, 29, 0.4), rgba(222, 220, 209, 0.4));
+    --color-border-secondary: light-dark(rgba(31, 30, 29, 0.3), rgba(222, 220, 209, 0.3));
+    --color-border-tertiary: light-dark(rgba(31, 30, 29, 0.15), rgba(222, 220, 209, 0.15));
+    --color-border-inverse: light-dark(rgba(255, 255, 255, 0.3), rgba(20, 20, 19, 0.15));
+    --color-border-ghost: light-dark(rgba(31, 30, 29, 0), rgba(222, 220, 209, 0));
+    --color-border-info: light-dark(rgba(70, 130, 213, 1), rgba(70, 130, 213, 1));
+    --color-border-danger: light-dark(rgba(167, 61, 57, 1), rgba(205, 92, 88, 1));
+    --color-border-success: light-dark(rgba(67, 116, 38, 1), rgba(89, 145, 48, 1));
+    --color-border-warning: light-dark(rgba(128, 92, 31, 1), rgba(168, 120, 41, 1));
+    --color-border-disabled: light-dark(rgba(31, 30, 29, 0.1), rgba(222, 220, 209, 0.1));
+    --color-ring-primary: light-dark(rgba(20, 20, 19, 0.7), rgba(250, 249, 245, 0.7));
+    --color-ring-secondary: light-dark(rgba(61, 61, 58, 0.7), rgba(194, 192, 182, 0.7));
+    --color-ring-inverse: light-dark(rgba(255, 255, 255, 0.7), rgba(20, 20, 19, 0.7));
+    --color-ring-info: light-dark(rgba(50, 102, 173, 0.5), rgba(128, 170, 221, 0.5));
+    --color-ring-danger: light-dark(rgba(167, 61, 57, 0.5), rgba(205, 92, 88, 0.5));
+    --color-ring-success: light-dark(rgba(67, 116, 38, 0.5), rgba(89, 145, 48, 0.5));
+    --color-ring-warning: light-dark(rgba(128, 92, 31, 0.5), rgba(168, 120, 41, 0.5));
+    --font-sans: Anthropic Sans, sans-serif;
+    --font-mono: ui-monospace, monospace;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    --font-text-xs-size: 12px;
+    --font-text-sm-size: 14px;
+    --font-text-md-size: 16px;
+    --font-text-lg-size: 20px;
+    --font-heading-xs-size: 12px;
+    --font-heading-sm-size: 14px;
+    --font-heading-md-size: 16px;
+    --font-heading-lg-size: 20px;
+    --font-heading-xl-size: 24px;
+    --font-heading-2xl-size: 28px;
+    --font-heading-3xl-size: 36px;
+    --font-text-xs-line-height: 1.4;
+    --font-text-sm-line-height: 1.4;
+    --font-text-md-line-height: 1.4;
+    --font-text-lg-line-height: 1.25;
+    --font-heading-xs-line-height: 1.4;
+    --font-heading-sm-line-height: 1.4;
+    --font-heading-md-line-height: 1.4;
+    --font-heading-lg-line-height: 1.25;
+    --font-heading-xl-line-height: 1.25;
+    --font-heading-2xl-line-height: 1.1;
+    --font-heading-3xl-line-height: 1;
+    --border-radius-xs: 4px;
+    --border-radius-sm: 6px;
+    --border-radius-md: 8px;
+    --border-radius-lg: 10px;
+    --border-radius-xl: 12px;
+    --border-radius-full: 9999px;
+    --border-width-regular: 0.5px;
+    --shadow-hairline: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0
+  }
+
+  .root {
+    padding: 1rem 0;
+    font-family: var(--font-mono);
+    max-width: 80vw;
+    margin-left: 10vw;
+  }
+
+  .section {
+    margin-bottom: 1.25rem
+  }
+
+  .sec-title {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: .6rem
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: .5rem;
+    flex-wrap: wrap
+  }
+
+  .row label {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    min-width: 130px
+  }
+
+  .row input[type=range] {
+    flex: 1;
+    min-width: 80px
+  }
+
+  .row .val {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    min-width: 48px;
+    text-align: right
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: .75rem
+  }
+
+  .toggle-row label {
+    font-size: 12px;
+    color: var(--color-text-secondary)
+  }
+
+  .dynamic-block {
+    padding: .75rem 0 0 0;
+    border-top: .5px solid var(--color-border-tertiary);
+    margin-top: .5rem
+  }
+
+  .btn-run {
+    background: var(--color-text-primary);
+    color: var(--color-background-primary);
+    border: none;
+    border-radius: var(--border-radius-md);
+    padding: 8px 20px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    letter-spacing: .03em
+  }
+
+  .btn-run:disabled {
+    opacity: .4;
+    cursor: not-allowed
+  }
+
+  .progress-wrap {
+    margin-bottom: 1rem;
+    display: none
+  }
+
+  .pbar-bg {
+    background: var(--color-border-tertiary);
+    border-radius: 4px;
+    height: 3px;
+    overflow: hidden;
+    margin-bottom: 5px
+  }
+
+  .pbar-fill {
+    height: 3px;
+    background: var(--color-text-primary);
+    border-radius: 4px;
+    width: 0%;
+    transition: width .1s linear
+  }
+
+  .plabel {
+    font-size: 12px;
+    color: var(--color-text-secondary)
+  }
+
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 1rem
+  }
+
+  .panel {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: .85rem 1rem;
+    border: .5px solid var(--color-border-tertiary)
+  }
+
+  .panel-title {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: .6rem
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 3px 0;
+    border-bottom: .5px solid var(--color-border-tertiary)
+  }
+
+  .stat-row:last-child {
+    border-bottom: none
+  }
+
+  .slabel {
+    font-size: 12px;
+    color: var(--color-text-secondary)
+  }
+
+  .sval {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-text-primary)
+  }
+
+  .sval.good {
+    color: #1D9E75
+  }
+
+  .sval.bad {
+    color: #D85A30
+  }
+
+  .chart-wrap {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-lg);
+    border: .5px solid var(--color-border-tertiary);
+    padding: .85rem 1rem;
+    margin-bottom: .85rem
+  }
+
+  .chart-title {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: 6px
+  }
+
+  canvas {
+    width: 100%;
+    display: block
+  }
+
+  .legend {
+    display: flex;
+    gap: 14px;
+    margin-top: 6px
+  }
+
+  .li {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--color-text-secondary)
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%
+  }
+
+  .dot-a {
+    background: #378ADD
+  }
+
+  .dot-b {
+    background: #D85A30
+  }
+
+  .dot-c {
+    background: #1D9E75
+  }
+
+  .verdict {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-lg);
+    border: .5px solid var(--color-border-tertiary);
+    padding: .85rem 1rem;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    display: none;
+    line-height: 1.6
+  }
+
+  .verdict strong {
+    color: var(--color-text-primary);
+    font-weight: 500
+  }
+
+  .warn {
+    font-size: 12px;
+    color: var(--color-text-warning);
+    margin-top: 4px;
+    display: none
+  }
+</style>
+
+<div class="root">
+
+  <div class="section">
+    <p class="sec-title">capacidad del pool</p>
+    <div class="row">
+      <label>tamaño máximo</label>
+      <input type="range" id="cap" min="100" max="200000" step="100" value="1000">
+      <span class="val" id="cap-v">1000</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="sec-title">estado inicial</p>
+    <div class="row">
+      <label>peces al inicio</label>
+      <input type="range" id="initCount" min="0" max="1000" step="1" value="500">
+      <span class="val" id="init-v">500</span>
+    </div>
+    <p class="warn" id="init-warn">⚠ excede la capacidad</p>
+  </div>
+
+  <div class="section">
+    <p class="sec-title">dinámica durante la simulación</p>
+    <div class="toggle-row">
+      <input type="checkbox" id="dynToggle">
+      <label for="dynToggle">activar spawn / despawn durante el run</label>
+    </div>
+    <div class="dynamic-block" id="dynBlock" style="display:none">
+      <div class="row">
+        <label>spawn cada N frames</label>
+        <input type="range" id="spawnEvery" min="1" max="120" step="1" value="10">
+        <span class="val" id="se-v">10</span>
+      </div>
+      <div class="row">
+        <label>cantidad a spawnear</label>
+        <input type="range" id="spawnN" min="1" max="100" step="1" value="5">
+        <span class="val" id="sn-v">5</span>
+      </div>
+      <div class="row">
+        <label>despawn cada M frames</label>
+        <input type="range" id="despEvery" min="1" max="120" step="1" value="15">
+        <span class="val" id="de-v">15</span>
+      </div>
+      <div class="row">
+        <label>cantidad a despawnear</label>
+        <input type="range" id="despN" min="1" max="100" step="1" value="3">
+        <span class="val" id="dn-v">3</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-bottom:1.25rem">
+    <button class="btn-run" id="runBtn" onclick="runBenchmark()">▶ run (10s)</button>
+  </div>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="pbar-bg">
+      <div class="pbar-fill" id="pFill"></div>
+    </div>
+    <p class="plabel" id="pLabel">ejecutando...</p>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <p class="panel-title">A — freelist + active count</p>
+      <div class="stat-row"><span class="slabel">min dt</span><span class="sval" id="a-min">—</span></div>
+      <div class="stat-row"><span class="slabel">max dt</span><span class="sval" id="a-max">—</span></div>
+      <div class="stat-row"><span class="slabel">avg dt</span><span class="sval" id="a-avg">—</span></div>
+      <div class="stat-row"><span class="slabel">ticks</span><span class="sval" id="a-ticks">—</span></div>
+      <div class="stat-row"><span class="slabel">activos final</span><span class="sval" id="a-live">—</span></div>
+    </div>
+    <div class="panel">
+      <p class="panel-title">B — dense boolean (Int8Array)</p>
+      <div class="stat-row"><span class="slabel">min dt</span><span class="sval" id="b-min">—</span></div>
+      <div class="stat-row"><span class="slabel">max dt</span><span class="sval" id="b-max">—</span></div>
+      <div class="stat-row"><span class="slabel">avg dt</span><span class="sval" id="b-avg">—</span></div>
+      <div class="stat-row"><span class="slabel">ticks</span><span class="sval" id="b-ticks">—</span></div>
+      <div class="stat-row"><span class="slabel">activos final</span><span class="sval" id="b-live">—</span></div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <p class="chart-title">delta time por tick (ms) — últimos 200 frames</p>
+    <canvas id="timeline" height="110"></canvas>
+    <div class="legend">
+      <div class="li">
+        <div class="dot dot-a"></div>A freelist
+      </div>
+      <div class="li">
+        <div class="dot dot-b"></div>B boolean
+      </div>
+      <div class="li">
+        <div class="dot dot-c"></div>peces activos (A) ÷ 10
+      </div>
+    </div>
+  </div>
+
+  <div class="verdict" id="verdict"></div>
+</div>
+
+<script>
+  const DURATION = 10000
+  let POOL = 1000
+
+  function buildFreelist(pool) {
+    const x = new Float32Array(pool)
+    const y = new Float32Array(pool)
+    const vx = new Float32Array(pool)
+    const vy = new Float32Array(pool)
+    const freeList = new Uint16Array(pool)
+    const active = new Uint16Array(pool)
+    const pos = new Uint16Array(pool)
+    let freeHead = pool
+    let activeCount = 0
+    for (let i = 0; i < pool; i++) freeList[i] = i
+
+    function create() {
+      if (freeHead === 0) return -1
+      const idx = freeList[--freeHead]
+      pos[idx] = activeCount
+      active[activeCount++] = idx
+      vx[idx] = (Math.random() - .5) * .1
+      vy[idx] = (Math.random() - .5) * .1
+      return idx
+    }
+    function destroy(idx) {
+      const p = pos[idx]
+      const last = active[--activeCount]
+      active[p] = last
+      pos[last] = p
+      freeList[freeHead++] = idx
+    }
+    function destroyRandom() {
+      if (activeCount === 0) return
+      const slot = Math.floor(Math.random() * activeCount)
+      destroy(active[slot])
+    }
+    function tick() {
+      for (let i = 0; i < activeCount; i++) {
+        const idx = active[i]
+        x[idx] += vx[idx]
+        y[idx] += vy[idx]
+      }
+    }
+    return { create, destroy, destroyRandom, tick, getCount: () => activeCount }
+  }
+
+  function buildBoolean(pool) {
+    const x = new Float32Array(pool)
+    const y = new Float32Array(pool)
+    const vx = new Float32Array(pool)
+    const vy = new Float32Array(pool)
+    const active = new Int8Array(pool)
+    let count = 0
+
+    function create() {
+      for (let i = 0; i < pool; i++) {
+        if (!active[i]) {
+          active[i] = 1
+          vx[i] = (Math.random() - .5) * .1
+          vy[i] = (Math.random() - .5) * .1
+          count++
+          return i
+        }
+      }
+      return -1
+    }
+    function destroyRandom() {
+      if (count === 0) return
+      let skip = Math.floor(Math.random() * count)
+      for (let i = 0; i < pool; i++) {
+        if (active[i]) {
+          if (skip-- === 0) { active[i] = 0; count--; return }
+        }
+      }
+    }
+    function tick() {
+      for (let i = 0; i < pool; i++) {
+        if (!active[i]) continue
+        x[i] += vx[i]
+        y[i] += vy[i]
+      }
+    }
+    return { create, destroyRandom, tick, getCount: () => count }
+  }
+
+  function slider(id, outId, onChange) {
+    const el = document.getElementById(id)
+    const out = document.getElementById(outId)
+    out.textContent = el.value
+    el.addEventListener('input', () => { out.textContent = el.value; if (onChange) onChange() })
+  }
+
+  function validateInit() {
+    const cap = +document.getElementById('cap').value
+    const init = +document.getElementById('initCount').value
+    const sl = document.getElementById('initCount')
+    const warn = document.getElementById('init-warn')
+    sl.max = cap
+    if (init > cap) { sl.value = cap; document.getElementById('init-v').textContent = cap }
+    warn.style.display = init > cap ? 'block' : 'none'
+  }
+
+  slider('cap', 'cap-v', validateInit)
+  slider('initCount', 'init-v', validateInit)
+  slider('spawnEvery', 'se-v')
+  slider('spawnN', 'sn-v')
+  slider('despEvery', 'de-v')
+  slider('despN', 'dn-v')
+
+  document.getElementById('dynToggle').addEventListener('change', function () {
+    document.getElementById('dynBlock').style.display = this.checked ? 'block' : 'none'
+  })
+
+  const canvas = document.getElementById('timeline')
+  const ctx = canvas.getContext('2d')
+  const histA = [], histB = [], histLive = []
+  const MAX_H = 200
+
+  function drawChart() {
+    const W = canvas.offsetWidth * (window.devicePixelRatio || 1)
+    const H = 110 * (window.devicePixelRatio || 1)
+    canvas.width = W; canvas.height = H
+    ctx.clearRect(0, 0, W, H)
+    const all = [...histA, ...histB]
+    if (!all.length) return
+    const maxDt = Math.max(...all, 2)
+    const maxLive = Math.max(...histLive, 1)
+
+    function line(hist, color, scaleMax) {
+      if (!hist.length) return
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5 * (window.devicePixelRatio || 1)
+      ctx.beginPath()
+      const step = W / (MAX_H - 1)
+      hist.forEach((v, i) => {
+        const px = (i + (MAX_H - hist.length)) * step
+        const py = H - 4 - (v / scaleMax) * (H - 8)
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)
+      })
+      ctx.stroke()
+    }
+    line(histA, '#378ADD', maxDt)
+    line(histB, '#D85A30', maxDt)
+    line(histLive.map(v => (v / maxLive) * maxDt), '#1D9E75', maxDt)
+  }
+
+  function fmt(v) { return (v === Infinity || v === -Infinity || v === 0) ? '—' : v.toFixed(3) + ' ms' }
+
+  function setStats(p, min, max, sum, ticks, live) {
+    document.getElementById(p + '-min').textContent = fmt(min)
+    document.getElementById(p + '-max').textContent = fmt(max)
+    document.getElementById(p + '-avg').textContent = ticks > 1 ? fmt(sum / (ticks - 1)) : '—'
+    document.getElementById(p + '-ticks').textContent = ticks.toLocaleString()
+    document.getElementById(p + '-live').textContent = live
+  }
+
+  function colorize(aid, bid, aVal, bVal, lowerBetter) {
+    [aid, bid].forEach(id => document.getElementById(id).classList.remove('good', 'bad'))
+    if (!aVal || !bVal) return
+    if (lowerBetter) {
+      document.getElementById(aid).classList.add(aVal < bVal ? 'good' : 'bad')
+      document.getElementById(bid).classList.add(bVal < aVal ? 'good' : 'bad')
+    } else {
+      document.getElementById(aid).classList.add(aVal > bVal ? 'good' : 'bad')
+      document.getElementById(bid).classList.add(bVal > aVal ? 'good' : 'bad')
+    }
+  }
+
+  let running = false
+
+  async function runImpl(builderFn, prefix, histArr, cfg) {
+    const sys = builderFn(cfg.pool)
+    for (let i = 0; i < cfg.initCount; i++) sys.create()
+
+    let minDt = Infinity, maxDt = -Infinity, sumDt = 0, ticks = 0
+    let last = performance.now()
+    const startTime = performance.now()
+    let resolve
+    const done = new Promise(r => resolve = r)
+
+    function loop() {
+      const now = performance.now()
+      const elapsed = now - startTime
+      if (elapsed >= DURATION) { resolve(); return }
+      const dt = now - last; last = now
+
+      if (ticks > 0) {
+        if (dt < minDt) minDt = dt
+        if (dt > maxDt) maxDt = dt
+        sumDt += dt
+        histArr.push(dt)
+        if (histArr.length > MAX_H) histArr.shift()
+        if (prefix === 'a') {
+          histLive.push(sys.getCount())
+          if (histLive.length > MAX_H) histLive.shift()
+        }
+      }
+
+      if (cfg.dynamic) {
+        if (ticks % cfg.spawnEvery === 0) {
+          for (let i = 0; i < cfg.spawnN; i++) sys.create()
+        }
+        if (ticks % cfg.despEvery === 0) {
+          for (let i = 0; i < cfg.despN; i++) sys.destroyRandom()
+        }
+      }
+
+      sys.tick()
+      ticks++
+
+      setStats(prefix, minDt === Infinity ? 0 : minDt, maxDt === -Infinity ? 0 : maxDt, sumDt, ticks, sys.getCount())
+      drawChart()
+      document.getElementById('pFill').style.width = Math.min(100, (elapsed / DURATION) * 100) + '%'
+      document.getElementById('pLabel').textContent =
+        'ejecutando ' + (prefix === 'a' ? 'A (freelist)' : 'B (boolean)') + '… ' +
+        Math.round((elapsed / DURATION) * 100) + '%  |  activos: ' + sys.getCount()
+
+      setTimeout(loop, 2)
+    }
+    loop()
+    await done
+    return { minDt, maxDt, avg: ticks > 1 ? sumDt / (ticks - 1) : 0, ticks, live: sys.getCount() }
+  }
+
+  async function runBenchmark() {
+    if (running) return
+    running = true
+    document.getElementById('runBtn').disabled = true
+    document.getElementById('progressWrap').style.display = 'block'
+    document.getElementById('verdict').style.display = 'none'
+    histA.length = 0; histB.length = 0; histLive.length = 0
+
+    const cfg = {
+      pool: +document.getElementById('cap').value,
+      initCount: Math.min(+document.getElementById('initCount').value, +document.getElementById('cap').value),
+      dynamic: document.getElementById('dynToggle').checked,
+      spawnEvery: +document.getElementById('spawnEvery').value,
+      spawnN: +document.getElementById('spawnN').value,
+      despEvery: +document.getElementById('despEvery').value,
+      despN: +document.getElementById('despN').value,
+    }
+
+    const rA = await runImpl(buildFreelist, 'a', histA, cfg)
+    const rB = await runImpl(buildBoolean, 'b', histB, cfg)
+
+    colorize('a-min', 'b-min', rA.minDt, rB.minDt, true)
+    colorize('a-max', 'b-max', rA.maxDt, rB.maxDt, true)
+    colorize('a-avg', 'b-avg', rA.avg, rB.avg, true)
+    colorize('a-ticks', 'b-ticks', rA.ticks, rB.ticks, false)
+
+    const winner = rA.avg <= rB.avg ? 'A (freelist)' : 'B (boolean)'
+    const loser = rA.avg <= rB.avg ? rB.avg : rA.avg
+    const best = Math.min(rA.avg, rB.avg)
+    const diff = loser - best
+    const pct = best > 0 ? ((diff / best) * 100).toFixed(1) : '0'
+    const fill = ((cfg.initCount / cfg.pool) * 100).toFixed(0)
+    const v = document.getElementById('verdict')
+    v.style.display = 'block'
+    v.innerHTML = `<strong>${winner}</strong> ganó con avg ${diff.toFixed(3)} ms más rápido (+${pct}%). Pool al <strong>${fill}%</strong> de capacidad (${cfg.initCount}/${cfg.pool} peces iniciales).`
+      + (cfg.dynamic ? ` Con spawn/despawn activo el comportamiento es dinámico; A mantiene su complejidad de tick en O(activos) mientras B siempre itera los ${cfg.pool} slots.` : '')
+
+    document.getElementById('progressWrap').style.display = 'none'
+    document.getElementById('runBtn').disabled = false
+    running = false
+  }
+</script>

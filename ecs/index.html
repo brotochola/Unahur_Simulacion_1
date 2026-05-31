@@ -1,0 +1,45 @@
+<html>
+
+<body>
+    <canvas id="c" width="800" height="600" style="background:#1a1a2e"></canvas>
+    <script src="updateSystem.js"></script>
+    <script src="physicsSystem.js"></script>
+    <script src="keepWithinBoundsSystem.js"></script>
+    <script src="renderQueue.js"></script>
+    <script src="preRenderSystem.js"></script>
+    <script src="renderSystem.js"></script>
+    <script src="fish.js"></script>
+    <script src="world.js"></script>
+    <script>
+        const canvas = document.getElementById("c");
+        RenderSystem.init(canvas);
+
+        PreRenderSystem.left = 0;
+        PreRenderSystem.right = canvas.width;
+        PreRenderSystem.top = 0;
+        PreRenderSystem.bottom = canvas.height;
+
+        KeepWithinBoundsSystem.left = 0;
+        KeepWithinBoundsSystem.right = canvas.width;
+        KeepWithinBoundsSystem.top = 0;
+        KeepWithinBoundsSystem.bottom = canvas.height;
+
+        const world = new World();
+        world.registerEntityClass(Fish, 500);
+        world.startGameLoop();
+
+        function start() {
+            for (let i = 0; i < 200; i++) {
+                const fish = Fish.create();
+                fish.x = Math.random() * canvas.width;
+                fish.y = Math.random() * canvas.height;
+                fish.vx = (Math.random() - 0.5) * 120;
+                fish.vy = (Math.random() - 0.5) * 120;
+            }
+        }
+
+        start();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Chat LLM</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 900px;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    .header {
+      padding: 24px;
+      border-bottom: 1px solid #334155;
+      background: linear-gradient(135deg, #1e293b, #111827);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .header-text h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .header-text p {
+      margin: 6px 0 0;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .lang-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+
+    select {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: #2563eb;
+    }
+
+    /* ── API status panel ── */
+    .api-status {
+      padding: 14px 20px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .api-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 6px 12px;
+    }
+
+    .api-badge .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #475569;
+      /* default: unknown */
+    }
+
+    .api-badge .dot.ok {
+      background: #22c55e;
+    }
+
+    .api-badge .dot.error {
+      background: #ef4444;
+    }
+
+    .api-badge .dot.loading {
+      background: #f59e0b;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 12px;
+      padding: 16px 20px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #334155;
+      align-items: center;
+    }
+
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 18px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: 0.2s;
+      background: #2563eb;
+      color: white;
+      font-weight: 600;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.08);
+    }
+
+    button.secondary {
+      background: #374151;
+    }
+
+    button.danger {
+      background: #dc2626;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ── Activity status bar ── */
+    .status {
+      padding: 10px 20px;
+      color: #93c5fd;
+      font-size: 13px;
+      background: #0c1423;
+      border-bottom: 1px solid #1e293b;
+      min-height: 36px;
+    }
+
+    /* ── Chat ── */
+    .chat {
+      height: 460px;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: #020617;
+    }
+
+    .msg {
+      max-width: 85%;
+      padding: 14px 18px;
+      border-radius: 18px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .user {
+      align-self: flex-end;
+      background: #2563eb;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .assistant {
+      align-self: flex-start;
+      background: #1e293b;
+      border-bottom-left-radius: 4px;
+    }
+
+    .system {
+      align-self: center;
+      background: #3f3f46;
+      font-size: 13px;
+      color: #d4d4d8;
+    }
+
+    .typing {
+      opacity: 0.7;
+      font-style: italic;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 16px 20px;
+      border-top: 1px solid #334155;
+      display: flex;
+      gap: 12px;
+    }
+
+    textarea {
+      flex: 1;
+      resize: none;
+      height: 56px;
+      border-radius: 14px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: white;
+      padding: 14px;
+      font-size: 15px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #64748b;
+      padding: 10px 20px 16px;
+      text-align: center;
+    }
+
+    code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header + language selector -->
+    <div class="header">
+      <div class="header-text">
+        <h1>🎤 Voice Chat LLM</h1>
+        <p>
+          Usa <code>SpeechRecognition</code>, <code>SpeechSynthesis</code>
+          y la API experimental <code>LanguageModel</code> de Chrome.
+        </p>
+      </div>
+      <div class="lang-wrap">
+        <label for="langSelect">🌐 Idioma</label>
+        <select id="langSelect">
+          <!-- data-output-lang must be one of: en | es | ja (LanguageModel API constraint) -->
+          <!-- unsupported output languages fall back to "en"                                -->
+          <option value="es-AR" data-output-lang="es"
+            data-prompt="Sos un asistente de voz copado y conversacional. Respondé corto y natural. Hablá en español rioplatense."
+            selected>
+            Español (Argentina)
+          </option>
+          <option value="es-ES" data-output-lang="es"
+            data-prompt="Eres un asistente de voz amigable y conversacional. Responde de forma breve y natural en español de España.">
+            Español (España)
+          </option>
+          <option value="en-US" data-output-lang="en"
+            data-prompt="You are a friendly, conversational voice assistant. Keep answers short and natural. Speak in American English.">
+            English (US)
+          </option>
+          <option value="en-GB" data-output-lang="en"
+            data-prompt="You are a friendly, conversational voice assistant. Keep answers short and natural. Speak in British English.">
+            English (UK)
+          </option>
+          <option value="pt-BR" data-output-lang="en"
+            data-prompt="Você é um assistente de voz simpático e conversacional. Responda de forma curta e natural em português brasileiro."
+            title="⚠️ LanguageModel sólo soporta salida en: en, es, ja — se usará 'en'">
+            Português (Brasil) ⚠️
+          </option>
+          <option value="fr-FR" data-output-lang="en"
+            data-prompt="Tu es un assistant vocal sympathique et conversationnel. Réponds brièvement et naturellement en français."
+            title="⚠️ LanguageModel sólo soporta salida en: en, es, ja — se usará 'en'">
+            Français ⚠️
+          </option>
+          <option value="de-DE" data-output-lang="en"
+            data-prompt="Du bist ein freundlicher, gesprächiger Sprachassistent. Antworte kurz und natürlich auf Deutsch."
+            title="⚠️ LanguageModel sólo soporta salida en: en, es, ja — se usará 'en'">
+            Deutsch ⚠️
+          </option>
+          <option value="it-IT" data-output-lang="en"
+            data-prompt="Sei un assistente vocale amichevole e conversazionale. Rispondi in modo breve e naturale in italiano."
+            title="⚠️ LanguageModel sólo soporta salida en: en, es, ja — se usará 'en'">
+            Italiano ⚠️
+          </option>
+          <option value="ja-JP" data-output-lang="ja" data-prompt="あなたは親しみやすい会話型の音声アシスタントです。日本語で短く自然に答えてください。">
+            日本語
+          </option>
+          <option value="zh-CN" data-output-lang="en" data-prompt="你是一个友好、对话式的语音助手。请用中文简短自然地回答。"
+            title="⚠️ LanguageModel sólo soporta salida en: en, es, ja — se usará 'en'">
+            中文（简体）⚠️
+          </option>
+        </select>
+      </div>
+    </div>
+
+    <!-- API status badges -->
+    <div class="api-status">
+      <div class="api-badge" id="badge-sr">
+        <span class="dot loading" id="dot-sr"></span>
+        <span>SpeechRecognition</span>
+      </div>
+      <div class="api-badge" id="badge-ss">
+        <span class="dot loading" id="dot-ss"></span>
+        <span>SpeechSynthesis</span>
+      </div>
+      <div class="api-badge" id="badge-lm">
+        <span class="dot loading" id="dot-lm"></span>
+        <span id="label-lm">LanguageModel</span>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="controls">
+      <button id="startBtn">🎙️ Hablar</button>
+      <button id="stopBtn" class="danger">🛑 Frenar</button>
+      <button id="clearBtn" class="secondary">🧹 Limpiar chat</button>
+      <button id="muteBtn" class="secondary">🔊 Voz ON</button>
+    </div>
+
+    <!-- Activity status bar -->
+    <div class="status" id="status">Inicializando...</div>
+
+    <!-- Chat -->
+    <div class="chat" id="chat"></div>
+
+    <!-- Text input -->
+    <div class="footer">
+      <textarea id="textInput" placeholder="Escribí algo o usá el micrófono..."></textarea>
+      <button id="sendBtn">Enviar</button>
+    </div>
+
+    <div class="small">
+      ⚠️ Requiere Chrome con la flag <code>chrome://flags/#prompt-api-for-gemini-nano</code> habilitada.
+    </div>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const sendBtn = document.getElementById('sendBtn');
+    const textInput = document.getElementById('textInput');
+    const langSelect = document.getElementById('langSelect');
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    let recognition;
+    let session;
+    let speakingEnabled = true;
+    let listening = false;
+    let thinking = false;
+
+    const history = [];
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function setStatus(text) {
+      console.log('setStatus', text);
+      statusEl.textContent = text;
+    }
+
+    function setBadge(id, state, labelOverride) {
+      const dot = document.getElementById('dot-' + id);
+      const label = document.getElementById('label-' + id);
+      dot.className = 'dot ' + state;   // 'ok' | 'error' | 'loading'
+      if (label && labelOverride) label.textContent = labelOverride;
+    }
+
+    function addMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function getCurrentLang() {
+      return langSelect.value;
+    }
+
+    function getCurrentPrompt() {
+      const opt = langSelect.options[langSelect.selectedIndex];
+      return opt.dataset.prompt;
+    }
+
+    // Returns one of: 'en' | 'es' | 'ja'  (the only codes LanguageModel accepts)
+    function getCurrentOutputLang() {
+      const opt = langSelect.options[langSelect.selectedIndex];
+      return opt.dataset.outputLang || 'es';
+    }
+
+    // ── Speech Synthesis ─────────────────────────────────────────────────────
+
+    function speak(text) {
+      if (!speakingEnabled) return;
+      speechSynthesis.cancel();
+
+      const utter = new SpeechSynthesisUtterance(text);
+      const lang = getCurrentLang();
+      utter.lang = "es-US"//lang;
+      utter.rate = 1.3;
+      utter.pitch = 1;
+
+      const voices = speechSynthesis.getVoices();
+      const match = voices.find(v => v.lang === lang)
+        || voices.find(v => v.lang.startsWith(lang.slice(0, 2)));
+      if (match) utter.voice = match;
+
+      speechSynthesis.speak(utter);
+    }
+
+    function checkSpeechSynthesis() {
+      if (!('speechSynthesis' in window)) {
+        setBadge('ss', 'error');
+        addMessage('system', '⚠️ SpeechSynthesis no disponible en este navegador.');
+        return;
+      }
+      setBadge('ss', 'ok');
+    }
+
+    // ── Speech Recognition ───────────────────────────────────────────────────
+
+    function initSpeechRecognition() {
+      if (!SpeechRecognition) {
+        setBadge('sr', 'error');
+        addMessage('system', '⚠️ SpeechRecognition no soportado en este navegador.');
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = getCurrentLang();
+      recognition.interimResults = true;
+      recognition.continuous = false;
+
+      recognition.onstart = () => {
+        listening = true;
+        setStatus('🎤 Escuchando... (' + getCurrentLang() + ')');
+      };
+
+      recognition.onend = () => {
+        listening = false;
+        setStatus('Micrófono detenido.');
+      };
+
+      recognition.onerror = (e) => {
+        console.error(e);
+        setStatus('Error de micrófono: ' + e.error);
+      };
+
+      recognition.onresult = async (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setStatus('Reconocido: ' + transcript);
+        if (event.results[event.results.length - 1].isFinal) {
+          await askLLM(transcript.trim());
+        }
+      };
+
+      setBadge('sr', 'ok');
+    }
+
+    // ── LanguageModel ─────────────────────────────────────────────────────────
+
+    async function initLLM() {
+      setBadge('lm', 'loading', 'LanguageModel — cargando…');
+      try {
+        if (!window.LanguageModel) {
+          throw new Error('window.LanguageModel no existe');
+        }
+
+        setStatus('Creando sesión de LanguageModel...');
+
+        const outputLang = getCurrentOutputLang();
+        session = await window.LanguageModel.create({
+          systemPrompt:    getCurrentPrompt(),
+          expectedInputs:  [{ type: 'text', languages: [outputLang] }],
+          expectedOutputs: [{ type: 'text', languages: [outputLang] }]
+        });
+
+        setBadge('lm', 'ok', `LanguageModel ✓ (${getCurrentOutputLang()})`);
+        setStatus('LanguageModel listo 😎');
+        addMessage('system', '✅ LanguageModel conectado.');
+      } catch (err) {
+        console.error(err);
+        setBadge('lm', 'error', 'LanguageModel ✗');
+        setStatus('Error inicializando LanguageModel: ' + err.message);
+        addMessage('system', '❌ LanguageModel: ' + err.message);
+      }
+    }
+
+    async function reinitLLM() {
+      if (session) {
+        try { session.destroy?.(); } catch (_) { }
+        session = null;
+      }
+      await initLLM();
+    }
+
+    // ── Ask LLM ───────────────────────────────────────────────────────────────
+
+    async function askLLM(prompt) {
+      if (!session) {
+        addMessage('system', '⚠️ No hay sesión de LanguageModel activa.');
+        return;
+      }
+      if (thinking) return;
+      thinking = true;
+
+      history.push({ role: 'user', content: prompt });
+      addMessage('user', prompt);
+
+      const typing = addMessage('assistant typing', 'Pensando...');
+
+      try {
+        setStatus('Generando respuesta...');
+
+        const conversation = history
+          .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+          .join('\n');
+
+        const outputLang = getCurrentOutputLang();
+        const response = await session.prompt(conversation + '\nASSISTANT:', {
+          expectedInputs:  [{ type: 'text', languages: [outputLang] }],
+          expectedOutputs: [{ type: 'text', languages: [outputLang] }]
+        });
+
+        typing.className = 'msg assistant';
+        typing.textContent = response;
+
+        history.push({ role: 'assistant', content: response });
+
+        speak(response);
+        setStatus('Listo ✓');
+      } catch (err) {
+        console.error(err);
+        typing.textContent = 'Error: ' + err.message;
+        setStatus('Error generando respuesta');
+      }
+
+      thinking = false;
+    }
+
+    // ── Language selector change ──────────────────────────────────────────────
+
+    langSelect.onchange = async () => {
+      const lang = getCurrentLang();
+      const outputLang = getCurrentOutputLang();
+      const label = langSelect.options[langSelect.selectedIndex].text.trim().replace(' ⚠️', '');
+
+      if (recognition) recognition.lang = lang;
+
+      addMessage('system', `🌐 Idioma cambiado a: ${label}`);
+
+      if (outputLang === 'en' && !lang.startsWith('en')) {
+        addMessage('system',
+          `⚠️ LanguageModel solo admite outputLanguage: en, es, ja.\n` +
+          `Se usará "en" — el modelo puede responder en inglés o de forma mixta.`
+        );
+      }
+
+      setStatus('Reiniciando LanguageModel con el nuevo idioma...');
+      await reinitLLM();
+      setStatus('Idioma actualizado ✓');
+    };
+
+    // ── Button handlers ───────────────────────────────────────────────────────
+
+    startBtn.onclick = () => {
+      if (!recognition) return;
+      speechSynthesis.cancel();
+      if (recognition) recognition.lang = getCurrentLang();
+      try { recognition.start(); } catch (err) { console.warn(err); }
+    };
+
+    stopBtn.onclick = () => {
+      recognition?.stop();
+      speechSynthesis.cancel();
+      setStatus('Todo detenido.');
+    };
+
+    clearBtn.onclick = () => {
+      history.length = 0;
+      chat.innerHTML = '';
+      addMessage('system', 'Chat limpiado.');
+    };
+
+    muteBtn.onclick = () => {
+      speakingEnabled = !speakingEnabled;
+      if (!speakingEnabled) speechSynthesis.cancel();
+      muteBtn.textContent = speakingEnabled ? '🔊 Voz ON' : '🔇 Voz OFF';
+    };
+
+    sendBtn.onclick = () => {
+      const text = textInput.value.trim();
+      if (!text) return;
+      textInput.value = '';
+      askLLM(text);
+    };
+
+    textInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn.click();
+      }
+    });
+
+    // ── Boot ──────────────────────────────────────────────────────────────────
+
+    async function boot() {
+      addMessage('system', '🚀 Iniciando aplicación...');
+
+      checkSpeechSynthesis();
+      initSpeechRecognition();
+
+      // Voices load asynchronously in some browsers
+      speechSynthesis.onvoiceschanged = () => {
+        console.log('Voices loaded:', speechSynthesis.getVoices().length);
+      };
+
+      await initLLM();
+
+      setStatus('Todo listo 🚀');
+    }
+
+    boot();
+  </script>
+</body>
+</html>

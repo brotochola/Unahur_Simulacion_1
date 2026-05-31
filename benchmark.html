@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fish Benchmark — SoA vs OOP</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;600&display=swap');
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #080c10;
+            --surface: #0d1117;
+            --border: #1c2430;
+            --border2: #2a3545;
+            --soa: #00e5ff;
+            --oop: #ff6b35;
+            --neutral: #8899aa;
+            --text: #cdd9e5;
+            --dim: #445566;
+            --green: #3fb950;
+            --yellow: #d29922;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Space Grotesk', sans-serif;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #fff;
+        }
+
+        header h1 span.soa {
+            color: var(--soa);
+        }
+
+        header h1 span.oop {
+            color: var(--oop);
+        }
+
+        header p {
+            margin-top: 0.4rem;
+            font-size: 0.85rem;
+            color: var(--neutral);
+            font-weight: 300;
+        }
+
+        .config {
+            display: flex;
+            gap: 2rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .config-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .config-item label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--neutral);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .config-item .val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+            min-width: 60px;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 160px;
+            height: 3px;
+            background: var(--border2);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 0.6rem 1.4rem;
+            border-radius: 6px;
+            border: 1px solid;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+            background: transparent;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .btn-soa {
+            color: var(--soa);
+            border-color: var(--soa);
+        }
+
+        .btn-soa:hover:not(:disabled) {
+            background: rgba(0, 229, 255, 0.08);
+        }
+
+        .btn-oop {
+            color: var(--oop);
+            border-color: var(--oop);
+        }
+
+        .btn-oop:hover:not(:disabled) {
+            background: rgba(255, 107, 53, 0.08);
+        }
+
+        .btn-both {
+            color: #fff;
+            border-color: var(--border2);
+        }
+
+        .btn-both:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 640px) {
+            .panels {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 0.75rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .panel-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .panel-header h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .panel-header .tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            padding: 2px 7px;
+            border-radius: 3px;
+            margin-left: auto;
+        }
+
+        .panel-body {
+            padding: 1.25rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .metric {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem;
+        }
+
+        .metric .mlabel {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            color: var(--dim);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .metric .mval {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+        }
+
+        .metric .munit {
+            font-size: 0.65rem;
+            color: var(--neutral);
+            font-weight: 400;
+            margin-left: 2px;
+        }
+
+        .metric .msub {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--dim);
+            margin-top: 3px;
+        }
+
+        .progress-wrap {
+            height: 3px;
+            background: var(--border);
+            border-radius: 2px;
+            margin-bottom: 0.75rem;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 2px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .status-line {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--neutral);
+            min-height: 1em;
+        }
+
+        .live-tick {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 0.75rem;
+        }
+
+        .live-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+        }
+
+        .live-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .comparison {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+
+        .comparison h3 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--neutral);
+            margin-bottom: 1rem;
+        }
+
+        .cmp-row {
+            display: grid;
+            grid-template-columns: 90px 1fr 1fr;
+            gap: 0.5rem;
+            align-items: center;
+            margin-bottom: 0.6rem;
+        }
+
+        .cmp-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .cmp-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cmp-bar-track {
+            flex: 1;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .cmp-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+
+        .cmp-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 700;
+            min-width: 55px;
+            text-align: right;
+        }
+
+        .winner-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+
+        .speedup {
+            text-align: center;
+            margin-top: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--neutral);
+        }
+
+        .speedup strong {
+            font-size: 1.4rem;
+            color: #fff;
+            display: block;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1><span class="soa">SoA</span> vs <span class="oop">OOP</span> — Fish Benchmark</h1>
+        <p>mismo algoritmo boids + spatial hash · sin render · setTimeout(fn, 2) · 10 segundos por run</p>
+    </header>
+
+    <div class="config">
+        <div class="config-item">
+            <label>Peces</label>
+            <input type="range" id="sl-count" min="100" max="5000" step="100" value="1000">
+            <span class="val" id="vl-count">1000</span>
+        </div>
+        <div class="config-item">
+            <label>Radio visión</label>
+            <input type="range" id="sl-vis" min="5" max="50" step="1" value="18">
+            <span class="val" id="vl-vis">18</span>
+        </div>
+        <div class="config-item">
+            <label>Radio separación</label>
+            <input type="range" id="sl-sep" min="2" max="20" step="1" value="6">
+            <span class="val" id="vl-sep">6</span>
+        </div>
+        <div class="config-item">
+            <label>Sep W</label>
+            <input type="range" id="sl-sw" min="0" max="3" step="0.1" value="1.5">
+            <span class="val" id="vl-sw">1.5</span>
+        </div>
+        <div class="config-item">
+            <label>Ali W</label>
+            <input type="range" id="sl-aw" min="0" max="3" step="0.1" value="1.0">
+            <span class="val" id="vl-aw">1.0</span>
+        </div>
+        <div class="config-item">
+            <label>Coh W</label>
+            <input type="range" id="sl-cw" min="0" max="3" step="0.1" value="1.0">
+            <span class="val" id="vl-cw">1.0</span>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button class="btn btn-soa" id="btn-soa">▶ Correr SoA</button>
+        <button class="btn btn-oop" id="btn-oop">▶ Correr OOP</button>
+        <button class="btn btn-both" id="btn-both">▶▶ Correr ambos</button>
+    </div>
+
+    <div class="panels">
+
+        <div class="panel" id="panel-soa">
+            <div class="panel-header">
+                <div class="panel-dot" style="background:var(--soa)"></div>
+                <h2 style="color:var(--soa)">Structure of Arrays</h2>
+                <span class="tag" id="tag-soa" style="background:rgba(0,229,255,0.1);color:var(--soa)">listo</span>
+            </div>
+            <div class="panel-body">
+                <div class="live-tick">
+                    <span class="live-label">tick actual</span>
+                    <span class="live-val" id="soa-live" style="color:var(--soa)">—</span>
+                    <span class="live-label" style="margin-left:12px">ticks/s</span>
+                    <span class="live-val" id="soa-tps" style="color:var(--soa)">—</span>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-bar" id="soa-prog" style="background:var(--soa)"></div>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <div class="mlabel">avg tick</div>
+                        <div class="mval" id="soa-avg">—<span class="munit">ms</span></div>
+                        <div class="msub" id="soa-avg-tps">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">min tick</div>
+                        <div class="mval" id="soa-min">—<span class="munit">ms</span></div>
+                        <div class="msub" id="soa-min-tps">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">max tick</div>
+                        <div class="mval" id="soa-max">—<span class="munit">ms</span></div>
+                        <div class="msub" id="soa-max-tps">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">total ticks</div>
+                        <div class="mval" id="soa-total">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">vecinos avg</div>
+                        <div class="mval" id="soa-neigh">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">tiempo</div>
+                        <div class="mval" id="soa-elapsed">—<span class="munit">s</span></div>
+                    </div>
+                </div>
+                <div class="status-line" id="soa-status">esperando...</div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-oop">
+            <div class="panel-header">
+                <div class="panel-dot" style="background:var(--oop)"></div>
+                <h2 style="color:var(--oop)">Object Oriented</h2>
+                <span class="tag" id="tag-oop" style="background:rgba(255,107,53,0.1);color:var(--oop)">listo</span>
+            </div>
+            <div class="panel-body">
+                <div class="live-tick">
+                    <span class="live-label">tick actual</span>
+                    <span class="live-val" id="oop-live" style="color:var(--oop)">—</span>
+                    <span class="live-label" style="margin-left:12px">ticks/s</span>
+                    <span class="live-val" id="oop-tps" style="color:var(--oop)">—</span>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-bar" id="oop-prog" style="background:var(--oop)"></div>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <div class="mlabel">avg tick</div>
+                        <div class="mval" id="oop-avg">—<span class="munit">ms</span></div>
+                        <div class="msub" id="oop-avg-tps">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">min tick</div>
+                        <div class="mval" id="oop-min">—<span class="munit">ms</span></div>
+                        <div class="msub" id="oop-min-tps">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">max tick</div>
+                        <div class="mval" id="oop-max">—<span class="munit">ms</span></div>
+                        <div class="msub" id="oop-max-tps">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">total ticks</div>
+                        <div class="mval" id="oop-total">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">vecinos avg</div>
+                        <div class="mval" id="oop-neigh">—</div>
+                    </div>
+                    <div class="metric">
+                        <div class="mlabel">tiempo</div>
+                        <div class="mval" id="oop-elapsed">—<span class="munit">s</span></div>
+                    </div>
+                </div>
+                <div class="status-line" id="oop-status">esperando...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="comparison" id="comparison">
+        <h3>comparación — necesitás correr ambos primero</h3>
+        <div id="cmp-body" style="color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:0.75rem">
+            corrí ambas versiones para ver la comparación.
+        </div>
+    </div>
+
+    <script>
+        // ─────────────────────────────────────────────
+        // SPATIAL HASH SoA — typed arrays, O(n) build
+        // ─────────────────────────────────────────────
+        class SpatialHash {
+            constructor(cap, buckets = 32768) {
+                this.cap = cap
+                this.BUCKETS = buckets
+                this.cellSize = 18
+                this._cellOf = new Int32Array(cap)
+                this._sorted = new Uint16Array(cap)
+                this._cellStart = new Int32Array(buckets)
+                this._cellCount = new Int32Array(buckets)
+                this._neighbors = new Uint16Array(cap)
+            }
+
+            _hash(cx, cy, cz) {
+                return (((cx * 92837111) ^ (cy * 689287499) ^ (cz * 283923481)) >>> 0) % this.BUCKETS
+            }
+
+            build(x, y, z, active, count) {
+                const { _cellOf, _sorted, _cellStart, _cellCount, BUCKETS } = this
+                const cs = this.cellSize
+                _cellCount.fill(0)
+                for (let i = 0; i < count; i++) {
+                    const idx = active[i]
+                    const h = this._hash(Math.floor(x[idx] / cs), Math.floor(y[idx] / cs), Math.floor(z[idx] / cs))
+                    _cellOf[idx] = h
+                    _cellCount[h]++
+                }
+                _cellStart[0] = 0
+                for (let i = 1; i < BUCKETS; i++) _cellStart[i] = _cellStart[i - 1] + _cellCount[i - 1]
+                const tmp = new Int32Array(BUCKETS)
+                for (let i = 0; i < count; i++) {
+                    const idx = active[i]
+                    const h = _cellOf[idx]
+                    _sorted[_cellStart[h] + tmp[h]] = idx
+                    tmp[h]++
+                }
+            }
+
+            query(px, py, pz) {
+                const cs = this.cellSize
+                const { _sorted, _cellStart, _cellCount, _neighbors } = this
+                let found = 0
+                const cx0 = Math.floor(px / cs) - 1
+                const cy0 = Math.floor(py / cs) - 1
+                const cz0 = Math.floor(pz / cs) - 1
+                for (let cx = cx0; cx <= cx0 + 2; cx++)
+                    for (let cy = cy0; cy <= cy0 + 2; cy++)
+                        for (let cz = cz0; cz <= cz0 + 2; cz++) {
+                            const h = this._hash(cx, cy, cz)
+                            const start = _cellStart[h], cnt = _cellCount[h]
+                            for (let k = 0; k < cnt; k++) _neighbors[found++] = _sorted[start + k]
+                        }
+                return found
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // SPATIAL HASH OOP — naif, string keys, Cell[]
+        // ─────────────────────────────────────────────
+        class Cell {
+            constructor() { this.fish = [] }
+            add(fish) { this.fish.push(fish) }
+            clear() { this.fish.length = 0 }
+        }
+
+        class SpatialHashOOP {
+            constructor() {
+                this.cells = {}
+                this.cellSize = 18
+            }
+            _key(cx, cy, cz) { return `${cx},${cy},${cz}` }
+
+            build(instances) {
+                this.clearAll()
+                const cs = this.cellSize
+                for (const fish of instances) {
+                    const key = this._key(
+                        Math.floor(fish.x / cs),
+                        Math.floor(fish.y / cs),
+                        Math.floor(fish.z / cs)
+                    )
+                    if (!this.cells[key]) this.cells[key] = new Cell()
+                    this.cells[key].add(fish)
+                }
+            }
+
+            query(fish) {
+                const cs = this.cellSize
+                const cx = Math.floor(fish.x / cs)
+                const cy = Math.floor(fish.y / cs)
+                const cz = Math.floor(fish.z / cs)
+                const result = []
+                for (let dx = -1; dx <= 1; dx++)
+                    for (let dy = -1; dy <= 1; dy++)
+                        for (let dz = -1; dz <= 1; dz++) {
+                            const cell = this.cells[this._key(cx + dx, cy + dy, cz + dz)]
+                            if (cell) result.push(...cell.fish)
+                        }
+                return result
+            }
+
+            clearAll() {
+                for (const key in this.cells) this.cells[key].clear()
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // FISH SOA
+        // ─────────────────────────────────────────────
+        const CAP = 5000
+
+        class FishSoA {
+            static x = new Float32Array(CAP)
+            static y = new Float32Array(CAP)
+            static z = new Float32Array(CAP)
+            static vx = new Float32Array(CAP)
+            static vy = new Float32Array(CAP)
+            static vz = new Float32Array(CAP)
+
+            static _freeList = new Uint16Array(CAP).map((_, i) => i)
+            static _freeHead = CAP
+            static _active = new Uint16Array(CAP)
+            static _activeCount = 0
+            static _pos = new Uint16Array(CAP)
+            static _hash = new SpatialHash(CAP)
+            static instances = Array.from({ length: CAP }, (_, i) => { const f = new FishSoA(); f.index = i; return f })
+
+            static reset() {
+                this._freeHead = CAP
+                this._activeCount = 0
+                for (let i = 0; i < CAP; i++) this._freeList[i] = i
+                this.x.fill(0); this.y.fill(0); this.z.fill(0)
+                this.vx.fill(0); this.vy.fill(0); this.vz.fill(0)
+            }
+
+            static create() {
+                const index = this._freeList[--this._freeHead]
+                this._pos[index] = this._activeCount
+                this._active[this._activeCount++] = index
+                return this.instances[index]
+            }
+
+            static destroyAll() { this._activeCount = 0; this._freeHead = CAP; for (let i = 0; i < CAP; i++) this._freeList[i] = i }
+
+            static tickAll(sepW, aliW, cohW, sepR, visR, maxSpd) {
+                const { x, y, z, vx, vy, vz, _active, _activeCount, _hash } = FishSoA
+                const { _neighbors } = _hash
+                const sepR2 = sepR * sepR
+                const visR2 = visR * visR
+                const MAXSPD = maxSpd * 0.045
+                const MAXFRC = MAXSPD * 0.06
+                const BOUND = 80
+                const steer = 0.005
+                _hash.cellSize = Math.max(visR, 8)
+                _hash.build(x, y, z, _active, _activeCount)
+
+                let totalNeigh = 0
+
+                for (let i = 0; i < _activeCount; i++) {
+                    const ii = _active[i]
+                    const px = x[ii], py = y[ii], pz = z[ii]
+                    const pvx = vx[ii], pvy = vy[ii], pvz = vz[ii]
+                    const nCount = _hash.query(px, py, pz)
+
+                    let sx = 0, sy = 0, sz = 0, sn = 0
+                    let ax = 0, ay = 0, az = 0
+                    let cx = 0, cy = 0, cz = 0, vn = 0
+
+                    for (let k = 0; k < nCount; k++) {
+                        const jj = _neighbors[k]
+                        if (jj === ii) continue
+                        const dx = x[jj] - px, dy = y[jj] - py, dz = z[jj] - pz
+                        const d2 = dx * dx + dy * dy + dz * dz
+                        if (d2 > visR2) continue
+                        vn++
+                        ax += vx[jj]; ay += vy[jj]; az += vz[jj]
+                        cx += x[jj]; cy += y[jj]; cz += z[jj]
+                        if (d2 < sepR2 && d2 > 0.0001) {
+                            const inv = 1 / Math.sqrt(d2)
+                            sx -= dx * inv; sy -= dy * inv; sz -= dz * inv; sn++
+                        }
+                    }
+                    totalNeigh += vn
+
+                    let fx = 0, fy = 0, fz = 0
+                    if (sn > 0) {
+                        const m = Math.sqrt(sx * sx + sy * sy + sz * sz) || 1
+                        fx += (sx / m * MAXSPD - pvx) * sepW
+                        fy += (sy / m * MAXSPD - pvy) * sepW
+                        fz += (sz / m * MAXSPD - pvz) * sepW
+                    }
+                    if (vn > 0) {
+                        const inv = 1 / vn
+                        let tx = ax * inv, ty = ay * inv, tz = az * inv
+                        const m1 = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1
+                        tx = tx / m1 * MAXSPD; ty = ty / m1 * MAXSPD; tz = tz / m1 * MAXSPD
+                        fx += (tx - pvx) * aliW; fy += (ty - pvy) * aliW; fz += (tz - pvz) * aliW
+                        let cdx = cx * inv - px, cdy = cy * inv - py, cdz = cz * inv - pz
+                        const m2 = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz) || 1
+                        fx += (cdx / m2 * MAXSPD - pvx) * cohW
+                        fy += (cdy / m2 * MAXSPD - pvy) * cohW
+                        fz += (cdz / m2 * MAXSPD - pvz) * cohW
+                    }
+
+                    const fm = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1
+                    if (fm > MAXFRC) { fx = fx / fm * MAXFRC; fy = fy / fm * MAXFRC; fz = fz / fm * MAXFRC }
+
+                    let nvx = pvx + fx, nvy = pvy + fy, nvz = pvz + fz
+                    const vm = Math.sqrt(nvx * nvx + nvy * nvy + nvz * nvz) || 1
+                    if (vm > MAXSPD) { nvx = nvx / vm * MAXSPD; nvy = nvy / vm * MAXSPD; nvz = nvz / vm * MAXSPD }
+                    if (vm < MAXSPD * 0.3) { nvx = nvx / vm * MAXSPD * 0.3; nvy = nvy / vm * MAXSPD * 0.3; nvz = nvz / vm * MAXSPD * 0.3 }
+
+                    if (px > BOUND) nvx -= steer * Math.abs(px - BOUND)
+                    if (px < -BOUND) nvx += steer * Math.abs(px + BOUND)
+                    if (py > BOUND) nvy -= steer * Math.abs(py - BOUND)
+                    if (py < -BOUND) nvy += steer * Math.abs(py + BOUND)
+                    if (pz > BOUND) nvz -= steer * Math.abs(pz - BOUND)
+                    if (pz < -BOUND) nvz += steer * Math.abs(pz + BOUND)
+
+                    vx[ii] = nvx; vy[ii] = nvy; vz[ii] = nvz
+                    x[ii] += nvx; y[ii] += nvy; z[ii] += nvz
+                }
+                return _activeCount > 0 ? (totalNeigh / _activeCount) | 0 : 0
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // FISH OOP
+        // ─────────────────────────────────────────────
+        class FishOOP {
+            constructor() {
+                this.x = 0; this.y = 0; this.z = 0
+                this.vx = 0; this.vy = 0; this.vz = 0
+            }
+
+            static instances = []
+            static _hash = new SpatialHashOOP()
+
+            static reset() { this.instances = [] }
+
+            static create(n) {
+                this.instances = []
+                const B = 60
+                for (let i = 0; i < n; i++) {
+                    const f = new FishOOP()
+                    f.x = (Math.random() - 0.5) * B * 2
+                    f.y = (Math.random() - 0.5) * B * 2
+                    f.z = (Math.random() - 0.5) * B * 2
+                    const sp = 0.1
+                    f.vx = (Math.random() - 0.5) * sp
+                    f.vy = (Math.random() - 0.5) * sp
+                    f.vz = (Math.random() - 0.5) * sp
+                    this.instances.push(f)
+                }
+            }
+
+            static tickAll(sepW, aliW, cohW, sepR, visR, maxSpd) {
+                const instances = FishOOP.instances
+                const hash = FishOOP._hash
+                const sepR2 = sepR * sepR
+                const visR2 = visR * visR
+                const MAXSPD = maxSpd * 0.045
+                const MAXFRC = MAXSPD * 0.06
+                const BOUND = 80
+                const steer = 0.005
+                hash.cellSize = Math.max(visR, 8)
+                hash.build(instances)
+
+                let totalNeigh = 0
+
+                for (const fish of instances) {
+                    const neighbors = hash.query(fish)
+                    let sx = 0, sy = 0, sz = 0, sn = 0
+                    let ax = 0, ay = 0, az = 0
+                    let cx = 0, cy = 0, cz = 0, vn = 0
+
+                    for (const other of neighbors) {
+                        if (other === fish) continue
+                        const dx = other.x - fish.x, dy = other.y - fish.y, dz = other.z - fish.z
+                        const d2 = dx * dx + dy * dy + dz * dz
+                        if (d2 > visR2) continue
+                        vn++
+                        ax += other.vx; ay += other.vy; az += other.vz
+                        cx += other.x; cy += other.y; cz += other.z
+                        if (d2 < sepR2 && d2 > 0.0001) {
+                            const inv = 1 / Math.sqrt(d2)
+                            sx -= dx * inv; sy -= dy * inv; sz -= dz * inv; sn++
+                        }
+                    }
+                    totalNeigh += vn
+
+                    let fx = 0, fy = 0, fz = 0
+                    if (sn > 0) {
+                        const m = Math.sqrt(sx * sx + sy * sy + sz * sz) || 1
+                        fx += (sx / m * MAXSPD - fish.vx) * sepW
+                        fy += (sy / m * MAXSPD - fish.vy) * sepW
+                        fz += (sz / m * MAXSPD - fish.vz) * sepW
+                    }
+                    if (vn > 0) {
+                        const inv = 1 / vn
+                        let tx = ax * inv, ty = ay * inv, tz = az * inv
+                        const m1 = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1
+                        tx = tx / m1 * MAXSPD; ty = ty / m1 * MAXSPD; tz = tz / m1 * MAXSPD
+                        fx += (tx - fish.vx) * aliW; fy += (ty - fish.vy) * aliW; fz += (tz - fish.vz) * aliW
+                        let cdx = cx * inv - fish.x, cdy = cy * inv - fish.y, cdz = cz * inv - fish.z
+                        const m2 = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz) || 1
+                        fx += (cdx / m2 * MAXSPD - fish.vx) * cohW
+                        fy += (cdy / m2 * MAXSPD - fish.vy) * cohW
+                        fz += (cdz / m2 * MAXSPD - fish.vz) * cohW
+                    }
+
+                    const fm = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1
+                    if (fm > MAXFRC) { fx = fx / fm * MAXFRC; fy = fy / fm * MAXFRC; fz = fz / fm * MAXFRC }
+
+                    let nvx = fish.vx + fx, nvy = fish.vy + fy, nvz = fish.vz + fz
+                    const vm = Math.sqrt(nvx * nvx + nvy * nvy + nvz * nvz) || 1
+                    if (vm > MAXSPD) { nvx = nvx / vm * MAXSPD; nvy = nvy / vm * MAXSPD; nvz = nvz / vm * MAXSPD }
+                    if (vm < MAXSPD * 0.3) { nvx = nvx / vm * MAXSPD * 0.3; nvy = nvy / vm * MAXSPD * 0.3; nvz = nvz / vm * MAXSPD * 0.3 }
+
+                    if (fish.x > BOUND) nvx -= steer * Math.abs(fish.x - BOUND)
+                    if (fish.x < -BOUND) nvx += steer * Math.abs(fish.x + BOUND)
+                    if (fish.y > BOUND) nvy -= steer * Math.abs(fish.y - BOUND)
+                    if (fish.y < -BOUND) nvy += steer * Math.abs(fish.y + BOUND)
+                    if (fish.z > BOUND) nvz -= steer * Math.abs(fish.z - BOUND)
+                    if (fish.z < -BOUND) nvz += steer * Math.abs(fish.z + BOUND)
+
+                    fish.vx = nvx; fish.vy = nvy; fish.vz = nvz
+                    fish.x += nvx; fish.y += nvy; fish.z += nvz
+                }
+                return instances.length > 0 ? (totalNeigh / instances.length) | 0 : 0
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // BENCHMARK RUNNER
+        // ─────────────────────────────────────────────
+        const DURATION = 10000
+
+        function getParams() {
+            return {
+                count: parseInt(document.getElementById('sl-count').value),
+                visR: parseFloat(document.getElementById('sl-vis').value),
+                sepR: parseFloat(document.getElementById('sl-sep').value),
+                sepW: parseFloat(document.getElementById('sl-sw').value),
+                aliW: parseFloat(document.getElementById('sl-aw').value),
+                cohW: parseFloat(document.getElementById('sl-cw').value),
+                maxSpd: 4,
+            }
+        }
+
+        function spawnSoA(count) {
+            FishSoA.destroyAll()
+            const B = 60
+            for (let i = 0; i < count; i++) {
+                const f = FishSoA.create()
+                FishSoA.x[f.index] = (Math.random() - 0.5) * B * 2
+                FishSoA.y[f.index] = (Math.random() - 0.5) * B * 2
+                FishSoA.z[f.index] = (Math.random() - 0.5) * B * 2
+                FishSoA.vx[f.index] = (Math.random() - 0.5) * 0.1
+                FishSoA.vy[f.index] = (Math.random() - 0.5) * 0.1
+                FishSoA.vz[f.index] = (Math.random() - 0.5) * 0.1
+            }
+        }
+
+        function runBenchmark(kind, params, onDone) {
+            const isSoA = kind === 'soa'
+            const prefix = kind
+
+            const progEl = document.getElementById(`${prefix}-prog`)
+            const liveEl = document.getElementById(`${prefix}-live`)
+            const tpsEl = document.getElementById(`${prefix}-tps`)
+            const statusEl = document.getElementById(`${prefix}-status`)
+            const tagEl = document.getElementById(`tag-${prefix}`)
+
+            tagEl.textContent = 'corriendo...'
+
+            const tickTimes = []
+            const neighSamples = []
+            let ticks = 0
+            let startT = performance.now()
+            let lastUIUpdate = startT
+            let timer = null
+
+            if (isSoA) spawnSoA(params.count)
+            else FishOOP.create(params.count)
+
+            statusEl.textContent = `iniciando ${params.count} peces...`
+
+            function loop() {
+                const now = performance.now()
+                const elapsed = now - startT
+                if (elapsed >= DURATION) {
+                    clearTimeout(timer)
+                    finalize(elapsed)
+                    return
+                }
+
+                const t0 = performance.now()
+                let avgN
+                if (isSoA) avgN = FishSoA.tickAll(params.sepW, params.aliW, params.cohW, params.sepR, params.visR, params.maxSpd)
+                else avgN = FishOOP.tickAll(params.sepW, params.aliW, params.cohW, params.sepR, params.visR, params.maxSpd)
+                const dt = performance.now() - t0
+
+                tickTimes.push(dt)
+                neighSamples.push(avgN)
+                ticks++
+
+                const pct = Math.min(elapsed / DURATION * 100, 100)
+                progEl.style.width = pct + '%'
+
+                if (now - lastUIUpdate > 200) {
+                    lastUIUpdate = now
+                    liveEl.textContent = dt.toFixed(2) + 'ms'
+                    const tps = ticks / (elapsed / 1000)
+                    tpsEl.textContent = tps.toFixed(0)
+                    statusEl.textContent = `tick #${ticks} — ${(elapsed / 1000).toFixed(1)}s / 10s`
+                }
+
+                timer = setTimeout(loop, 2)
+            }
+
+            function finalize(elapsed) {
+                const avg = tickTimes.reduce((a, b) => a + b, 0) / tickTimes.length
+                const min = Math.min(...tickTimes)
+                const max = Math.max(...tickTimes)
+                const avgN = neighSamples.reduce((a, b) => a + b, 0) / neighSamples.length
+                const totalTime = elapsed / 1000
+
+                const fmt = v => v < 10 ? v.toFixed(2) : v.toFixed(1)
+                const tps = v => (1000 / v).toFixed(0)
+
+                document.getElementById(`${prefix}-avg`).innerHTML = fmt(avg) + '<span class="munit">ms</span>'
+                document.getElementById(`${prefix}-min`).innerHTML = fmt(min) + '<span class="munit">ms</span>'
+                document.getElementById(`${prefix}-max`).innerHTML = fmt(max) + '<span class="munit">ms</span>'
+                document.getElementById(`${prefix}-avg-tps`).textContent = tps(avg) + ' ticks/s'
+                document.getElementById(`${prefix}-min-tps`).textContent = tps(max) + ' t/s min'
+                document.getElementById(`${prefix}-max-tps`).textContent = tps(min) + ' t/s max'
+                document.getElementById(`${prefix}-total`).textContent = ticks
+                document.getElementById(`${prefix}-neigh`).textContent = avgN.toFixed(1)
+                document.getElementById(`${prefix}-elapsed`).innerHTML = totalTime.toFixed(2) + '<span class="munit">s</span>'
+
+                liveEl.textContent = '—'
+                tpsEl.textContent = '—'
+                progEl.style.width = '100%'
+                statusEl.textContent = `listo — ${ticks} ticks en ${totalTime.toFixed(2)}s`
+                tagEl.textContent = 'listo'
+
+                onDone({ avg, min, max, ticks, avgN, kind })
+            }
+
+            setTimeout(loop, 10)
+        }
+
+        // ─────────────────────────────────────────────
+        // COMPARISON
+        // ─────────────────────────────────────────────
+        let results = {}
+
+        function renderComparison() {
+            const s = results.soa, o = results.oop
+            if (!s || !o) return
+
+            const cmpEl = document.getElementById('comparison')
+            const bodyEl = document.getElementById('cmp-body')
+
+            const soaAvgTps = 1000 / s.avg
+            const oopAvgTps = 1000 / o.avg
+            const speedup = soaAvgTps / oopAvgTps
+
+            const maxAvg = Math.max(soaAvgTps, oopAvgTps)
+            const maxMin = Math.max(1000 / s.max, 1000 / o.max)
+            const maxMax = Math.max(1000 / s.min, 1000 / o.min)
+
+            function row(label, soaV, oopV, maxV, unit, higherIsBetter = true) {
+                const soaPct = (soaV / maxV * 100).toFixed(1)
+                const oopPct = (oopV / maxV * 100).toFixed(1)
+                const soaWins = higherIsBetter ? soaV >= oopV : soaV <= oopV
+                const diff = higherIsBetter ? (soaV / oopV) : (oopV / soaV)
+                const badge = diff > 1.05
+                    ? `<span class="winner-badge" style="background:rgba(0,229,255,0.1);color:var(--soa)">SoA ${diff.toFixed(2)}x</span>`
+                    : diff < 0.95
+                        ? `<span class="winner-badge" style="background:rgba(255,107,53,0.1);color:var(--oop)">OOP ${(1 / diff).toFixed(2)}x</span>`
+                        : `<span class="winner-badge" style="background:rgba(255,255,255,0.05);color:var(--neutral)">empate</span>`
+                return `
+    <div class="cmp-row">
+      <span class="cmp-label">${label}</span>
+      <div class="cmp-bar-wrap">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--soa);min-width:14px">S</span>
+        <div class="cmp-bar-track"><div class="cmp-bar-fill" style="width:${soaPct}%;background:var(--soa)"></div></div>
+        <span class="cmp-num" style="color:var(--soa)">${soaV.toFixed(0)}<span style="font-size:0.6rem;font-weight:400;color:var(--dim)">${unit}</span></span>
+        ${badge}
+      </div>
+    </div>
+    <div class="cmp-row">
+      <span class="cmp-label"></span>
+      <div class="cmp-bar-wrap">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--oop);min-width:14px">O</span>
+        <div class="cmp-bar-track"><div class="cmp-bar-fill" style="width:${oopPct}%;background:var(--oop)"></div></div>
+        <span class="cmp-num" style="color:var(--oop)">${oopV.toFixed(0)}<span style="font-size:0.6rem;font-weight:400;color:var(--dim)">${unit}</span></span>
+      </div>
+    </div>`
+            }
+
+            cmpEl.querySelector('h3').textContent = 'comparación final'
+            bodyEl.innerHTML = `
+    ${row('avg ticks/s', soaAvgTps, oopAvgTps, maxAvg, 't/s')}
+    ${row('min ticks/s', 1000 / s.max, 1000 / o.max, maxMin, 't/s')}
+    ${row('max ticks/s', 1000 / s.min, 1000 / o.min, maxMax, 't/s')}
+    ${row('total ticks', s.ticks, o.ticks, Math.max(s.ticks, o.ticks), '')}
+    <div class="speedup">
+      SoA procesó
+      <strong>${speedup.toFixed(2)}x más ticks/s que OOP</strong>
+      con ${Object.keys(getParams()).find(k => k === 'count') ? getParams().count : '?'} peces
+    </div>
+  `
+        }
+
+        // ─────────────────────────────────────────────
+        // UI WIRING
+        // ─────────────────────────────────────────────
+        let running = false
+
+        function bindSlider(id, valId) {
+            const el = document.getElementById(id)
+            const vl = document.getElementById(valId)
+            el.addEventListener('input', () => { vl.textContent = parseFloat(el.value) })
+        }
+        bindSlider('sl-count', 'vl-count')
+        bindSlider('sl-vis', 'vl-vis')
+        bindSlider('sl-sep', 'vl-sep')
+        bindSlider('sl-sw', 'vl-sw')
+        bindSlider('sl-aw', 'vl-aw')
+        bindSlider('sl-cw', 'vl-cw')
+
+        function setButtons(disabled) {
+            document.getElementById('btn-soa').disabled = disabled
+            document.getElementById('btn-oop').disabled = disabled
+            document.getElementById('btn-both').disabled = disabled
+        }
+
+        document.getElementById('btn-soa').addEventListener('click', () => {
+            if (running) return
+            running = true; setButtons(true)
+            runBenchmark('soa', getParams(), (r) => {
+                results.soa = r
+                renderComparison()
+                running = false; setButtons(false)
+            })
+        })
+
+        document.getElementById('btn-oop').addEventListener('click', () => {
+            if (running) return
+            running = true; setButtons(true)
+            runBenchmark('oop', getParams(), (r) => {
+                results.oop = r
+                renderComparison()
+                running = false; setButtons(false)
+            })
+        })
+
+        document.getElementById('btn-both').addEventListener('click', () => {
+            if (running) return
+            running = true; setButtons(true)
+            const p = getParams()
+            runBenchmark('soa', p, (r1) => {
+                results.soa = r1
+                runBenchmark('oop', p, (r2) => {
+                    results.oop = r2
+                    renderComparison()
+                    running = false; setButtons(false)
+                })
+            })
+        })
+    </script>
+</body>
+</html>

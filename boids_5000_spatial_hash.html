@@ -1,0 +1,325 @@
+
+<style>
+#c{display:block;width:100%;height:520px;background:#060d1a;border-radius:12px;cursor:grab;}
+#c:active{cursor:grabbing;}
+.ui-row{display:flex;gap:10px;flex-wrap:wrap;padding:8px 2px;align-items:center;}
+.ui-row label{font-size:12px;color:var(--color-text-secondary);display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.ui-row input[type=range]{width:80px;}
+.ui-row span{font-size:12px;font-weight:500;min-width:32px;color:var(--color-text-primary);}
+#stats{font-size:12px;color:var(--color-text-secondary);padding:2px 2px 6px;display:flex;gap:16px;}
+</style>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span>peces: <b id="sc">0</b></span>
+  <span>fps: <b id="fps">0</b></span>
+  <span>vecinos avg: <b id="nav">0</b></span>
+</div>
+<div class="ui-row">
+  <label>peces <input type="range" id="cnt" min="50" max="5000" step="50" value="800"><span id="cntv">800</span></label>
+  <label>separación <input type="range" id="sep" min="0" max="3" step="0.1" value="1.5"><span id="sepv">1.5</span></label>
+  <label>alineación <input type="range" id="ali" min="0" max="3" step="0.1" value="1.0"><span id="aliv">1.0</span></label>
+  <label>cohesión <input type="range" id="coh" min="0" max="3" step="0.1" value="1.0"><span id="cohv">1.0</span></label>
+</div>
+<div class="ui-row">
+  <label>radio sep <input type="range" id="rsep" min="1" max="20" step="1" value="6"><span id="rsepv">6</span></label>
+  <label>radio visión <input type="range" id="rvis" min="5" max="50" step="1" value="18"><span id="rvisv">18</span></label>
+  <label>velocidad <input type="range" id="spd" min="1" max="10" step="1" value="4"><span id="spdv">4</span></label>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const CAP = 5000
+
+class SpatialHash {
+  static BUCKETS = 32768
+  static cellSize = 18
+
+  static _cellOf   = new Int32Array(CAP)
+  static _sorted   = new Uint16Array(CAP)
+  static _cellStart= new Int32Array(SpatialHash.BUCKETS)
+  static _cellCount= new Int32Array(SpatialHash.BUCKETS)
+  static _neighbors= new Uint16Array(CAP)
+
+  static _hash(cx,cy,cz){
+    const h = (cx*92837111^cy*689287499^cz*283923481)
+    return ((h>>>0) % SpatialHash.BUCKETS)
+  }
+
+  static build(x,y,z,active,count){
+    const {BUCKETS,_cellOf,_sorted,_cellStart,_cellCount} = SpatialHash
+    const cs = SpatialHash.cellSize
+
+    _cellCount.fill(0)
+
+    for(let i=0;i<count;i++){
+      const idx=active[i]
+      const h=SpatialHash._hash(Math.floor(x[idx]/cs),Math.floor(y[idx]/cs),Math.floor(z[idx]/cs))
+      _cellOf[idx]=h
+      _cellCount[h]++
+    }
+
+    _cellStart[0]=0
+    for(let i=1;i<BUCKETS;i++) _cellStart[i]=_cellStart[i-1]+_cellCount[i-1]
+
+    const tmp=new Int32Array(BUCKETS)
+    for(let i=0;i<count;i++){
+      const idx=active[i]
+      const h=_cellOf[idx]
+      _sorted[_cellStart[h]+tmp[h]]=idx
+      tmp[h]++
+    }
+  }
+
+  static query(px,py,pz,sepR2,visR2){
+    const cs=SpatialHash.cellSize
+    const {_sorted,_cellStart,_cellCount,_neighbors}=SpatialHash
+    let found=0
+    const cx0=Math.floor(px/cs)-1, cx1=cx0+2
+    const cy0=Math.floor(py/cs)-1, cy1=cy0+2
+    const cz0=Math.floor(pz/cs)-1, cz1=cz0+2
+    for(let cx=cx0;cx<=cx1;cx++)
+    for(let cy=cy0;cy<=cy1;cy++)
+    for(let cz=cz0;cz<=cz1;cz++){
+      const h=SpatialHash._hash(cx,cy,cz)
+      const start=_cellStart[h], cnt=_cellCount[h]
+      for(let k=0;k<cnt;k++) _neighbors[found++]=_sorted[start+k]
+    }
+    return found
+  }
+}
+
+class Fish {
+  static x  = new Float32Array(CAP)
+  static y  = new Float32Array(CAP)
+  static z  = new Float32Array(CAP)
+  static vx = new Float32Array(CAP)
+  static vy = new Float32Array(CAP)
+  static vz = new Float32Array(CAP)
+
+  static _freeList    = new Uint16Array(CAP).map((_,i)=>i)
+  static _freeHead    = CAP
+  static _active      = new Uint16Array(CAP)
+  static _activeCount = 0
+  static _pos         = new Uint16Array(CAP)
+
+  static instances = Array.from({length:CAP},(_,i)=>{ const f=new Fish(); f.index=i; return f })
+
+  static create(){
+    const index=this._freeList[--this._freeHead]
+    this._pos[index]=this._activeCount
+    this._active[this._activeCount++]=index
+    return this.instances[index]
+  }
+
+  static destroyIndex(index){
+    const pos=Fish._pos[index]
+    const last=Fish._active[--Fish._activeCount]
+    Fish._active[pos]=last
+    Fish._pos[last]=pos
+    Fish._freeList[Fish._freeHead++]=index
+  }
+
+  static tickAll(sepW,aliW,cohW,sepR,visR,maxSpd){
+    const {x,y,z,vx,vy,vz,_active,_activeCount}=Fish
+    const {_neighbors}=SpatialHash
+    const sepR2=sepR*sepR, visR2=visR*visR
+    const MAXSPD=maxSpd*0.045
+    const MAXFORCE=MAXSPD*0.06
+    const BOUND=80
+
+    SpatialHash.cellSize=Math.max(visR,8)
+    SpatialHash.build(x,y,z,_active,_activeCount)
+
+    let totalNeigh=0
+
+    for(let i=0;i<_activeCount;i++){
+      const ii=_active[i]
+      const px=x[ii],py=y[ii],pz=z[ii]
+      const pvx=vx[ii],pvy=vy[ii],pvz=vz[ii]
+
+      const nCount=SpatialHash.query(px,py,pz,sepR2,visR2)
+
+      let sx=0,sy=0,sz=0,sn=0
+      let ax=0,ay=0,az=0
+      let cx=0,cy=0,cz=0,vn=0
+
+      for(let k=0;k<nCount;k++){
+        const jj=_neighbors[k]
+        if(jj===ii) continue
+        const dx=x[jj]-px, dy=y[jj]-py, dz=z[jj]-pz
+        const d2=dx*dx+dy*dy+dz*dz
+        if(d2>visR2) continue
+        vn++
+        ax+=vx[jj]; ay+=vy[jj]; az+=vz[jj]
+        cx+=x[jj];  cy+=y[jj];  cz+=z[jj]
+        if(d2<sepR2&&d2>0.0001){
+          const inv=1/Math.sqrt(d2)
+          sx-=dx*inv; sy-=dy*inv; sz-=dz*inv; sn++
+        }
+      }
+      totalNeigh+=vn
+
+      let fx=0,fy=0,fz=0
+
+      if(sn>0){
+        const m=Math.sqrt(sx*sx+sy*sy+sz*sz)||1
+        const tx=sx/m*MAXSPD,ty=sy/m*MAXSPD,tz=sz/m*MAXSPD
+        fx+=(tx-pvx)*sepW; fy+=(ty-pvy)*sepW; fz+=(tz-pvz)*sepW
+      }
+      if(vn>0){
+        const inv=1/vn
+        let tx=ax*inv,ty=ay*inv,tz=az*inv
+        const m1=Math.sqrt(tx*tx+ty*ty+tz*tz)||1
+        tx=tx/m1*MAXSPD; ty=ty/m1*MAXSPD; tz=tz/m1*MAXSPD
+        fx+=(tx-pvx)*aliW; fy+=(ty-pvy)*aliW; fz+=(tz-pvz)*aliW
+
+        let cdx=cx*inv-px,cdy=cy*inv-py,cdz=cz*inv-pz
+        const m2=Math.sqrt(cdx*cdx+cdy*cdy+cdz*cdz)||1
+        cdx=cdx/m2*MAXSPD; cdy=cdy/m2*MAXSPD; cdz=cdz/m2*MAXSPD
+        fx+=(cdx-pvx)*cohW; fy+=(cdy-pvy)*cohW; fz+=(cdz-pvz)*cohW
+      }
+
+      const fm=Math.sqrt(fx*fx+fy*fy+fz*fz)||1
+      if(fm>MAXFORCE){fx=fx/fm*MAXFORCE;fy=fy/fm*MAXFORCE;fz=fz/fm*MAXFORCE}
+
+      let nvx=pvx+fx, nvy=pvy+fy, nvz=pvz+fz
+      const vm=Math.sqrt(nvx*nvx+nvy*nvy+nvz*nvz)||1
+      if(vm>MAXSPD){nvx=nvx/vm*MAXSPD;nvy=nvy/vm*MAXSPD;nvz=nvz/vm*MAXSPD}
+      if(vm<MAXSPD*0.3){nvx=nvx/vm*MAXSPD*0.3;nvy=nvy/vm*MAXSPD*0.3;nvz=nvz/vm*MAXSPD*0.3}
+
+      const steer=0.005
+      if(px> BOUND) nvx-=steer*Math.abs(px-BOUND)
+      if(px<-BOUND) nvx+=steer*Math.abs(px+BOUND)
+      if(py> BOUND) nvy-=steer*Math.abs(py-BOUND)
+      if(py<-BOUND) nvy+=steer*Math.abs(py+BOUND)
+      if(pz> BOUND) nvz-=steer*Math.abs(pz-BOUND)
+      if(pz<-BOUND) nvz+=steer*Math.abs(pz+BOUND)
+
+      vx[ii]=nvx; vy[ii]=nvy; vz[ii]=nvz
+      x[ii]+=nvx; y[ii]+=nvy; z[ii]+=nvz
+    }
+    return _activeCount>0 ? (totalNeigh/_activeCount)|0 : 0
+  }
+
+  static syncToThree(mesh,dummy){
+    const {x,y,z,vx,vy,vz,_active,_activeCount}=Fish
+    const up=new THREE.Vector3(0,1,0)
+    const dir=new THREE.Vector3()
+    for(let i=0;i<_activeCount;i++){
+      const idx=_active[i]
+      dummy.position.set(x[idx],y[idx],z[idx])
+      const spd=Math.sqrt(vx[idx]*vx[idx]+vy[idx]*vy[idx]+vz[idx]*vz[idx])
+      if(spd>0.0001){
+        dir.set(vx[idx]/spd,vy[idx]/spd,vz[idx]/spd)
+        dummy.quaternion.setFromUnitVectors(up,dir)
+      }
+      dummy.updateMatrix()
+      mesh.setMatrixAt(i,dummy.matrix)
+    }
+    mesh.count=_activeCount
+    mesh.instanceMatrix.needsUpdate=true
+  }
+}
+
+function spawnN(n){
+  while(Fish._activeCount>n) Fish.destroyIndex(Fish._active[Fish._activeCount-1])
+  while(Fish._activeCount<n){
+    const f=Fish.create(), i=f.index, B=60
+    Fish.x[i]=(Math.random()-0.5)*B*2
+    Fish.y[i]=(Math.random()-0.5)*B*2
+    Fish.z[i]=(Math.random()-0.5)*B*2
+    const sp=0.1
+    Fish.vx[i]=(Math.random()-0.5)*sp
+    Fish.vy[i]=(Math.random()-0.5)*sp
+    Fish.vz[i]=(Math.random()-0.5)*sp
+  }
+}
+
+const canvas=document.getElementById('c')
+const W=canvas.clientWidth, H=520
+renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true})
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))
+renderer.setSize(W,H)
+
+const scene=new THREE.Scene()
+scene.fog=new THREE.FogExp2(0x060d1a,0.005)
+
+const camera=new THREE.PerspectiveCamera(65,W/H,0.1,2000)
+camera.position.set(0,30,160)
+camera.lookAt(0,0,0)
+
+scene.add(new THREE.AmbientLight(0x223366,2))
+const dl=new THREE.DirectionalLight(0xaaddff,2)
+dl.position.set(60,100,60); scene.add(dl)
+const pl=new THREE.PointLight(0x0066ff,3,300)
+pl.position.set(-40,40,40); scene.add(pl)
+
+const triGeo=new THREE.ConeGeometry(0.5,2.2,4)
+triGeo.rotateX(Math.PI/2)
+const triMat=new THREE.MeshStandardMaterial({color:0x44bbff,emissive:0x001133,metalness:0.5,roughness:0.3})
+const iMesh=new THREE.InstancedMesh(triGeo,triMat,CAP)
+iMesh.count=0
+scene.add(iMesh)
+
+const dummy=new THREE.Object3D()
+
+let sepW=1.5,aliW=1.0,cohW=1.0,sepR=6,visR=18,maxSpd=4
+let targetCount=800
+spawnN(targetCount)
+
+const bind=(id,valId,cb)=>{
+  const el=document.getElementById(id),vl=document.getElementById(valId)
+  el.addEventListener('input',()=>{
+    const v=parseFloat(el.value)
+    vl.textContent=Math.round(v*10)/10
+    cb(v)
+  })
+}
+bind('sep','sepv',v=>sepW=v)
+bind('ali','aliv',v=>aliW=v)
+bind('coh','cohv',v=>cohW=v)
+bind('rsep','rsepv',v=>sepR=v)
+bind('rvis','rvisv',v=>visR=v)
+bind('spd','spdv',v=>maxSpd=v)
+bind('cnt','cntv',v=>{targetCount=parseInt(v);spawnN(targetCount)})
+
+let rotY=0.3,rotX=0.15,isDragging=false,lastX=0,lastY=0
+canvas.addEventListener('mousedown',e=>{isDragging=true;lastX=e.clientX;lastY=e.clientY})
+window.addEventListener('mouseup',()=>isDragging=false)
+canvas.addEventListener('mousemove',e=>{
+  if(!isDragging)return
+  rotY+=(e.clientX-lastX)*0.004
+  rotX+=(e.clientY-lastY)*0.004
+  rotX=Math.max(-1.2,Math.min(1.2,rotX))
+  lastX=e.clientX;lastY=e.clientY
+})
+
+let lastT=performance.now(),frames=0,fpsAcc=0
+const scEl=document.getElementById('sc')
+const fpsEl=document.getElementById('fps')
+const navEl=document.getElementById('nav')
+
+function animate(){
+  requestAnimationFrame(animate)
+  const now=performance.now()
+  const dt=now-lastT; lastT=now
+  fpsAcc+=dt; frames++
+  if(fpsAcc>500){
+    fpsEl.textContent=Math.round(1000/(fpsAcc/frames))
+    fpsAcc=0;frames=0
+  }
+
+  const avgN=Fish.tickAll(sepW,aliW,cohW,sepR,visR,maxSpd)
+  Fish.syncToThree(iMesh,dummy)
+
+  const r=160
+  camera.position.x=r*Math.sin(rotY)*Math.cos(rotX)
+  camera.position.y=r*Math.sin(rotX)
+  camera.position.z=r*Math.cos(rotY)*Math.cos(rotX)
+  camera.lookAt(0,0,0)
+
+  scEl.textContent=Fish._activeCount
+  navEl.textContent=avgN
+  renderer.render(scene,camera)
+}
+animate()
+</script>
