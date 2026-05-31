@@ -1,20 +1,20 @@
 import { World } from "./world.js";
 import { Fish } from "./fish.js";
+import { SoftwareRenderSystem } from "./softwareRenderSystem.js";
 import { ThreeRenderSystem } from "./threeRenderSystem.js";
-
-const viewport = document.getElementById("viewport");
-await ThreeRenderSystem.init(viewport);
 
 const world = new World({
   width: 800,
   height: 600,
-  renderer: ThreeRenderSystem,
+  renderer: SoftwareRenderSystem,
+  // renderer: ThreeRenderSystem,
+  viewport: document.getElementById("viewport"),
 });
 
-world.registerEntityClass(Fish, 5000);
+world.registerEntityClass(Fish, 10000);
 world.startGameLoop();
 
-for (let i = 0; i < 5000; i++) {
+for (let i = 0; i < 10000; i++) {
   const fish = Fish.create();
   fish.x = Math.random() * world.width;
   fish.y = Math.random() * world.height;

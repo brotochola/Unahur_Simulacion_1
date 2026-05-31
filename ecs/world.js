@@ -11,9 +11,9 @@ export class World {
     World.instance = this;
     window.world = this;
 
-    if (viewport && !this.renderer._initialized) {
-      this.renderer.init(viewport);
-    }
+    this._rendererReady = viewport
+      ? this.bootRenderer(viewport)
+      : Promise.resolve();
 
     this.entityTypes = [];
     this.systems = [];
@@ -28,10 +28,25 @@ export class World {
     this._boundLoop = this._loop.bind(this);
   }
 
+  bootRenderer(viewport) {
+    if (this.renderer._initialized) {
+      return Promise.resolve();
+    }
+    if (typeof this.renderer.init !== "function") {
+      return Promise.resolve();
+    }
+    const result = this.renderer.init(viewport);
+    return result && typeof result.then === "function"
+      ? result
+      : Promise.resolve();
+  }
+
   registerEntityClass(entityClass, numberOfEntities = 1000) {
     entityClass.init(numberOfEntities);
 
-    this.renderer.registerPool(entityClass);
+    this._rendererReady = this._rendererReady.then(() => {
+      this.renderer.registerPool(entityClass);
+    });
 
     this.entityTypes.push(entityClass);
 
@@ -91,11 +106,13 @@ export class World {
   async _loop() {
     this.update();
     await this.renderer.draw();
-    setTimeout(this._boundLoop, 2);
+    requestAnimationFrame(this._boundLoop);
   }
 
   startGameLoop() {
-    this.lastTime = performance.now();
-    setTimeout(this._boundLoop, 2);
+    this._rendererReady.then(() => {
+      this.lastTime = performance.now();
+      requestAnimationFrame(this._boundLoop);
+    });
   }
 }
