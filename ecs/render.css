@@ -1,0 +1,18 @@
+#viewport {
+  position: relative;
+  overflow: hidden;
+  background: #1a1a2e;
+  transform: translateZ(0);
+}
+
+.sprite {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4px;
+  height: 4px;
+  background: #e94560;
+  border-radius: 50%;
+  will-change: transform;
+  pointer-events: none;
+}

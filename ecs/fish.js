@@ -1,4 +1,8 @@
-class Fish {
+import { PhysicsSystem } from "./physicsSystem.js";
+import { KeepWithinBoundsSystem } from "./keepWithinBoundsSystem.js";
+import { PreRenderSystem } from "./preRenderSystem.js";
+
+export class Fish {
   // =====================================================================
   // ARQUITECTURA: LAYOUT COMPACTO (Dense SoA)
   //

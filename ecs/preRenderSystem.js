@@ -1,11 +1,10 @@
-class PreRenderSystem extends UpdateSystem {
+import { UpdateSystem } from "./updateSystem.js";
+import { RenderQueue } from "./renderQueue.js";
+import { World } from "./world.js";
+
+export class PreRenderSystem extends UpdateSystem {
   static targets = [];
   static _initialized = false;
-
-  static left = 0;
-  static right = 0;
-  static top = 0;
-  static bottom = 0;
 
   static init(capacity) {
     RenderQueue.init(capacity);
@@ -13,12 +12,14 @@ class PreRenderSystem extends UpdateSystem {
   }
 
   static update() {
+    const R = World.instance.renderer;
+    const left = 0;
+    const top = 0;
+    const right = R.viewportWidth;
+    const bottom = R.viewportHeight;
+
     const targets = this.targets;
     const { poolId, index, y, order } = RenderQueue;
-    const left = this.left;
-    const right = this.right;
-    const top = this.top;
-    const bottom = this.bottom;
 
     let count = 0;
 
@@ -53,7 +54,6 @@ class PreRenderSystem extends UpdateSystem {
     this.sortOrder(count);
   }
 
-  // In-place stable insertion sort on order[0..count) by y — zero-alloc.
   static sortOrder(count) {
     const order = RenderQueue.order;
     const yArr = RenderQueue.y;

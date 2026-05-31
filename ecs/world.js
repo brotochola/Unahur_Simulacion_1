@@ -1,14 +1,23 @@
-class World {
-  constructor() {
-    // ============================================================
-    // Tipos registrados y sistemas activos
-    // ============================================================
+import { PreRenderSystem } from "./preRenderSystem.js";
+import { RenderQueue } from "./renderQueue.js";
+
+export class World {
+  static instance = null;
+
+  constructor({ width, height, renderer, viewport = null }) {
+    this.width = width;
+    this.height = height;
+    this.renderer = renderer;
+    World.instance = this;
+    window.world = this;
+
+    if (viewport && !this.renderer._initialized) {
+      this.renderer.init(viewport);
+    }
+
     this.entityTypes = [];
     this.systems = [];
 
-    // ============================================================
-    // Timing
-    // ============================================================
     this.fps = 0;
     this._now = 0;
     this.lastTime = 0;
@@ -16,20 +25,13 @@ class World {
     this._frameCount = 0;
     this._fpsAccum = 0;
 
-    // ============================================================
-    // Loop pre-bindeado: se alloca UNA sola vez en el constructor.
-    // requestAnimationFrame siempre recibe la misma referencia → cero GC.
-    // ============================================================
     this._boundLoop = this._loop.bind(this);
   }
 
-  // ============================================================
-  // Registro de tipos
-  //
-  // Fish.systems = [PhysicsSystem, CollisionSystem, ...]
-  // ============================================================
   registerEntityClass(entityClass, numberOfEntities = 1000) {
     entityClass.init(numberOfEntities);
+
+    this.renderer.registerPool(entityClass);
 
     this.entityTypes.push(entityClass);
 
@@ -57,9 +59,6 @@ class World {
     }
   }
 
-  // ============================================================
-  // Limpia todo el mundo
-  // ============================================================
   clear() {
     this.entityTypes.length = 0;
 
@@ -71,9 +70,6 @@ class World {
     this.systems.length = 0;
   }
 
-  // ============================================================
-  // Update — computa dt internamente y lo pasa a cada sistema
-  // ============================================================
   update() {
     this._now = performance.now();
     this.deltaTime = (this._now - this.lastTime) / 1000;
@@ -92,14 +88,14 @@ class World {
     }
   }
 
-  _loop() {
+  async _loop() {
     this.update();
-    RenderSystem.draw();
-    requestAnimationFrame(this._boundLoop);
+    await this.renderer.draw();
+    setTimeout(this._boundLoop, 2);
   }
 
   startGameLoop() {
     this.lastTime = performance.now();
-    requestAnimationFrame(this._boundLoop);
+    setTimeout(this._boundLoop, 2);
   }
 }

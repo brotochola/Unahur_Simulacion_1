@@ -1,4 +1,4 @@
-class RenderQueue {
+export class RenderQueue {
   static poolId = null;
   static index = null;
   static y = null;
