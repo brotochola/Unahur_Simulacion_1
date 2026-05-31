@@ -128,7 +128,7 @@ export class SoftwareRenderSystem {
       const i = order[k];
       const pool = pools[poolId[i]];
       const j = index[i];
-      sw.drawRect((pool.x[j] | 0) - 2, (pool.y[j] | 0) - 2, 4, 4, color);
+      sw.setPixel(pool.x[j] | 0, pool.y[j] | 0, color);
     }
 
     sw.present();
