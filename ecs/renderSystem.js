@@ -1,10 +1,17 @@
 import { RenderQueue } from "./renderQueue.js";
 import { World } from "./world.js";
 
+// Renderer Canvas 2D: usa la API de alto nivel del browser.
+//
+// Es el renderer más simple de implementar. El browser maneja internamente
+// el buffer, el compositing y la aceleración por GPU.
+// No tenemos control del píxel, pero tampoco necesitamos gestionarlo.
 export class RenderSystem {
   static canvas = null;
   static ctx = null;
 
+  // Acepta un <canvas> directamente, o un div contenedor (en cuyo caso
+  // crea un canvas hijo del tamaño del mundo).
   static init(canvas) {
     if (!(canvas instanceof HTMLCanvasElement)) {
       this.canvas = document.createElement("canvas");
@@ -28,8 +35,11 @@ export class RenderSystem {
     return this.canvas.height;
   }
 
+  // No necesita preparación por pool
   static registerPool() {}
 
+  // Dibuja cada entidad de la RenderQueue como un rectángulo 2×2.
+  // El orden de la cola ya viene Y-sorteado de PreRenderSystem.
   static draw() {
     const ctx = this.ctx;
     const canvas = this.canvas;

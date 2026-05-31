@@ -1,6 +1,12 @@
 import { UpdateSystem } from "./updateSystem.js";
 import { World } from "./world.js";
 
+// Sistema de bordes: mantiene las entidades dentro del mundo invirtiendo su velocidad.
+//
+// Cada vez que una entidad cruza un borde, se corrige su posición al límite
+// y se invierte la componente de velocidad correspondiente (rebote elástico).
+// Los límites se leen de World.instance en cada frame, por lo que si el mundo
+// cambia de tamaño en runtime, el sistema se adapta automáticamente.
 export class KeepWithinBoundsSystem extends UpdateSystem {
   static targets = [];
 
@@ -14,6 +20,7 @@ export class KeepWithinBoundsSystem extends UpdateSystem {
     const { x, y, vx, vy, _activeCount } = pool;
 
     for (let j = 0; j < _activeCount; j++) {
+      // Rebote horizontal
       if (x[j] < left) {
         x[j] = left;
         vx[j] = -vx[j];
@@ -22,6 +29,7 @@ export class KeepWithinBoundsSystem extends UpdateSystem {
         vx[j] = -vx[j];
       }
 
+      // Rebote vertical
       if (y[j] < top) {
         y[j] = top;
         vy[j] = -vy[j];

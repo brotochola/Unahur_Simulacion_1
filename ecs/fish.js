@@ -1,3 +1,8 @@
+// Entidad Fish — pool de entidades implementado con SoA + lista compacta.
+//
+// Todos los datos de todos los peces viven en arrays estáticos compartidos.
+// No existe un objeto Fish por entidad en memoria; solo existe una "facade"
+// (instancia de Fish) que traduce accesos OOP a lecturas/escrituras en arrays.
 import { PhysicsSystem } from "./physicsSystem.js";
 import { KeepWithinBoundsSystem } from "./keepWithinBoundsSystem.js";
 import { PreRenderSystem } from "./preRenderSystem.js";
