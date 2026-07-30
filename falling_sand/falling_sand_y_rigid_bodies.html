@@ -3,123 +3,269 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Falling Sand + Verlet Lab</title>
+  <title>Falling Sand + Phaser Box2D</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      background: #121214; color: #e0e0e0;
+      background: #121214;
+      color: #e0e0e0;
       font-family: ui-monospace, Consolas, monospace;
-      height: 100vh; overflow: hidden;
+      height: 100vh;
+      overflow: hidden;
       display: grid;
-      grid-template-columns: 320px 1fr 300px;
+      grid-template-columns: 360px 1fr 310px;
       grid-template-rows: auto 1fr;
     }
+
     header {
-      grid-column: 1 / -1; padding: 10px 16px;
-      border-bottom: 1px solid #333; background: #1a1a20;
-      display: flex; align-items: center; justify-content: space-between;
+      grid-column: 1 / -1;
+      padding: 10px 16px;
+      border-bottom: 1px solid #333;
+      background: #1a1a20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
-    header h1 { font-size: 0.95rem; color: #c0c0d0; font-weight: normal; }
-    header .meta { font-size: 0.75rem; color: #888; }
+
+    header h1 {
+      font-size: 0.95rem;
+      color: #c0c0d0;
+      font-weight: normal;
+    }
+
+    header .meta {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
     .panel {
-      overflow-y: auto; padding: 12px; background: #1a1a20;
-      font-size: 0.72rem; line-height: 1.4; user-select: text;
+      overflow-y: auto;
+      padding: 12px;
+      background: #1a1a20;
+      font-size: 0.72rem;
+      line-height: 1.4;
+      user-select: text;
     }
-    #leftPanel { border-right: 1px solid #333; }
-    #rightPanel { border-left: 1px solid #333; user-select: none; }
+
+    #leftPanel {
+      border-right: 1px solid #333;
+    }
+
+    #rightPanel {
+      border-left: 1px solid #333;
+      user-select: none;
+    }
+
     .center {
-      display: flex; align-items: center; justify-content: center;
-      background: #0e0e10; min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0e0e10;
+      min-width: 0;
     }
+
     canvas {
-      border: 2px solid #333; background: #000;
-      image-rendering: pixelated; cursor: crosshair;
-      max-width: 100%; max-height: calc(100vh - 60px);
+      border: 2px solid #333;
+      background: #000;
+      image-rendering: pixelated;
+      cursor: crosshair;
+      max-width: 100%;
+      max-height: calc(100vh - 60px);
     }
+
     .panel h2 {
-      font-size: 0.8rem; color: #8af; margin: 14px 0 6px;
-      border-bottom: 1px solid #333; padding-bottom: 3px;
+      font-size: 0.8rem;
+      color: #8af;
+      margin: 14px 0 6px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 3px;
     }
-    .panel h2:first-child { margin-top: 0; }
-    .panel p, .panel li { color: #b0b0c0; margin-bottom: 6px; }
-    .panel ul, .panel ol { padding-left: 16px; margin-bottom: 8px; }
-    .panel code { color: #e8c070; }
+
+    .panel h2:first-child {
+      margin-top: 0;
+    }
+
+    .panel p,
+    .panel li {
+      color: #b0b0c0;
+      margin-bottom: 6px;
+    }
+
+    .panel ul,
+    .panel ol {
+      padding-left: 16px;
+      margin-bottom: 8px;
+    }
+
+    .panel code {
+      color: #e8c070;
+    }
+
     .swatch {
-      display: inline-block; width: 9px; height: 9px;
-      border-radius: 2px; vertical-align: middle; margin-right: 3px;
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      vertical-align: middle;
+      margin-right: 3px;
     }
-    #frameLog, #debugStats {
-      white-space: pre-wrap; background: #111116; border: 1px solid #333;
-      padding: 8px; border-radius: 4px; color: #d0d0e0;
-      max-height: 220px; overflow-y: auto; margin-top: 6px;
+
+    #frameLog,
+    #debugStats {
+      white-space: pre-wrap;
+      background: #111116;
+      border: 1px solid #333;
+      padding: 8px;
+      border-radius: 4px;
+      color: #d0d0e0;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-top: 6px;
     }
-    .warn { color: #f8a; }
-    .tool-row, .play-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+    .warn {
+      color: #f8a;
+    }
+
+    .tool-row,
+    .play-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
     button {
-      background: #3a3a4c; color: #fff; border: 1px solid #555;
-      padding: 6px 10px; border-radius: 4px; cursor: pointer;
-      font-family: inherit; font-size: 0.72rem; font-weight: bold;
+      background: #3a3a4c;
+      color: #fff;
+      border: 1px solid #555;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.72rem;
+      font-weight: bold;
     }
-    button:hover { background: #52526e; }
-    button.active { background: #6a6a9a; border-color: #aaa; }
-    .knob { margin-bottom: 10px; }
-    .knob label { display: flex; justify-content: space-between; margin-bottom: 2px; color: #ccc; }
-    .knob .hint { color: #666; font-size: 0.65rem; margin-top: 2px; }
-    .knob input[type=range] { width: 100%; }
-    .key { background: #333; padding: 1px 5px; border-radius: 3px; color: #fff; }
-    .paused-banner { color: #f80; font-weight: bold; }
+
+    button:hover {
+      background: #52526e;
+    }
+
+    button.active {
+      background: #6a6a9a;
+      border-color: #aaa;
+    }
+
+    .knob {
+      margin-bottom: 10px;
+    }
+
+    .knob label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+      color: #ccc;
+    }
+
+    .knob .hint {
+      color: #666;
+      font-size: 0.62rem;
+      margin-top: 2px;
+      line-height: 1.35;
+    }
+
+    .knob:hover .hint {
+      color: #9ab;
+    }
+
+    .knob input[type=range] {
+      width: 100%;
+    }
+
+    .key {
+      background: #333;
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: #fff;
+    }
+
+    .paused-banner {
+      color: #f80;
+      font-weight: bold;
+    }
+
+    .layer-list label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      color: #ccc;
+      cursor: pointer;
+    }
+
+    .layer-list input {
+      accent-color: #8af;
+    }
+
+    #layersBox {
+      display: none;
+    }
+
+    #layersBox.visible {
+      display: block;
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>Falling Sand + Verlet Lab</h1>
+    <h1>Falling Sand + Phaser Box2D (sin Phaser)</h1>
     <div class="meta">
       <span id="runState">▶ corriendo</span>
-      &nbsp;|&nbsp; frame <span id="frameNum">0</span>
+      &nbsp;|&nbsp; <span id="perfHud">fps — · frame — · sim — · dt — · sub —</span>
+      &nbsp;|&nbsp; cuadro <span id="frameNum">0</span>
       &nbsp;|&nbsp; <span class="key">Space</span> play/pause
-      &nbsp; <span class="key">N</span> step
+      &nbsp; <span class="key">N</span> avanzar 1
       &nbsp; <span class="key">D</span> debug
     </div>
   </header>
 
   <aside class="panel" id="leftPanel">
-    <h2>Cómo funciona (1 frame)</h2>
+    <h2>Dos mundos</h2>
+    <ul>
+      <li><b>Grilla de arena</b> — celdas vacío / arena / pared. La arena cae con reglas de vecinos.</li>
+      <li><b>Box2D</b> — cajas y pelotas rígidas (gravedad, choques, fricción). Librería Phaser Box2D, sin framework
+        Phaser.</li>
+    </ul>
+
+    <h2>Cómo se hablan</h2>
+    <p><b>Cuerpo → arena:</b> AABB + <code>TestPoint</code> (y cáscara exterior). Arena adentro/bajo el body se
+      empuja afuera (dirección del centro + velocidad del body). Así el montículo se deforma.
+    </p>
+    <p><b>Arena → cuerpo:</b> soporte abajo → separación suave + impulsos <b>hacia arriba en el punto</b>
+      (torque en pendiente). Velocidad tangencial se conserva (desliza). Arena arriba → solo peso.</p>
+    <p class="warn">El AABB solo acota el recorrido. El test preciso es <code>TestPoint</code> (rotado y círculo).</p>
+
+    <h2>Un cuadro</h2>
     <ol>
-      <li><b>Stamp</b> — cada círculo pinta <code>occupied</code> y empuja arena afuera.</li>
-      <li><b>Sand CA</b> — granos caen a celdas libres (no occupied, no pared).</li>
-      <li><b>Verlet</b> — <code>v = pos - oldPos</code>, luego <code>pos += v*airDrag + g</code>.</li>
-      <li><b>Body↔grilla</b> — celdas SAND/WALL dentro del radio → push por penetración.</li>
-      <li><b>Body↔body</b> — separa círculos + fricción tangente.</li>
-      <li><b>Constraints</b> — mantienen lados/diagonales de cajas.</li>
-      <li>Repite grilla/constraints (constraints re-meten en arena/borde).</li>
-      <li><b>Clamp bordes</b> — piso/pared + fricción tangente.</li>
+      <li>Pincel</li>
+      <li>Stamp (TestPoint → ocupación)</li>
+      <li>Caída de arena</li>
+      <li>Separar bodies de arena (pos + vel)</li>
+      <li>WorldStep Box2D</li>
+      <li>Separar otra vez</li>
+      <li>Dibujar</li>
     </ol>
 
-    <h2>Verlet en una línea</h2>
-    <p>No hay <code>velocity</code> explícita: la velocidad es la diferencia entre posición actual y anterior. Cambiar <code>oldPos</code> = cambiar velocidad.</p>
-
-    <h2 class="warn">Fricción (importante)</h2>
-    <p><code>rbFriction = 1</code> → pega (mata deslizamiento).<br>
-       <code>rbFriction = 0</code> → hielo (no frena tangente).<br>
-       Si lo pusiste en 0 y “patina”, es el comportamiento correcto.</p>
-
-    <h2>Cajas</h2>
-    <p>4 círculos + 4 lados + 2 diagonales. Mismo <code>groupId</code> → no colisionan entre sí (solo constraints los mantienen).</p>
-
-    <h2>Leyenda debug</h2>
-    <p>
-      <span class="swatch" style="background:#ff4444"></span>celda penetrada
-      <span class="swatch" style="background:#44ff88"></span>sample borde
-      <span class="swatch" style="background:#ffcc00"></span>normal
-      <span class="swatch" style="background:#66aaff"></span>velocidad
-      <span class="swatch" style="background:#ff66ff"></span>impacto
-    </p>
-
-    <h2>Log del último frame</h2>
+    <h2>Qué pasó</h2>
     <div id="frameLog">—</div>
 
-    <h2>Hover body (debug)</h2>
-    <div id="debugStats">Activá Debug y pasá el mouse sobre un círculo.</div>
+    <h2>Hover / debug</h2>
+    <div id="debugStats">Activá Debug.</div>
   </aside>
 
   <div class="center">
@@ -142,53 +288,146 @@
       <button id="btnDebug">Debug</button>
       <button id="btnClear">Limpiar</button>
     </div>
-    <p><span class="key">Izq</span> colocar/pintar · <span class="key">Der</span> pared · <span class="key">1/2/3</span> tool</p>
+    <p><span class="key">Izq</span> colocar/pintar · <span class="key">Der</span> pared · <span class="key">1/2/3</span>
+    </p>
 
-    <h2>Knobs</h2>
+    <div id="layersBox">
+      <h2>Capas de debug</h2>
+      <div class="layer-list" id="layerList"></div>
+    </div>
+
+    <h2>Ajustes</h2>
     <div id="knobs"></div>
   </aside>
 
-  <script>
+  <script type="module">
+    import {
+      CreateWorld,
+      CreateBoxPolygon,
+      CreateCircle,
+      WorldStep,
+      b2Vec2,
+      b2BodyType,
+      b2DefaultWorldDef,
+      b2World_SetGravity,
+      b2DestroyWorld,
+      b2DestroyBody,
+      b2Body_GetPosition,
+      b2Body_GetLinearVelocity,
+      b2Body_GetShapes,
+      b2Body_GetShapeCount,
+      b2Body_ComputeAABB,
+      b2Body_GetWorldPoint,
+      b2Body_GetRotation,
+      b2Body_SetTransform,
+      b2Body_SetLinearVelocity,
+      b2Body_SetLinearDamping,
+      b2Body_SetAngularDamping,
+      b2Body_ApplyForceToCenter,
+      b2Body_ApplyLinearImpulse,
+      b2Body_GetAngularVelocity,
+      b2Body_SetAwake,
+      b2Shape_TestPoint,
+      b2Shape_GetPolygon
+    } from 'https://cdn.jsdelivr.net/npm/phaser-box2d@1.1.0/dist/PhaserBox2D.min.js';
+
     const WIDTH = 200;
     const HEIGHT = 150;
     const SCALE = 4;
 
+    const FIXED_DT = 1 / 60;
+
     const params = {
-      gravity: 0.25,
-      airDrag: 0.98,
-      rbFriction: 0.9,
-      sandRestitution: 0.45,
-      sandPush: 0.8,
-      wallPush: 1.0,
-      constraintIters: 2,
+      gravity: 40,
+      sandSep: 0.45,
+      sandContact: 10,
+      sandWeight: 1.5,
+      sandSlide: 0.75,
+      density: 1,
+      friction: 0.45,
+      restitution: 0,
+      linearDamping: 0.02,
+      angularDamping: 0.02,
+      subSteps: 4,
       boxSize: 16,
+      ballRadius: 6,
       brushRadius: 3
     };
 
     const knobsSpec = [
-      { key: 'gravity', label: 'Gravedad', min: 0, max: 1, step: 0.01, hint: 'suma en Y cada frame (Verlet)' },
-      { key: 'airDrag', label: 'Air drag', min: 0.8, max: 1, step: 0.005, hint: 'multiplica v cada frame (1=sin drag)' },
-      { key: 'rbFriction', label: 'Fricción contacto', min: 0, max: 1, step: 0.01, hint: '1=pega en piso/bodies, 0=hielo' },
-      { key: 'sandRestitution', label: 'Rebote vs grilla', min: 0, max: 1, step: 0.01, hint: 'rebote al chocar arena/pared' },
-      { key: 'sandPush', label: 'Push arena', min: 0, max: 1.2, step: 0.05, hint: 'fracción de penetración al salir de arena' },
-      { key: 'wallPush', label: 'Push pared', min: 0, max: 1.2, step: 0.05, hint: 'fracción de penetración vs WALL' },
-      { key: 'constraintIters', label: 'Constraint iters', min: 0, max: 8, step: 1, hint: 'rigidez de cajas (más = más rígido)' },
-      { key: 'boxSize', label: 'Tamaño caja', min: 8, max: 32, step: 1, hint: 'lado al spawnear caja' },
-      { key: 'brushRadius', label: 'Brush arena', min: 1, max: 8, step: 1, hint: 'radio pincel arena/pared' }
+      {
+        key: 'gravity', label: 'Gravedad', min: 0, max: 120, step: 1,
+        tip: 'Aceleración de Box2D en Y (hacia abajo). Más alto = caen más rápido.'
+      },
+      {
+        key: 'sandSep', label: 'Separación por abajo', min: 0.1, max: 2, step: 0.05,
+        tip: 'Qué tanto se empuja el body fuera de la arena abajo/costado. Bajo = se hunde un poco y excava arena.'
+      },
+      {
+        key: 'sandContact', label: 'Impulso en contacto', min: 0, max: 40, step: 0.5,
+        tip: 'Impulso hacia ARRIBA en cada celda de soporte (punto). Offset lateral ⇒ torque en pendiente.'
+      },
+      {
+        key: 'sandWeight', label: 'Peso arena arriba', min: 0, max: 20, step: 0.5,
+        tip: 'Fuerza hacia abajo por cada celda de arena encima del body. 0 = la arena arriba no aprieta.'
+      },
+      {
+        key: 'sandSlide', label: 'Deslizamiento en arena', min: 0, max: 1, step: 0.05,
+        tip: 'Velocidad tangencial al apoyar: 0 = frena, 1 = resbala por la pendiente.'
+      },
+      {
+        key: 'density', label: 'Densidad', min: 0.2, max: 5, step: 0.1,
+        tip: 'Densidad al CREAR un body. No cambia los que ya existen.'
+      },
+      {
+        key: 'friction', label: 'Fricción Box2D', min: 0, max: 1, step: 0.05,
+        tip: 'Fricción del shape al crear (choques body↔body y vs paredes Box2D).'
+      },
+      {
+        key: 'restitution', label: 'Rebote body↔body', min: 0, max: 0.9, step: 0.05,
+        tip: 'Restitución al crear. Solo entre bodies Box2D. Contra arena no hay rebote.'
+      },
+      {
+        key: 'linearDamping', label: 'Amortiguación lineal', min: 0, max: 2, step: 0.05,
+        tip: 'Freno continuo de velocidad lineal (aire). Se aplica a todos los bodies al mover el slider.'
+      },
+      {
+        key: 'angularDamping', label: 'Amortiguación angular', min: 0, max: 2, step: 0.05,
+        tip: 'Freno continuo de rotación. Se aplica a todos los bodies al mover el slider.'
+      },
+      {
+        key: 'subSteps', label: 'Substeps Box2D', min: 1, max: 8, step: 1,
+        tip: 'Subpasos por cuadro en WorldStep. Más = más estable, más CPU.'
+      },
+      {
+        key: 'boxSize', label: 'Tamaño caja', min: 8, max: 40, step: 1,
+        tip: 'Lado del cuadrado al spawnear caja (celdas de grilla).'
+      },
+      {
+        key: 'ballRadius', label: 'Radio pelota', min: 3, max: 16, step: 1,
+        tip: 'Radio al spawnear pelota (celdas).'
+      },
+      {
+        key: 'brushRadius', label: 'Pincel', min: 1, max: 8, step: 1,
+        tip: 'Radio del pincel de arena / pared.'
+      }
     ];
 
     const knobsEl = document.getElementById('knobs');
     for (const k of knobsSpec) {
       const div = document.createElement('div');
       div.className = 'knob';
+      div.title = k.tip;
       const label = document.createElement('label');
+      label.title = k.tip;
       label.innerHTML = '<span>' + k.label + '</span><span id="val_' + k.key + '">' + params[k.key] + '</span>';
       const input = document.createElement('input');
       input.type = 'range';
       input.min = k.min; input.max = k.max; input.step = k.step; input.value = params[k.key];
+      input.title = k.tip;
       const hint = document.createElement('div');
       hint.className = 'hint';
-      hint.textContent = k.hint;
+      hint.textContent = k.tip;
       div.appendChild(label);
       div.appendChild(input);
       div.appendChild(hint);
@@ -197,6 +436,8 @@
         const v = k.step >= 1 ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
         params[k.key] = v;
         document.getElementById('val_' + k.key).textContent = String(v);
+        if (k.key === 'gravity') applyGravity();
+        if (k.key === 'linearDamping' || k.key === 'angularDamping') applyDampingToAll();
       });
     }
 
@@ -213,72 +454,168 @@
     const EMPTY = 0, SAND = 1, WALL = 2;
     function cellFree(idx) { return grid[idx] === EMPTY && !occupied[idx]; }
 
-    const DENSITY = new Uint8Array(256);
-    DENSITY[EMPTY] = 0; DENSITY[SAND] = 140; DENSITY[WALL] = 255;
-
     const COLOR_EMPTY = 0xFF000000;
     const COLOR_SAND = 0xFF40D0E6;
     const COLOR_WALL = 0xFF808080;
 
-    const particles = [];
-    const constraints = [];
-    let nextGroupId = 1;
+    // --- Box2D world ---
+    let world = null;
+    let worldId = null;
+    const bodies = []; // { bodyId, shapeId, kind, radius?, half }
 
-    let running = true;
-    let frame = 0;
-    const phaseLog = [];
-    function phase(msg) { phaseLog.push(msg); }
+    function applyGravity() {
+      if (!worldId) return;
+      b2World_SetGravity(worldId, new b2Vec2(0, params.gravity));
+    }
 
-    function createParticle(x, y, radius, color = 0xFF5050E6, groupId = 0) {
-      const p = { x, y, oldX: x, oldY: y, radius, color, groupId };
-      particles.push(p);
-      return p;
+    function applyDampingToAll() {
+      for (let i = 0; i < bodies.length; i++) {
+        b2Body_SetLinearDamping(bodies[i].bodyId, params.linearDamping);
+        b2Body_SetAngularDamping(bodies[i].bodyId, params.angularDamping);
+      }
     }
-    function createConstraint(p1, p2, distance) {
-      const c = { p1, p2, distance };
-      constraints.push(c);
-      return c;
+
+    function createPhysicsWorld() {
+      if (worldId) {
+        for (const b of bodies) {
+          try { b2DestroyBody(b.bodyId); } catch (_) { }
+        }
+        bodies.length = 0;
+        try { b2DestroyWorld(worldId); } catch (_) { }
+      }
+
+      const worldDef = b2DefaultWorldDef();
+      worldDef.gravity = new b2Vec2(0, params.gravity);
+      world = CreateWorld({ worldDef });
+      worldId = world.worldId;
+
+      const wallThick = 2;
+      const wallOpts = {
+        worldId,
+        type: b2BodyType.b2_staticBody,
+        density: 1,
+        friction: 0.6
+      };
+      // Piso / techo / paredes (centros en coords grilla, Y abajo)
+      CreateBoxPolygon({
+        ...wallOpts,
+        position: new b2Vec2(WIDTH / 2, HEIGHT + wallThick / 2),
+        size: new b2Vec2(WIDTH / 2 + wallThick, wallThick / 2)
+      });
+      CreateBoxPolygon({
+        ...wallOpts,
+        position: new b2Vec2(WIDTH / 2, -wallThick / 2),
+        size: new b2Vec2(WIDTH / 2 + wallThick, wallThick / 2)
+      });
+      CreateBoxPolygon({
+        ...wallOpts,
+        position: new b2Vec2(-wallThick / 2, HEIGHT / 2),
+        size: new b2Vec2(wallThick / 2, HEIGHT / 2 + wallThick)
+      });
+      CreateBoxPolygon({
+        ...wallOpts,
+        position: new b2Vec2(WIDTH + wallThick / 2, HEIGHT / 2),
+        size: new b2Vec2(wallThick / 2, HEIGHT / 2 + wallThick)
+      });
     }
+
+    function primaryShapeId(bodyId) {
+      const n = b2Body_GetShapeCount(bodyId);
+      const shapes = [];
+      b2Body_GetShapes(bodyId, shapes);
+      return shapes[0];
+    }
+
     function createBox(cx, cy, size) {
-      size = size * 0.5;
-      const side = size;
-      const hs = side / 2;
-      const r = side / (2 * (1 - 0.33));
-      const boxColor = 0xFF40E640;
-      const groupId = nextGroupId++;
-      const p1 = createParticle(cx - hs, cy - hs, r, boxColor, groupId);
-      const p2 = createParticle(cx + hs, cy - hs, r, boxColor, groupId);
-      const p3 = createParticle(cx + hs, cy + hs, r, boxColor, groupId);
-      const p4 = createParticle(cx - hs, cy + hs, r, boxColor, groupId);
-      createConstraint(p1, p2, side);
-      createConstraint(p2, p3, side);
-      createConstraint(p3, p4, side);
-      createConstraint(p4, p1, side);
-      const diag = Math.sqrt(side * side + side * side);
-      createConstraint(p1, p3, diag);
-      createConstraint(p2, p4, diag);
+      const half = size / 2;
+      const result = CreateBoxPolygon({
+        worldId,
+        type: b2BodyType.b2_dynamicBody,
+        position: new b2Vec2(cx, cy),
+        size: half,
+        density: params.density,
+        friction: params.friction,
+        restitution: params.restitution
+      });
+      const bodyId = result.bodyId;
+      b2Body_SetLinearDamping(bodyId, params.linearDamping);
+      b2Body_SetAngularDamping(bodyId, params.angularDamping);
+      bodies.push({
+        bodyId,
+        shapeId: result.shapeId || primaryShapeId(bodyId),
+        kind: 'box',
+        half
+      });
     }
 
-    const SAMPLES = 8;
-    const COS_TABLE = new Float32Array(SAMPLES);
-    const SIN_TABLE = new Float32Array(SAMPLES);
-    for (let i = 0; i < SAMPLES; i++) {
-      const angle = (i / SAMPLES) * Math.PI * 2;
-      COS_TABLE[i] = Math.cos(angle);
-      SIN_TABLE[i] = Math.sin(angle);
+    function createBall(cx, cy, radius) {
+      const result = CreateCircle({
+        worldId,
+        type: b2BodyType.b2_dynamicBody,
+        position: new b2Vec2(cx, cy),
+        radius,
+        density: params.density,
+        friction: params.friction,
+        restitution: params.restitution
+      });
+      const bodyId = result.bodyId;
+      b2Body_SetLinearDamping(bodyId, params.linearDamping);
+      b2Body_SetAngularDamping(bodyId, params.angularDamping);
+      bodies.push({
+        bodyId,
+        shapeId: result.shapeId || primaryShapeId(bodyId),
+        kind: 'ball',
+        radius
+      });
     }
 
-    // --- FALLING SAND ENGINE ---
-    function tryPushSandOut(px, py, fromX, fromY) {
-      const dx = (px + 0.5) - fromX;
-      const dy = (py + 0.5) - fromY;
+    function getBodyAABB(body) {
+      const aabb = b2Body_ComputeAABB(body.bodyId);
+      // Phaser Box2D: { lowerBoundX, lowerBoundY, upperBoundX, upperBoundY }
+      const minX = aabb.lowerBoundX ?? aabb.lowerBound?.x ?? aabb.lower?.x;
+      const minY = aabb.lowerBoundY ?? aabb.lowerBound?.y ?? aabb.lower?.y;
+      const maxX = aabb.upperBoundX ?? aabb.upperBound?.x ?? aabb.upper?.x;
+      const maxY = aabb.upperBoundY ?? aabb.upperBound?.y ?? aabb.upper?.y;
+      return {
+        minX: Math.max(0, Math.floor(minX)),
+        maxX: Math.min(WIDTH - 1, Math.ceil(maxX)),
+        minY: Math.max(0, Math.floor(minY)),
+        maxY: Math.min(HEIGHT - 1, Math.ceil(maxY))
+      };
+    }
+
+    function getWorldVerts(body) {
+      try {
+        const poly = b2Shape_GetPolygon(body.shapeId);
+        const count = poly.count;
+        const verts = [];
+        for (let i = 0; i < count; i++) {
+          const local = poly.vertices[i];
+          const w = b2Body_GetWorldPoint(body.bodyId, local);
+          verts.push({ x: w.x, y: w.y });
+        }
+        return verts;
+      } catch (_) {
+        return [];
+      }
+    }
+
+    // --- Sand ---
+    function tryPushSandOut(px, py, fromX, fromY, velX = 0, velY = 0) {
+      let dx = (px + 0.5) - fromX;
+      let dy = (py + 0.5) - fromY;
+      const speed = Math.hypot(velX, velY);
+      if (speed > 0.5) {
+        dx = dx * 0.35 + velX;
+        dy = dy * 0.35 + velY;
+      }
       const sx = dx === 0 ? (Math.random() < 0.5 ? -1 : 1) : (dx > 0 ? 1 : -1);
-      const sy = dy === 0 ? -1 : (dy > 0 ? 1 : -1);
-
+      const sy = dy === 0 ? 1 : (dy > 0 ? 1 : -1);
+      // Preferir costado / abajo-lado (excavar), arriba solo si hace falta
       const candidates = [
-        [sx, sy], [sx, 0], [sx, -1], [0, -1], [-sx, -1], [0, sy], [-sx, 0]
+        [sx, 0], [sx, sy], [sx, -sy], [sx * 2, 0], [sx * 2, sy],
+        [0, sy], [-sx, 0], [-sx, sy], [0, -1], [sx, -1], [-sx, -1]
       ];
-
       for (let i = 0; i < candidates.length; i++) {
         const nx = px + candidates[i][0];
         const ny = py + candidates[i][1];
@@ -293,421 +630,370 @@
       return false;
     }
 
-    function stampBodies() {
-      occupied.fill(0);
-
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        const r = p.radius;
-        const r2 = r * r;
-        const minX = Math.max(0, Math.floor(p.x - r));
-        const maxX = Math.min(WIDTH - 1, Math.ceil(p.x + r));
-        const minY = Math.max(0, Math.floor(p.y - r));
-        const maxY = Math.min(HEIGHT - 1, Math.ceil(p.y + r));
-
-        for (let py = minY; py <= maxY; py++) {
-          for (let px = minX; px <= maxX; px++) {
-            const ox = px + 0.5 - p.x;
-            const oy = py + 0.5 - p.y;
-            if (ox * ox + oy * oy > r2) continue;
-
-            const idx = py * WIDTH + px;
-            occupied[idx] = 1;
-
-            if (grid[idx] === SAND) {
-              tryPushSandOut(px, py, p.x, p.y);
-            }
-          }
-        }
-      }
+    /** Celda en el body o justo en la cáscara exterior (para excavación). */
+    function sandNearBody(body, cx, cy, pos) {
+      if (b2Shape_TestPoint(body.shapeId, new b2Vec2(cx, cy))) return true;
+      let dx = pos.x - cx;
+      let dy = pos.y - cy;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.001) return false;
+      dx /= len;
+      dy /= len;
+      // 1 celda hacia el centro: si entra al shape, estamos en la superficie
+      return b2Shape_TestPoint(body.shapeId, new b2Vec2(cx + dx, cy + dy));
     }
 
     function updateSand() {
       for (let y = HEIGHT - 2; y >= 0; y--) {
         const dir = Math.random() < 0.5 ? 1 : -1;
-
         for (let x = 0; x < WIDTH; x++) {
           const idx = y * WIDTH + x;
           if (occupied[idx]) continue;
-
-          if (grid[idx] === SAND) {
-            const below = idx + WIDTH;
-            const belowLeft = below - dir;
-            const belowRight = below + dir;
-
-            if (cellFree(below)) {
-              grid[below] = SAND;
-              grid[idx] = EMPTY;
-            }
-            else if (x - dir >= 0 && x - dir < WIDTH && cellFree(belowLeft)) {
-              grid[belowLeft] = SAND;
-              grid[idx] = EMPTY;
-            }
-            else if (x + dir >= 0 && x + dir < WIDTH && cellFree(belowRight)) {
-              grid[belowRight] = SAND;
-              grid[idx] = EMPTY;
-            }
+          if (grid[idx] !== SAND) continue;
+          const below = idx + WIDTH;
+          const belowLeft = below - dir;
+          const belowRight = below + dir;
+          if (cellFree(below)) {
+            grid[below] = SAND; grid[idx] = EMPTY;
+          } else if (x - dir >= 0 && x - dir < WIDTH && cellFree(belowLeft)) {
+            grid[belowLeft] = SAND; grid[idx] = EMPTY;
+          } else if (x + dir >= 0 && x + dir < WIDTH && cellFree(belowRight)) {
+            grid[belowRight] = SAND; grid[idx] = EMPTY;
           }
         }
       }
     }
 
-    // --- DEBUG COLISIONES ---
+    // --- Debug ---
     const debug = {
       enabled: false,
-      samples: [],
-      contacts: [],
-      bodyHits: 0,
-      rbHits: 0
+      stampCells: [],
+      sandPushed: [],
+      forceMarks: [],
+      layers: {
+        occupied: true,
+        shapeOutline: true,
+        stampCells: false,
+        sandPushed: true,
+        forces: true,
+        velocities: true
+      }
     };
 
-    function clearDebugFrame() {
-      debug.samples.length = 0;
-      debug.contacts.length = 0;
-      debug.bodyHits = 0;
-      debug.rbHits = 0;
-    }
+    const layerLabels = {
+      occupied: 'Mapa de ocupación',
+      shapeOutline: 'Contorno Box2D',
+      stampCells: 'Celdas stamp (denso)',
+      sandPushed: 'Arena empujada',
+      forces: 'Fuerzas arena→body',
+      velocities: 'Velocidades'
+    };
 
-    // --- COLISION PARTICULA vs GRILLA (penetracion) ---
-    function resolveGridParticleInteraction(body, recordDebug) {
-      const cx = body.x;
-      const cy = body.y;
-      const r = body.radius;
-      const r2 = r * r;
-
-      let pushX = 0;
-      let pushY = 0;
-      let maxPen = 0;
-      let hitCount = 0;
-      let wallHits = 0;
-      let sandHits = 0;
-
-      const minX = Math.max(0, Math.floor(cx - r));
-      const maxX = Math.min(WIDTH - 1, Math.ceil(cx + r));
-      const minY = Math.max(0, Math.floor(cy - r));
-      const maxY = Math.min(HEIGHT - 1, Math.ceil(cy + r));
-
-      for (let py = minY; py <= maxY; py++) {
-        for (let px = minX; px <= maxX; px++) {
-          const cellCx = px + 0.5;
-          const cellCy = py + 0.5;
-          const dx = cx - cellCx;
-          const dy = cy - cellCy;
-          const distSq = dx * dx + dy * dy;
-          if (distSq > r2) continue;
-
-          const cell = grid[py * WIDTH + px];
-          if (cell === EMPTY) continue;
-
-          const dist = Math.sqrt(distSq) || 0.0001;
-          const pen = r - dist;
-          const w = cell === WALL ? 1.0 : 0.7;
-          const nx = dx / dist;
-          const ny = dy / dist;
-
-          pushX += nx * pen * w;
-          pushY += ny * pen * w;
-          if (pen * w > maxPen) maxPen = pen * w;
-          hitCount++;
-          if (cell === WALL) wallHits++;
-          else sandHits++;
-
-          if (recordDebug && debug.enabled) {
-            debug.samples.push({ x: cellCx, y: cellCy, hit: true, density: DENSITY[cell] });
-          }
-        }
-      }
-
-      if (recordDebug && debug.enabled) {
-        for (let i = 0; i < SAMPLES; i++) {
-          const sx = Math.floor(cx + COS_TABLE[i] * (r - 0.5));
-          const sy = Math.floor(cy + SIN_TABLE[i] * (r - 0.5));
-          let density = 0;
-          if (sx >= 0 && sx < WIDTH && sy >= 0 && sy < HEIGHT) {
-            density = DENSITY[grid[sy * WIDTH + sx]];
-          }
-          debug.samples.push({ x: sx + 0.5, y: sy + 0.5, hit: density > 0, density });
-        }
-      }
-
-      if (hitCount === 0) return;
-
-      const mag = Math.sqrt(pushX * pushX + pushY * pushY);
-      let nx, ny;
-
-      if (mag < 0.0001) {
-        nx = 0;
-        ny = -1;
-        maxPen = Math.max(maxPen, 0.5);
-      } else {
-        nx = pushX / mag;
-        ny = pushY / mag;
-      }
-
-      const wallRatio = wallHits / hitCount;
-      const sandRatio = sandHits / hitCount;
-      const pushAmt = maxPen * (wallRatio * params.wallPush + sandRatio * params.sandPush);
-
-      const vx = body.x - body.oldX;
-      const vy = body.y - body.oldY;
-
-      body.x += nx * pushAmt;
-      body.y += ny * pushAmt;
-
-      const dot = vx * nx + vy * ny;
-      let bounce = 0;
-      let tangentFriction = 1;
-
-      if (dot < 0) {
-        const vNormalX = nx * dot;
-        const vNormalY = ny * dot;
-        const vTangX = vx - vNormalX;
-        const vTangY = vy - vNormalY;
-
-        bounce = params.sandRestitution * (0.35 + wallRatio * 0.65);
-        tangentFriction = Math.max(0.35, 1.0 - sandRatio * 0.55 - wallRatio * 0.15);
-
-        const newVx = vTangX * tangentFriction - vNormalX * bounce;
-        const newVy = vTangY * tangentFriction - vNormalY * bounce;
-
-        body.oldX = body.x - newVx;
-        body.oldY = body.y - newVy;
-      }
-
-      const impactX = Math.round(cx - nx * (r * 0.9));
-      const impactY = Math.round(cy - ny * (r * 0.9));
-      const splashForce = Math.min(Math.floor(Math.abs(dot) * 1.5) + (sandHits > 0 ? 1 : 0), 5);
-
-      if (recordDebug && debug.enabled) {
-        debug.bodyHits++;
-        debug.contacts.push({
-          body, cx, cy, r, nx, ny, vx, vy,
-          densityRatio: maxPen / Math.max(r, 0.001),
-          bounce, friction: tangentFriction, dot,
-          impactX, impactY, splash: splashForce,
-          penetration: maxPen, wallHits, sandHits
+    (function buildLayerToggles() {
+      const list = document.getElementById('layerList');
+      for (const key of Object.keys(debug.layers)) {
+        const lab = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = debug.layers[key];
+        cb.addEventListener('change', () => {
+          debug.layers[key] = cb.checked;
+          if (!running) render();
         });
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(layerLabels[key]));
+        list.appendChild(lab);
       }
+    })();
 
-      if (sandHits > 0) {
-        displaceSand(cx, cy, r, nx, ny, Math.abs(dot));
-      }
+    function clearDebugFrame() {
+      debug.stampCells.length = 0;
+      debug.sandPushed.length = 0;
+      debug.forceMarks.length = 0;
     }
 
-    function displaceSand(cx, cy, radius, nx, ny, impactVelocity) {
-      const impactX = Math.round(cx - nx * (radius * 0.9));
-      const impactY = Math.round(cy - ny * (radius * 0.9));
-      const splashForce = Math.min(Math.floor(impactVelocity * 1.5) + 1, 5);
+    // --- Stamp con AABB + TestPoint + excavación ---
+    function stampBodies() {
+      occupied.fill(0);
+      if (debug.enabled) {
+        debug.stampCells.length = 0;
+        debug.sandPushed.length = 0;
+      }
 
-      for (let i = 0; i <= splashForce; i++) {
-        const offsetX = (Math.random() < 0.5 ? -1 : 1) * (i + 1);
-        const px = impactX + offsetX;
-        const py = impactY;
-
-        if (px > 0 && px < WIDTH - 1 && py > 0 && py < HEIGHT - 1) {
-          if (grid[py * WIDTH + px] === SAND) {
-            tryPushSandOut(px, py, cx, cy);
-          }
+      for (let i = 0; i < bodies.length; i++) {
+        const body = bodies[i];
+        const pos = b2Body_GetPosition(body.bodyId);
+        const vel = b2Body_GetLinearVelocity(body.bodyId);
+        let aabb;
+        try {
+          aabb = getBodyAABB(body);
+        } catch (_) {
+          const pad = body.kind === 'ball' ? body.radius + 1 : body.half + 2;
+          aabb = {
+            minX: Math.max(0, Math.floor(pos.x - pad)),
+            maxX: Math.min(WIDTH - 1, Math.ceil(pos.x + pad)),
+            minY: Math.max(0, Math.floor(pos.y - pad)),
+            maxY: Math.min(HEIGHT - 1, Math.ceil(pos.y + pad))
+          };
         }
-      }
-    }
+        const minX = Math.max(0, aabb.minX - 1);
+        const maxX = Math.min(WIDTH - 1, aabb.maxX + 1);
+        const minY = Math.max(0, aabb.minY - 1);
+        const maxY = Math.min(HEIGHT - 1, aabb.maxY + 2);
 
-    function resolveAllGridCollisions(recordDebug) {
-      for (let i = 0; i < particles.length; i++) {
-        resolveGridParticleInteraction(particles[i], recordDebug);
-      }
-    }
-
-    function resolveParticleCollisions() {
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const p1 = particles[i];
-          const p2 = particles[j];
-
-          if (p1.groupId && p1.groupId === p2.groupId) continue;
-
-          const dx = p2.x - p1.x;
-          const dy = p2.y - p1.y;
-          const distSq = dx * dx + dy * dy;
-          const minDist = p1.radius + p2.radius;
-
-          if (distSq < minDist * minDist && distSq > 0.0001) {
-            const dist = Math.sqrt(distSq);
-            const overlap = 0.5 * (minDist - dist);
-            const nx = dx / dist;
-            const ny = dy / dist;
-
-            if (debug.enabled) debug.rbHits++;
-
-            p1.x -= nx * overlap;
-            p1.y -= ny * overlap;
-            p2.x += nx * overlap;
-            p2.y += ny * overlap;
-
-            let vx1 = p1.x - p1.oldX;
-            let vy1 = p1.y - p1.oldY;
-            let vx2 = p2.x - p2.oldX;
-            let vy2 = p2.y - p2.oldY;
-
-            // Impulso normal (separación / rebote)
-            const vnRel = nx * (vx1 - vx2) + ny * (vy1 - vy2);
-            if (vnRel > 0) {
-              p1.oldX += nx * vnRel;
-              p1.oldY += ny * vnRel;
-              p2.oldX -= nx * vnRel;
-              p2.oldY -= ny * vnRel;
-              vx1 = p1.x - p1.oldX;
-              vy1 = p1.y - p1.oldY;
-              vx2 = p2.x - p2.oldX;
-              vy2 = p2.y - p2.oldY;
+        for (let py = minY; py <= maxY; py++) {
+          for (let px = minX; px <= maxX; px++) {
+            const cx = px + 0.5;
+            const cy = py + 0.5;
+            const inside = b2Shape_TestPoint(body.shapeId, new b2Vec2(cx, cy));
+            if (inside) {
+              occupied[py * WIDTH + px] = 1;
+              if (debug.enabled) debug.stampCells.push({ x: px, y: py });
             }
 
-            // Fricción tangente: mata deslizamiento (ej. cajas apiladas no se van a los costados)
-            const rvx = vx1 - vx2;
-            const rvy = vy1 - vy2;
-            const vn = rvx * nx + rvy * ny;
-            const tvx = rvx - vn * nx;
-            const tvy = rvy - vn * ny;
-            const halfF = params.rbFriction * 0.5;
+            const idx = py * WIDTH + px;
+            if (grid[idx] !== SAND) continue;
+            if (!inside && !sandNearBody(body, cx, cy, pos)) continue;
 
-            p1.oldX += tvx * halfF;
-            p1.oldY += tvy * halfF;
-            p2.oldX -= tvx * halfF;
-            p2.oldY -= tvy * halfF;
+            // Adentro: siempre sacar. Cáscara: solo si el body empuja (impacto / desliz).
+            if (!inside && vel.y <= 0.25 && Math.abs(vel.x) <= 0.25) continue;
+
+            const moved = tryPushSandOut(px, py, pos.x, pos.y, vel.x, vel.y);
+            if (moved && inside) occupied[idx] = 1;
+            if (debug.enabled && moved) debug.sandPushed.push({ x: px, y: py });
           }
         }
       }
     }
 
-    function relaxConstraints(iterations) {
-      for (let step = 0; step < iterations; step++) {
-        for (let i = 0; i < constraints.length; i++) {
-          const c = constraints[i];
-          const dx = c.p2.x - c.p1.x;
-          const dy = c.p2.y - c.p1.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
+    // --- Arena/pared grilla ↔ bodies ---
+    // Soporte: separación suave + impulsos HACIA ARRIBA en el punto (no hacia el COM:
+    // r∥F ⇒ torque 0). Offset en X ⇒ gira en pendiente. Tangente se conserva (desliza).
+    function resolveSandBodies() {
+      if (debug.enabled) debug.forceMarks.length = 0;
 
-          if (dist > 0.0001) {
-            const delta = (dist - c.distance) / dist * 0.5;
-            const offsetX = dx * delta;
-            const offsetY = dy * delta;
+      for (let i = 0; i < bodies.length; i++) {
+        const body = bodies[i];
+        const pos = b2Body_GetPosition(body.bodyId);
+        const vel = b2Body_GetLinearVelocity(body.bodyId);
+        const rot = b2Body_GetRotation(body.bodyId);
+        let aabb;
+        try {
+          aabb = getBodyAABB(body);
+        } catch (_) {
+          continue;
+        }
 
-            c.p1.x += offsetX;
-            c.p1.y += offsetY;
-            c.p2.x -= offsetX;
-            c.p2.y -= offsetY;
+        let nx = 0, ny = 0, supportHits = 0, aboveHits = 0, totalW = 0;
+        const contacts = [];
+
+        for (let py = aabb.minY; py <= aabb.maxY; py++) {
+          for (let px = aabb.minX; px <= aabb.maxX; px++) {
+            const cell = grid[py * WIDTH + px];
+            if (cell !== SAND && cell !== WALL) continue;
+            const cx = px + 0.5;
+            const cy = py + 0.5;
+            if (!b2Shape_TestPoint(body.shapeId, new b2Vec2(cx, cy))) continue;
+
+            // Y abajo: cy < pos.y ⇒ celda ARRIBA del centro
+            if (cy < pos.y - 0.2) {
+              aboveHits++;
+              continue;
+            }
+
+            let dx = pos.x - cx;
+            let dy = pos.y - cy;
+            let len = Math.hypot(dx, dy);
+            if (len < 0.001) { dx = 0; dy = -1; }
+            else { dx /= len; dy /= len; }
+            if (dy > 0) dy = 0;
+            if (dx === 0 && dy === 0) dy = -1;
+
+            let w = cell === WALL ? 3 : 1;
+            if (cy >= pos.y) w *= 1.6;
+            nx += dx * w;
+            ny += dy * w;
+            totalW += w;
+            supportHits++;
+            contacts.push({ cx, cy, nx: dx, ny: dy, w });
           }
         }
-      }
-    }
 
-    function clampToBounds(p) {
-      let hitX = false;
-      let hitY = false;
+        let newX = pos.x;
+        let newY = pos.y;
+        let newVx = vel.x;
+        let newVy = vel.y;
 
-      if (p.x < p.radius) { p.x = p.radius; hitX = true; }
-      else if (p.x > WIDTH - p.radius) { p.x = WIDTH - p.radius; hitX = true; }
+        if (supportHits > 0) {
+          let nlen = Math.hypot(nx, ny);
+          if (nlen < 0.001) { nx = 0; ny = -1; }
+          else { nx /= nlen; ny /= nlen; }
+          if (ny > 0) ny = 0;
+          nlen = Math.hypot(nx, ny);
+          if (nlen < 0.001) { nx = 0; ny = -1; }
+          else { nx /= nlen; ny /= nlen; }
 
-      if (p.y < p.radius) { p.y = p.radius; hitY = true; }
-      else if (p.y > HEIGHT - p.radius) { p.y = HEIGHT - p.radius; hitY = true; }
+          const extent = body.kind === 'ball' ? body.radius : body.half;
+          // Separación suave: dejar hundir un poco para excavación
+          const corr = Math.min(extent * 0.35, 0.18 * Math.sqrt(supportHits)) * params.sandSep;
+          newX = pos.x + nx * corr;
+          newY = pos.y + ny * corr;
+          b2Body_SetTransform(body.bodyId, new b2Vec2(newX, newY), rot);
 
-      if (!hitX && !hitY) return;
-
-      let vx = p.x - p.oldX;
-      let vy = p.y - p.oldY;
-      const slide = 1 - params.rbFriction;
-
-      if (hitX) {
-        // Normal horizontal → rebote en X, fricción mata deslizamiento en Y
-        vx = -vx * 0.5;
-        vy *= slide;
-      }
-      if (hitY) {
-        // Normal vertical → frena/rebota Y, fricción mata deslizamiento en X
-        const onFloor = p.y >= HEIGHT - p.radius - 0.001;
-        vy = onFloor ? 0 : -vy * 0.5;
-        vx *= slide;
-      }
-
-      p.oldX = p.x - vx;
-      p.oldY = p.y - vy;
-    }
-
-    // --- FISICA Y CONSTRAINTS ---
-    function updatePhysics() {
-      phase('4. verlet: v = pos-oldPos; pos += v*airDrag + gravity');
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        const vx = p.x - p.oldX;
-        const vy = p.y - p.oldY;
-
-        p.oldX = p.x;
-        p.oldY = p.y;
-
-        p.x += vx * params.airDrag;
-        p.y += vy * params.airDrag + params.gravity;
-
-        clampToBounds(p);
-      }
-
-      phase('4a. colision body ↔ grilla (penetracion)');
-      resolveAllGridCollisions(true);
-      phase('4b. colision body ↔ body + friccion tangente');
-      resolveParticleCollisions();
-      phase('4c. constraints ×' + params.constraintIters);
-      relaxConstraints(params.constraintIters);
-      phase('4d. grilla otra vez (constraints re-meten)');
-      resolveAllGridCollisions(false);
-      relaxConstraints(params.constraintIters);
-      resolveAllGridCollisions(false);
-      phase('4e. clamp bordes + friccion piso/pared');
-      for (let i = 0; i < particles.length; i++) clampToBounds(particles[i]);
-    }
-
-
-    function render() {
-      buf32.fill(COLOR_EMPTY);
-      for (let y = 0; y < HEIGHT; y++) {
-        for (let x = 0; x < WIDTH; x++) {
-          const cell = grid[y * WIDTH + x];
-          if (cell === EMPTY) continue;
-          const color = (cell === SAND) ? COLOR_SAND : COLOR_WALL;
-          for (let sy = 0; sy < SCALE; sy++) {
-            let py = (y * SCALE + sy) * (WIDTH * SCALE) + (x * SCALE);
-            for (let sx = 0; sx < SCALE; sx++) buf32[py + sx] = color;
+          // Quitar solo componente hacia el soporte; conservar tangente (despega en rampa)
+          const vn = vel.x * nx + vel.y * ny;
+          if (vn < 0) {
+            newVx = vel.x - nx * vn;
+            newVy = vel.y - ny * vn;
           }
-        }
-      }
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        const cx = Math.floor(p.x * SCALE);
-        const cy = Math.floor(p.y * SCALE);
-        const r = Math.max(1, Math.floor(p.radius * SCALE));
-        for (let y = -r; y <= r; y++) {
-          for (let x = -r; x <= r; x++) {
-            if (x * x + y * y <= r * r) {
-              const px = cx + x, py = cy + y;
-              if (px >= 0 && px < WIDTH * SCALE && py >= 0 && py < HEIGHT * SCALE) {
-                buf32[py * (WIDTH * SCALE) + px] = p.color;
+          const slide = Math.max(0, Math.min(1, params.sandSlide));
+          const tx = -ny;
+          const ty = nx;
+          let vt = newVx * tx + newVy * ty;
+          vt *= slide;
+          newVx = tx * vt;
+          newVy = ty * vt;
+
+          b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(newVx, newVy));
+
+          // Impulso principal: ARRIBA en el punto (Y-down ⇒ iy < 0).
+          // Antes iba hacia el COM ⇒ r×F = 0 ⇒ nunca giraba.
+          const invW = 1 / Math.max(0.001, totalW);
+          const push = params.sandContact;
+          const mu = (1 - slide) * 0.85;
+          let omega = b2Body_GetAngularVelocity(body.bodyId);
+
+          if (push > 0) {
+            for (let c = 0; c < contacts.length; c++) {
+              const ct = contacts[c];
+              const wn = ct.w * invW;
+              // Arriba + un poco de lado (salida del montículo)
+              const ix = ct.nx * push * wn * 0.35;
+              const iy = -push * wn;
+              b2Body_ApplyLinearImpulse(
+                body.bodyId,
+                new b2Vec2(ix, iy),
+                new b2Vec2(ct.cx, ct.cy),
+                true
+              );
+
+              if (mu > 0.001) {
+                omega = b2Body_GetAngularVelocity(body.bodyId);
+                const rx = ct.cx - newX;
+                const ry = ct.cy - newY;
+                const vpx = newVx - omega * ry;
+                const vpy = newVy + omega * rx;
+                const vtx = vpx * tx + vpy * ty;
+                const jt = -vtx * mu * wn;
+                if (jt !== 0) {
+                  b2Body_ApplyLinearImpulse(
+                    body.bodyId,
+                    new b2Vec2(tx * jt, ty * jt),
+                    new b2Vec2(ct.cx, ct.cy),
+                    true
+                  );
+                }
               }
             }
           }
+
+          // Anti-vuelo lineal; conservar ω (el torque viene del offset en X)
+          b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(newVx, newVy));
+
+          if (debug.enabled) {
+            debug.forceMarks.push({
+              x: newX, y: newY,
+              fx: nx * corr, fy: ny * corr,
+              hits: supportHits
+            });
+          }
+        }
+
+        if (aboveHits > 0 && params.sandWeight > 0) {
+          b2Body_ApplyForceToCenter(
+            body.bodyId,
+            new b2Vec2(0, aboveHits * params.sandWeight),
+            true
+          );
+        }
+
+        if (supportHits > 0 || aboveHits > 0) {
+          b2Body_SetAwake(body.bodyId, true);
         }
       }
-      ctx.putImageData(imgData, 0, 0);
-      ctx.strokeStyle = '#30C030';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let i = 0; i < constraints.length; i++) {
-        const c = constraints[i];
-        ctx.moveTo(c.p1.x * SCALE, c.p1.y * SCALE);
-        ctx.lineTo(c.p2.x * SCALE, c.p2.y * SCALE);
-      }
-      ctx.stroke();
-      if (debug.enabled) renderDebugOverlay();
-      else document.getElementById('debugStats').textContent = 'Debug off — activá Debug para ver contactos/hover.';
     }
 
+    // --- Playback ---
+    let running = true;
+    let frame = 0;
+    const phaseLog = [];
+    function phase(msg) { phaseLog.push(msg); }
+
+    let lastRafT = performance.now();
+    let fpsSmooth = 60;
+    let lastFrameMs = 0;
+    let lastSimMs = 0;
+    let lastRenderMs = 0;
+    const perfHudEl = document.getElementById('perfHud');
+
+    function refreshPerfHud() {
+      const dtMs = FIXED_DT * 1000;
+      perfHudEl.textContent =
+        'fps ' + fpsSmooth.toFixed(0) +
+        ' · frame ' + lastFrameMs.toFixed(1) + 'ms' +
+        ' · sim ' + lastSimMs.toFixed(1) + 'ms' +
+        ' · draw ' + lastRenderMs.toFixed(1) + 'ms' +
+        ' · dt ' + dtMs.toFixed(2) + 'ms' +
+        ' · sub ' + params.subSteps;
+    }
+
+    function refreshFrameLog() {
+      document.getElementById('frameLog').textContent =
+        'cuadro ' + frame +
+        '\nfps ' + fpsSmooth.toFixed(1) +
+        ' | frame ' + lastFrameMs.toFixed(2) + 'ms' +
+        ' | sim ' + lastSimMs.toFixed(2) + 'ms' +
+        ' | draw ' + lastRenderMs.toFixed(2) + 'ms' +
+        '\ndt fijo ' + (FIXED_DT * 1000).toFixed(3) + 'ms (' + (1 / FIXED_DT) + ' Hz)' +
+        ' | subSteps ' + params.subSteps +
+        ' | bodies ' + bodies.length +
+        '\n' + (phaseLog.length ? phaseLog.join('\n') : '(sin fases)');
+      document.getElementById('frameNum').textContent = frame;
+    }
+
+    function simStep() {
+      phaseLog.length = 0;
+      if (debug.enabled) clearDebugFrame();
+
+      phase('1. pincel');
+      handleInput();
+      phase('2. stamp AABB + b2Shape_TestPoint → occupied');
+      stampBodies();
+      phase('3. caída de arena');
+      updateSand();
+      phase('4. separar bodies de arena (pos + vel, sin rebote)');
+      resolveSandBodies();
+      phase('5. WorldStep Box2D dt=' + FIXED_DT.toFixed(4));
+      WorldStep({ worldId, deltaTime: FIXED_DT, fixedTimeStep: FIXED_DT, subStepCount: params.subSteps });
+      phase('6. separar otra vez post-step');
+      resolveSandBodies();
+      phase('7. stamp final (huella para próximo cuadro)');
+      stampBodies();
+
+      frame++;
+      refreshFrameLog();
+    }
+
+    function setRunning(on) {
+      running = on;
+      document.getElementById('btnPlay').classList.toggle('active', on);
+      document.getElementById('btnPause').classList.toggle('active', !on);
+      document.getElementById('runState').innerHTML = on
+        ? '▶ corriendo'
+        : '<span class="paused-banner">⏸ PAUSA — Step (N)</span>';
+    }
+
+    // --- Render ---
     function drawArrow(x0, y0, x1, y1, color, width = 2) {
       ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
@@ -720,101 +1006,187 @@
       ctx.closePath(); ctx.fill();
     }
 
-    function renderDebugOverlay() {
-      for (let i = 0; i < debug.samples.length; i++) {
-        const s = debug.samples[i];
-        ctx.fillStyle = s.hit ? 'rgba(255,60,60,0.9)' : 'rgba(60,255,120,0.55)';
-        ctx.fillRect(s.x * SCALE - 2, s.y * SCALE - 2, 4, 4);
-      }
-      for (let i = 0; i < debug.contacts.length; i++) {
-        const c = debug.contacts[i];
-        const px = c.cx * SCALE, py = c.cy * SCALE;
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(px, py, c.r * SCALE, 0, Math.PI * 2); ctx.stroke();
-        drawArrow(px, py, px + c.nx * 28, py + c.ny * 28, '#ffcc00', 2);
-        drawArrow(px, py, px + c.vx * SCALE * 4, py + c.vy * SCALE * 4, '#66aaff', 1.5);
-        ctx.fillStyle = '#ff66ff';
-        ctx.beginPath();
-        ctx.arc(c.impactX * SCALE + SCALE / 2, c.impactY * SCALE + SCALE / 2, 3 + c.splash, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      let nearest = null, nearestDist = Infinity;
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        const d = (p.x - mouseX) * (p.x - mouseX) + (p.y - mouseY) * (p.y - mouseY);
-        if (d < nearestDist) { nearestDist = d; nearest = p; }
-      }
-      let contactNear = null;
-      if (nearest) {
-        for (let i = 0; i < debug.contacts.length; i++) {
-          if (debug.contacts[i].body === nearest) { contactNear = debug.contacts[i]; break; }
+    function render() {
+      buf32.fill(COLOR_EMPTY);
+      for (let y = 0; y < HEIGHT; y++) {
+        for (let x = 0; x < WIDTH; x++) {
+          const cell = grid[y * WIDTH + x];
+          if (cell === EMPTY) continue;
+          const color = cell === SAND ? COLOR_SAND : COLOR_WALL;
+          for (let sy = 0; sy < SCALE; sy++) {
+            let py = (y * SCALE + sy) * (WIDTH * SCALE) + (x * SCALE);
+            for (let sx = 0; sx < SCALE; sx++) buf32[py + sx] = color;
+          }
         }
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
-        ctx.beginPath();
-        ctx.arc(nearest.x * SCALE, nearest.y * SCALE, nearest.radius * SCALE + 3, 0, Math.PI * 2);
-        ctx.stroke(); ctx.setLineDash([]);
       }
+      ctx.putImageData(imgData, 0, 0);
+
+      for (let i = 0; i < bodies.length; i++) {
+        const body = bodies[i];
+        const pos = b2Body_GetPosition(body.bodyId);
+        if (body.kind === 'ball') {
+          ctx.beginPath();
+          ctx.arc(pos.x * SCALE, pos.y * SCALE, body.radius * SCALE, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(80, 80, 230, 0.55)';
+          ctx.fill();
+          ctx.strokeStyle = '#5050E6';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else {
+          const verts = getWorldVerts(body);
+          if (verts.length >= 3) {
+            ctx.beginPath();
+            ctx.moveTo(verts[0].x * SCALE, verts[0].y * SCALE);
+            for (let k = 1; k < verts.length; k++) {
+              ctx.lineTo(verts[k].x * SCALE, verts[k].y * SCALE);
+            }
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(64, 200, 64, 0.4)';
+            ctx.fill();
+            ctx.strokeStyle = '#40E640';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+      }
+
+      if (debug.enabled) renderDebugOverlay();
+      else document.getElementById('debugStats').textContent = 'Debug apagado.';
+    }
+
+    function renderDebugOverlay() {
+      const L = debug.layers;
+
+      if (L.occupied) {
+        ctx.fillStyle = 'rgba(180, 80, 255, 0.28)';
+        for (let y = 0; y < HEIGHT; y++) {
+          for (let x = 0; x < WIDTH; x++) {
+            if (occupied[y * WIDTH + x]) ctx.fillRect(x * SCALE, y * SCALE, SCALE, SCALE);
+          }
+        }
+      }
+
+      if (L.stampCells) {
+        ctx.fillStyle = 'rgba(255, 100, 100, 0.35)';
+        for (let i = 0; i < debug.stampCells.length; i++) {
+          const c = debug.stampCells[i];
+          ctx.fillRect(c.x * SCALE, c.y * SCALE, SCALE, SCALE);
+        }
+      }
+
+      if (L.sandPushed) {
+        ctx.fillStyle = 'rgba(255, 200, 60, 0.85)';
+        for (let i = 0; i < debug.sandPushed.length; i++) {
+          const s = debug.sandPushed[i];
+          ctx.fillRect(s.x * SCALE + 1, s.y * SCALE + 1, SCALE - 2, SCALE - 2);
+        }
+      }
+
+      if (L.shapeOutline) {
+        for (let i = 0; i < bodies.length; i++) {
+          const body = bodies[i];
+          const pos = b2Body_GetPosition(body.bodyId);
+          ctx.strokeStyle = '#ffe066';
+          ctx.lineWidth = 1.5;
+          if (body.kind === 'ball') {
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.arc(pos.x * SCALE, pos.y * SCALE, body.radius * SCALE, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          } else {
+            const verts = getWorldVerts(body);
+            if (verts.length) {
+              ctx.beginPath();
+              ctx.moveTo(verts[0].x * SCALE, verts[0].y * SCALE);
+              for (let k = 1; k < verts.length; k++) ctx.lineTo(verts[k].x * SCALE, verts[k].y * SCALE);
+              ctx.closePath();
+              ctx.stroke();
+              ctx.fillStyle = '#ffe066';
+              for (let k = 0; k < verts.length; k++) {
+                ctx.beginPath();
+                ctx.arc(verts[k].x * SCALE, verts[k].y * SCALE, 3, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+      }
+
+      if (L.velocities) {
+        for (let i = 0; i < bodies.length; i++) {
+          const body = bodies[i];
+          const pos = b2Body_GetPosition(body.bodyId);
+          const vel = b2Body_GetLinearVelocity(body.bodyId);
+          if (Math.abs(vel.x) + Math.abs(vel.y) < 0.05) continue;
+          drawArrow(
+            pos.x * SCALE, pos.y * SCALE,
+            pos.x * SCALE + vel.x * 0.5, pos.y * SCALE + vel.y * 0.5,
+            '#66aaff', 1.5
+          );
+        }
+      }
+
+      if (L.forces) {
+        for (let i = 0; i < debug.forceMarks.length; i++) {
+          const f = debug.forceMarks[i];
+          drawArrow(
+            f.x * SCALE, f.y * SCALE,
+            f.x * SCALE + f.fx * 3, f.y * SCALE + f.fy * 3,
+            '#ff8844', 2
+          );
+        }
+      }
+
+      // hover nearest body
+      let nearest = null, nearestDist = Infinity;
+      for (let i = 0; i < bodies.length; i++) {
+        const pos = b2Body_GetPosition(bodies[i].bodyId);
+        const d = (pos.x - mouseX) ** 2 + (pos.y - mouseY) ** 2;
+        if (d < nearestDist) { nearestDist = d; nearest = bodies[i]; }
+      }
+
       const lines = [
-        'particles=' + particles.length + '  constraints=' + constraints.length,
-        'contacts grilla=' + debug.bodyHits + '  body↔body=' + debug.rbHits,
-        'rbFriction=' + params.rbFriction + ' (1=pega 0=hielo)  airDrag=' + params.airDrag
+        'bodies=' + bodies.length,
+        'celdas stamp=' + debug.stampCells.length + '  arena empujada=' + debug.sandPushed.length,
+        'fuerzas aplicadas=' + debug.forceMarks.length,
+        'g=' + params.gravity + '  sep=' + params.sandSep + '  weight=' + params.sandWeight
       ];
       if (nearest) {
-        const vx = nearest.x - nearest.oldX;
-        const vy = nearest.y - nearest.oldY;
+        const pos = b2Body_GetPosition(nearest.bodyId);
+        const vel = b2Body_GetLinearVelocity(nearest.bodyId);
         lines.push('');
-        lines.push('hover: r=' + nearest.radius.toFixed(2) + ' group=' + nearest.groupId);
-        lines.push('  pos=(' + nearest.x.toFixed(2) + ', ' + nearest.y.toFixed(2) + ')');
-        lines.push('  v=(' + vx.toFixed(3) + ', ' + vy.toFixed(3) + ')  |v|=' + Math.hypot(vx, vy).toFixed(3));
-        if (contactNear) {
-          lines.push('  pen=' + contactNear.penetration.toFixed(3) + ' sand=' + contactNear.sandHits + ' wall=' + contactNear.wallHits);
-          lines.push('  n=(' + contactNear.nx.toFixed(2) + ', ' + contactNear.ny.toFixed(2) + ') v·n=' + contactNear.dot.toFixed(3));
-          lines.push('  bounce=' + contactNear.bounce.toFixed(3) + ' fric=' + contactNear.friction.toFixed(2) + ' splash=' + contactNear.splash);
-        } else lines.push('  (sin contacto grilla este frame)');
-      } else {
-        lines.push('');
-        lines.push('mouse cerca de un circulo → stats');
+        lines.push('bajo mouse: ' + nearest.kind);
+        lines.push('  pos=(' + pos.x.toFixed(2) + ', ' + pos.y.toFixed(2) + ')');
+        lines.push('  vel=(' + vel.x.toFixed(2) + ', ' + vel.y.toFixed(2) + ')');
+        const pt = new b2Vec2(mouseX + 0.5, mouseY + 0.5);
+        lines.push('  TestPoint(mouse)=' + b2Shape_TestPoint(nearest.shapeId, pt));
       }
       document.getElementById('debugStats').textContent = lines.join('\n');
     }
 
-    function refreshFrameLog() {
-      document.getElementById('frameLog').textContent =
-        'frame ' + frame + '\n' + (phaseLog.length ? phaseLog.join('\n') : '(sin fases)');
-      document.getElementById('frameNum').textContent = frame;
-    }
-
-    function simStep() {
-      phaseLog.length = 0;
-      if (debug.enabled) clearDebugFrame();
-      phase('1. input (brush si mouse down)');
-      handleInput();
-      phase('2. stampBodies → occupied + empujar arena');
-      stampBodies();
-      phase('3. updateSand (CA, respeta occupied)');
-      updateSand();
-      updatePhysics();
-      phase('5. stampBodies final (footprint para prox. frame)');
-      stampBodies();
-      frame++;
-      refreshFrameLog();
-    }
-
-    function setRunning(on) {
-      running = on;
-      document.getElementById('btnPlay').classList.toggle('active', on);
-      document.getElementById('btnPause').classList.toggle('active', !on);
-      document.getElementById('runState').innerHTML = on
-        ? '▶ corriendo'
-        : '<span class="paused-banner">⏸ PAUSA — Step (N) avanza 1 frame</span>';
-    }
-
     function loop() {
+      const now = performance.now();
+      const elapsed = now - lastRafT;
+      lastRafT = now;
+      const instFps = 1000 / Math.max(elapsed, 0.001);
+      fpsSmooth = fpsSmooth * 0.9 + instFps * 0.1;
+
+      const t0 = performance.now();
       if (running) simStep();
+      lastSimMs = performance.now() - t0;
+
+      const t1 = performance.now();
       render();
+      lastRenderMs = performance.now() - t1;
+      lastFrameMs = performance.now() - now;
+
+      refreshPerfHud();
+      if (!running) refreshFrameLog();
       requestAnimationFrame(loop);
     }
 
+    // --- Input ---
     let mouseX = 100, mouseY = 20;
     let isMouseDown = false;
     let mouseButton = 0;
@@ -828,6 +1200,8 @@
     function setDebug(on) {
       debug.enabled = on;
       btnDebug.classList.toggle('active', on);
+      document.getElementById('layersBox').classList.toggle('visible', on);
+      if (on && !running) { stampBodies(); render(); }
     }
     btnDebug.onclick = () => setDebug(!debug.enabled);
 
@@ -844,11 +1218,17 @@
     document.getElementById('btnPlay').onclick = () => setRunning(true);
     document.getElementById('btnPause').onclick = () => setRunning(false);
     document.getElementById('btnStep').onclick = () => { setRunning(false); simStep(); render(); };
-    document.getElementById('btnClear').onclick = () => {
-      grid.fill(EMPTY); occupied.fill(0);
-      particles.length = 0; constraints.length = 0;
-      frame = 0; phaseLog.length = 0; refreshFrameLog(); render();
-    };
+
+    function clearAll() {
+      grid.fill(EMPTY);
+      occupied.fill(0);
+      createPhysicsWorld();
+      frame = 0;
+      phaseLog.length = 0;
+      refreshFrameLog();
+      render();
+    }
+    document.getElementById('btnClear').onclick = clearAll;
 
     canvas.addEventListener('mousemove', (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -859,9 +1239,10 @@
       if (!running && debug.enabled) render();
     });
     canvas.addEventListener('mousedown', (e) => {
-      isMouseDown = true; mouseButton = e.button;
+      isMouseDown = true;
+      mouseButton = e.button;
       if (e.button === 0) {
-        if (placeMode === 'ball') createParticle(mouseX, mouseY, Math.floor(Math.random() * 3) + 5);
+        if (placeMode === 'ball') createBall(mouseX, mouseY, params.ballRadius);
         else if (placeMode === 'box') createBox(mouseX, mouseY, params.boxSize);
       }
       if (!running) render();
@@ -876,10 +1257,7 @@
       if (e.code === 'Digit2') setPlaceMode('ball');
       if (e.code === 'Digit3') setPlaceMode('box');
       if (e.code === 'KeyD') setDebug(!debug.enabled);
-      if (e.code === 'KeyC') {
-        grid.fill(EMPTY); occupied.fill(0);
-        particles.length = 0; constraints.length = 0;
-      }
+      if (e.code === 'KeyC') clearAll();
     });
 
     function handleInput() {
@@ -890,16 +1268,17 @@
       const type = paintingWall ? WALL : SAND;
       for (let dy = -brushRadius; dy <= brushRadius; dy++) {
         for (let dx = -brushRadius; dx <= brushRadius; dx++) {
-          if (dx * dx + dy * dy <= brushRadius * brushRadius) {
-            const px = mouseX + dx, py = mouseY + dy;
-            if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT) {
-              if (type === WALL || grid[py * WIDTH + px] === EMPTY) grid[py * WIDTH + px] = type;
-            }
+          if (dx * dx + dy * dy > brushRadius * brushRadius) continue;
+          const px = mouseX + dx, py = mouseY + dy;
+          if (px < 0 || px >= WIDTH || py < 0 || py >= HEIGHT) continue;
+          if (type === WALL || grid[py * WIDTH + px] === EMPTY) {
+            grid[py * WIDTH + px] = type;
           }
         }
       }
     }
 
+    createPhysicsWorld();
     refreshFrameLog();
     setRunning(true);
     loop();
