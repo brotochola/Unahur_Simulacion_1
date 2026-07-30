@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Wolfenstein 3D Raycaster - 2D DDA + Primitivas + Luz Dinámica</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: #121214;
+            color: #e1e1e6;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.4rem;
+            color: #40916c;
+            text-align: center;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            max-width: 1350px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: #1e1e24;
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid #2d2d38;
+        }
+
+        .canvases-container {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        canvas {
+            background: #09090c;
+            border: 1px solid #3a3a4c;
+            border-radius: 6px;
+            display: block;
+        }
+
+        .section-title {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #74c69d;
+            margin: 12px 0 6px 0;
+            border-bottom: 1px solid #2d2d38;
+            padding-bottom: 4px;
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: #a8a8b3;
+            margin-bottom: 3px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #52b788;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #e1e1e6;
+            font-size: 0.85rem;
+        }
+
+        .telemetry {
+            font-family: monospace;
+            font-size: 0.78rem;
+            background: #111116;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #2a2a35;
+            color: #74c69d;
+            margin-top: 10px;
+        }
+
+        .telemetry div {
+            margin-bottom: 4px;
+        }
+
+        .val {
+            color: #f8f9fa;
+            font-weight: bold;
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: #8d8d99;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Wolfenstein 3D Engine: 2D Raycasting + Pseudo-3D & Luz Dinámica</h1>
+
+    <div class="layout">
+        <!-- Panel de Controles -->
+        <div class="panel">
+
+            <div class="section-title" style="margin-top:0;">Jugador</div>
+            <p class="hint">Mueve al jugador con <b style="color:#fff;">WASD</b>. Apunta la cámara con el <b
+                    style="color:#fff;">Mouse</b>.</p>
+            <div class="control-group">
+                <label>FOV (Ángulo de Visión): <span id="valFOV" class="val">60</span>°</label>
+                <input type="range" id="sliderFOV" min="20" max="110" value="60">
+            </div>
+            <div class="control-group">
+                <label>Cantidad de Rayos 3D: <span id="valRays" class="val">120</span></label>
+                <input type="range" id="sliderRays" min="30" max="240" value="120">
+            </div>
+
+            <div class="section-title">Controles de Luz Dinámica</div>
+            <div class="control-group">
+                <label>Rayos de Luz (360°): <span id="valLightRays" class="val">180</span></label>
+                <input type="range" id="sliderLightRays" min="36" max="360" value="180">
+            </div>
+            <div class="control-group">
+                <label>Radio de Luz: <span id="valLightRadius" class="val">260</span>px</label>
+                <input type="range" id="sliderLightRadius" min="50" max="500" value="260">
+            </div>
+
+            <div class="section-title">Ajustes Objeto OBB</div>
+            <div class="control-group">
+                <label>Rotación OBB: <span id="valOBBAngle" class="val">35</span>°</label>
+                <input type="range" id="sliderOBBAngle" min="0" max="360" value="35">
+            </div>
+
+            <div class="section-title">Visualización 2D</div>
+            <div class="control-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="chkShowVisionRays" checked> Rayos del Jugador
+                </label>
+            </div>
+            <div class="control-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="chkShowLightRays" checked> Rayos de la Luz
+                </label>
+            </div>
+
+            <div class="section-title">Telemetría</div>
+            <div class="telemetry" id="telemetryBox"></div>
+        </div>
+
+        <!-- Contenedor de Lienzos (2D Top-Down + 3D Viewport) -->
+        <div class="panel canvases-container">
+            <div>
+                <label
+                    style="display:block; text-align:center; font-size:0.85rem; margin-bottom:5px; color:#a8a8b3;">Mapa
+                    2D Top-Down</label>
+                <canvas id="canvas2D" width="480" height="480"></canvas>
+            </div>
+            <div>
+                <label
+                    style="display:block; text-align:center; font-size:0.85rem; margin-bottom:5px; color:#a8a8b3;">Render
+                    Pseudo-3D Proyectado</label>
+                <canvas id="canvas3D" width="480" height="480"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas2D = document.getElementById('canvas2D');
+        const ctx2D = canvas2D.getContext('2d');
+
+        const canvas3D = document.getElementById('canvas3D');
+        const ctx3D = canvas3D.getContext('2d');
+
+        // Configuración de la Grilla 2D
+        const GRID_SIZE = 30;
+        const COLS = canvas2D.width / GRID_SIZE; // 16
+        const ROWS = canvas2D.height / GRID_SIZE; // 16
+
+        // Grilla del Mapa (1 = Pared)
+        const mapGrid = Array.from({ length: ROWS }, (_, r) =>
+            Array.from({ length: COLS }, (_, c) =>
+                (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1 ||
+                    (r === 4 && c > 2 && c < 9) || (r > 10 && r < 14 && c === 11)) ? 1 : 0
+            )
+        );
+
+        // Entidades del Juego
+        const player = { x: 90, y: 220, w: 16, h: 16, speed: 2.2, angle: 0 };
+        const keys = {};
+
+        const aabbObj = { x: 160, y: 70, w: 60, h: 50, color: [40, 167, 69] };   // Verde
+        const obbObj = { x: 330, y: 180, w: 70, h: 45, angle: 35 * Math.PI / 180, color: [253, 126, 20] }; // Naranja
+        const lightObj = { x: 240, y: 280, r: 10, maxDist: 260, rayCount: 180 };
+
+        let mouse = { x: 240, y: 240 };
+
+        // Elementos UI
+        const sliderFOV = document.getElementById('sliderFOV');
+        const sliderRays = document.getElementById('sliderRays');
+        const sliderLightRays = document.getElementById('sliderLightRays');
+        const sliderLightRadius = document.getElementById('sliderLightRadius');
+        const sliderOBBAngle = document.getElementById('sliderOBBAngle');
+
+        const chkShowVisionRays = document.getElementById('chkShowVisionRays');
+        const chkShowLightRays = document.getElementById('chkShowLightRays');
+
+        // Manejo de Eventos
+        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        canvas2D.addEventListener('mousemove', e => {
+            const rect = canvas2D.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        // --- MATEMÁTICAS DE INTERSECCIÓN DE RAYOS ---
+
+        // Rayo vs AABB
+        function rayAABB(px, py, dx, dy, box) {
+            let tmin = 0, tmax = Infinity;
+            if (Math.abs(dx) < 1e-8) {
+                if (px < box.x || px > box.x + box.w) return null;
+            } else {
+                let t1 = (box.x - px) / dx;
+                let t2 = (box.x + box.w - px) / dx;
+                if (t1 > t2) [t1, t2] = [t2, t1];
+                tmin = Math.max(tmin, t1);
+                tmax = Math.min(tmax, t2);
+                if (tmin > tmax) return null;
+            }
+            if (Math.abs(dy) < 1e-8) {
+                if (py < box.y || py > box.y + box.h) return null;
+            } else {
+                let t1 = (box.y - py) / dy;
+                let t2 = (box.y + box.h - py) / dy;
+                if (t1 > t2) [t1, t2] = [t2, t1];
+                tmin = Math.max(tmin, t1);
+                tmax = Math.min(tmax, t2);
+                if (tmin > tmax) return null;
+            }
+            return tmin > 0 ? tmin : null;
+        }
+
+        // Rayo vs OBB
+        function rayOBB(px, py, dx, dy, obb) {
+            const cx = obb.x + obb.w / 2;
+            const cy = obb.y + obb.h / 2;
+            const relX = px - cx;
+            const relY = py - cy;
+            const cos = Math.cos(-obb.angle);
+            const sin = Math.sin(-obb.angle);
+
+            const localPx = relX * cos - relY * sin;
+            const localPy = relX * sin + relY * cos;
+            const localDx = dx * cos - dy * sin;
+            const localDy = dx * sin + dy * cos;
+
+            const localBox = { x: -obb.w / 2, y: -obb.h / 2, w: obb.w, h: obb.h };
+            return rayAABB(localPx, localPy, localDx, localDy, localBox);
+        }
+
+        // Algoritmo DDA para la Grilla
+        function rayDDA(px, py, dx, dy) {
+            let mapX = Math.floor(px / GRID_SIZE);
+            let mapY = Math.floor(py / GRID_SIZE);
+
+            const deltaDistX = Math.abs(1 / (dx || 1e-30));
+            const deltaDistY = Math.abs(1 / (dy || 1e-30));
+
+            let stepX = dx < 0 ? -1 : 1;
+            let stepY = dy < 0 ? -1 : 1;
+
+            let sideDistX = dx < 0 ? (px / GRID_SIZE - mapX) * deltaDistX : (mapX + 1.0 - px / GRID_SIZE) * deltaDistX;
+            let sideDistY = dy < 0 ? (py / GRID_SIZE - mapY) * deltaDistY : (mapY + 1.0 - py / GRID_SIZE) * deltaDistY;
+
+            let hit = false;
+            let side = 0;
+
+            while (!hit && (mapX >= 0 && mapX < COLS && mapY >= 0 && mapY < ROWS)) {
+                if (sideDistX < sideDistY) {
+                    sideDistX += deltaDistX;
+                    mapX += stepX;
+                    side = 0;
+                } else {
+                    sideDistY += deltaDistY;
+                    mapY += stepY;
+                    side = 1;
+                }
+
+                if (mapX >= 0 && mapX < COLS && mapY >= 0 && mapY < ROWS) {
+                    if (mapGrid[mapY][mapX] === 1) hit = true;
+                }
+            }
+
+            let hitDist = null;
+            if (hit) {
+                const perpDist = (side === 0) ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
+                hitDist = perpDist * GRID_SIZE;
+            }
+            return { dist: hitDist, side };
+        }
+
+        // Lanzar un rayo contra TODAS las geometrías de la escena
+        function castRayScene(px, py, dx, dy) {
+            let minT = Infinity;
+            let hitKind = 'None';
+            let baseColor = [100, 100, 120];
+            let side = 0;
+
+            // 1. Grilla DDA
+            const ddaRes = rayDDA(px, py, dx, dy);
+            if (ddaRes.dist !== null && ddaRes.dist < minT) {
+                minT = ddaRes.dist;
+                hitKind = 'Map Wall';
+                side = ddaRes.side;
+                baseColor = ddaRes.side === 0 ? [120, 120, 140] : [90, 90, 110]; // Sombra por cara
+            }
+
+            // 2. AABB
+            const tAABB = rayAABB(px, py, dx, dy, aabbObj);
+            if (tAABB !== null && tAABB < minT) {
+                minT = tAABB;
+                hitKind = 'AABB';
+                baseColor = aabbObj.color;
+            }
+
+            // 3. OBB
+            const tOBB = rayOBB(px, py, dx, dy, obbObj);
+            if (tOBB !== null && tOBB < minT) {
+                minT = tOBB;
+                hitKind = 'OBB';
+                baseColor = obbObj.color;
+            }
+
+            const hitX = px + dx * minT;
+            const hitY = py + dy * minT;
+
+            // --- CÁLCULO DE ILUMINACIÓN EN EL PUNTO DE IMPACTO ---
+            // Lanzamos un rayo directo desde la luz hasta el punto de colisión
+            let lightIntensity = 0;
+            const lVectorX = hitX - lightObj.x;
+            const lVectorY = hitY - lightObj.y;
+            const distToLight = Math.hypot(lVectorX, lVectorY);
+
+            if (distToLight < lightObj.maxDist) {
+                const ldx = lVectorX / distToLight;
+                const ldy = lVectorY / distToLight;
+
+                // Verificar si hay obstáculos tapando la luz (Sombra)
+                const shadowHit = castRaySceneOcclusion(lightObj.x, lightObj.y, ldx, ldy, distToLight - 1);
+                if (!shadowHit) {
+                    // Atenuación cuadrática suave de la luz
+                    lightIntensity = Math.max(0, 1 - (distToLight / lightObj.maxDist));
+                    lightIntensity = Math.pow(lightIntensity, 1.5); // Curva de atenuación
+                }
+            }
+
+            return {
+                dist: minT,
+                hitX, hitY,
+                kind: hitKind,
+                color: baseColor,
+                lightIntensity
+            };
+        }
+
+        // Comprobación rápida para oclusión de sombras de la luz
+        function castRaySceneOcclusion(px, py, dx, dy, maxDist) {
+            const dda = rayDDA(px, py, dx, dy);
+            if (dda.dist !== null && dda.dist < maxDist) return true;
+
+            const tAABB = rayAABB(px, py, dx, dy, aabbObj);
+            if (tAABB !== null && tAABB < maxDist) return true;
+
+            const tOBB = rayOBB(px, py, dx, dy, obbObj);
+            if (tOBB !== null && tOBB < maxDist) return true;
+
+            return false;
+        }
+
+        // Actualización del Estado
+        function update() {
+            if (keys['w']) player.y -= player.speed;
+            if (keys['s']) player.y += player.speed;
+            if (keys['a']) player.x -= player.speed;
+            if (keys['d']) player.x += player.speed;
+
+            player.x = Math.max(GRID_SIZE, Math.min(canvas2D.width - GRID_SIZE - player.w, player.x));
+            player.y = Math.max(GRID_SIZE, Math.min(canvas2D.height - GRID_SIZE - player.h, player.y));
+
+            document.getElementById('valFOV').textContent = sliderFOV.value;
+            document.getElementById('valRays').textContent = sliderRays.value;
+            document.getElementById('valLightRays').textContent = sliderLightRays.value;
+            document.getElementById('valLightRadius').textContent = sliderLightRadius.value;
+            document.getElementById('valOBBAngle').textContent = sliderOBBAngle.value;
+
+            lightObj.rayCount = parseInt(sliderLightRays.value);
+            lightObj.maxDist = parseFloat(sliderLightRadius.value);
+            obbObj.angle = parseFloat(sliderOBBAngle.value) * Math.PI / 180;
+        }
+
+        // Detección y Renderizado General
+        function draw() {
+            ctx2D.clearRect(0, 0, canvas2D.width, canvas2D.height);
+            ctx3D.clearRect(0, 0, canvas3D.width, canvas3D.height);
+
+            const pCenterX = player.x + player.w / 2;
+            const pCenterY = player.y + player.h / 2;
+            player.angle = Math.atan2(mouse.y - pCenterY, mouse.x - pCenterX);
+
+            // --- RENDER 2D: LUZ Y SOMBRAS ---
+            if (chkShowLightRays.checked) {
+                for (let i = 0; i < lightObj.rayCount; i++) {
+                    const lAngle = (i / lightObj.rayCount) * Math.PI * 2;
+                    const ldx = Math.cos(lAngle);
+                    const ldy = Math.sin(lAngle);
+                    const hit = castRayScene(lightObj.x, lightObj.y, ldx, ldy);
+                    const drawDist = Math.min(hit.dist, lightObj.maxDist);
+
+                    ctx2D.beginPath();
+                    ctx2D.moveTo(lightObj.x, lightObj.y);
+                    ctx2D.lineTo(lightObj.x + ldx * drawDist, lightObj.y + ldy * drawDist);
+                    ctx2D.strokeStyle = 'rgba(255, 220, 100, 0.08)';
+                    ctx2D.stroke();
+                }
+            }
+
+            // --- RENDER 2D: MAPA Y OBJETOS ---
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (mapGrid[r][c] === 1) {
+                        ctx2D.fillStyle = '#2b2b36';
+                        ctx2D.fillRect(c * GRID_SIZE, r * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                    } else {
+                        ctx2D.strokeStyle = '#14141a';
+                        ctx2D.strokeRect(c * GRID_SIZE, r * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                    }
+                }
+            }
+
+            // Dibujar AABB
+            ctx2D.fillStyle = 'rgba(40, 167, 69, 0.4)';
+            ctx2D.strokeStyle = '#28a745';
+            ctx2D.fillRect(aabbObj.x, aabbObj.y, aabbObj.w, aabbObj.h);
+            ctx2D.strokeRect(aabbObj.x, aabbObj.y, aabbObj.w, aabbObj.h);
+
+            // Dibujar OBB
+            ctx2D.save();
+            ctx2D.translate(obbObj.x + obbObj.w / 2, obbObj.y + obbObj.h / 2);
+            ctx2D.rotate(obbObj.angle);
+            ctx2D.fillStyle = 'rgba(253, 126, 20, 0.4)';
+            ctx2D.fillRect(-obbObj.w / 2, -obbObj.h / 2, obbObj.w, obbObj.h);
+            ctx2D.strokeStyle = '#fd7e14';
+            ctx2D.strokeRect(-obbObj.w / 2, -obbObj.h / 2, obbObj.w, obbObj.h);
+            ctx2D.restore();
+
+            // Dibujar Foco de Luz
+            ctx2D.beginPath();
+            ctx2D.arc(lightObj.x, lightObj.y, lightObj.r, 0, Math.PI * 2);
+            ctx2D.fillStyle = '#ffd166';
+            ctx2D.fill();
+
+            // --- RENDER 3D: FONDO (TECHO Y PISO) ---
+            ctx3D.fillStyle = '#181820'; // Techo
+            ctx3D.fillRect(0, 0, canvas3D.width, canvas3D.height / 2);
+            ctx3D.fillStyle = '#0a0a0d'; // Piso
+            ctx3D.fillRect(0, canvas3D.height / 2, canvas3D.width, canvas3D.height / 2);
+
+            // --- RENDER 3D & RAYOS DE VISIÓN ---
+            const fovRad = (parseFloat(sliderFOV.value) * Math.PI) / 180;
+            const numRays = parseInt(sliderRays.value);
+            const startAngle = player.angle - fovRad / 2;
+            const sliceWidth = canvas3D.width / numRays;
+
+            let closestHitInfo = { dist: Infinity, kind: 'None' };
+
+            for (let i = 0; i < numRays; i++) {
+                const rayAngle = startAngle + (i / (numRays - 1)) * fovRad;
+                const rdx = Math.cos(rayAngle);
+                const rdy = Math.sin(rayAngle);
+
+                const hit = castRayScene(pCenterX, pCenterY, rdx, rdy);
+
+                if (hit.dist < closestHitInfo.dist) {
+                    closestHitInfo = hit;
+                }
+
+                // Dibujar Rayos en el Mapa 2D
+                if (chkShowVisionRays.checked) {
+                    ctx2D.beginPath();
+                    ctx2D.moveTo(pCenterX, pCenterY);
+                    ctx2D.lineTo(hit.hitX, hit.hitY);
+                    ctx2D.strokeStyle = 'rgba(82, 183, 136, 0.3)';
+                    ctx2D.stroke();
+                }
+
+                // --- CORRECCIÓN DE DISTANCIA (OJO DE PEZ / FISHEYE) ---
+                const correctedDist = hit.dist * Math.cos(rayAngle - player.angle);
+                const validDist = Math.max(0.1, correctedDist);
+
+                // --- PROYECCIÓN DE COLUMNAS 3D ---
+                const wallHeight = Math.min(canvas3D.height * 1.5, (GRID_SIZE * 400) / validDist);
+                const drawStart = (canvas3D.height - wallHeight) / 2;
+
+                // Modulación de Color con Luz Dinámica + Sombras por Distancia
+                const base = hit.color;
+                const ambientLight = 0.2; // Luz ambiental base
+                const totalLight = Math.min(1.0, ambientLight + hit.lightIntensity * 1.2);
+
+                // Aplicar la luz al color base del objeto
+                const r = Math.floor(base[0] * totalLight);
+                const g = Math.floor(base[1] * totalLight);
+                const b = Math.floor(base[2] * totalLight);
+
+                ctx3D.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx3D.fillRect(i * sliceWidth, drawStart, sliceWidth + 0.8, wallHeight);
+            }
+
+            // Dibujar Jugador 2D
+            ctx2D.fillStyle = '#007bff';
+            ctx2D.fillRect(player.x, player.y, player.w, player.h);
+            ctx2D.beginPath();
+            ctx2D.moveTo(pCenterX, pCenterY);
+            ctx2D.lineTo(pCenterX + Math.cos(player.angle) * 20, pCenterY + Math.sin(player.angle) * 20);
+            ctx2D.strokeStyle = '#52b788';
+            ctx2D.lineWidth = 2;
+            ctx2D.stroke();
+
+            // Telemetría
+            document.getElementById('telemetryBox').innerHTML = `
+        <div>Posición: <span class="val">(${pCenterX.toFixed(0)}, ${pCenterY.toFixed(0)})</span></div>
+        <div>Ángulo Visión: <span class="val">${(player.angle * 180 / Math.PI).toFixed(0)}°</span></div>
+        <div>Impacto Cercano: <span class="val">${closestHitInfo.kind}</span></div>
+        <div>Distancia ($perpDist$): <span class="val">${closestHitInfo.dist.toFixed(1)}px</span></div>
+        <div>Atenuación Luz: <span class="val">${(closestHitInfo.lightIntensity * 100).toFixed(0)}%</span></div>
+      `;
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>

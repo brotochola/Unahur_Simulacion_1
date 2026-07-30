@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Conway's Game of Life - Customizable Rules & Presets</title>
+  <style>
+    :root {
+      --bg: #121214;
+      --panel: #1e1e24;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --border: #334155;
+      --alive: #22c55e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar controls UI */
+    #sidebar {
+      width: 380px;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    input, select, button {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    input[type="number"] {
+      width: 100%;
+    }
+
+    button {
+      background: var(--accent);
+      color: white;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: var(--accent-hover);
+    }
+
+    button.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    button.secondary:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Rules checkboxes */
+    .checkbox-group {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      background: var(--bg);
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .checkbox-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .checkbox-btn input {
+      display: none;
+    }
+
+    .checkbox-btn span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 32px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.85rem;
+      user-select: none;
+    }
+
+    .checkbox-btn input:checked + span {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    /* Tooltip styles */
+    .has-tooltip {
+      position: relative;
+      cursor: help;
+    }
+
+    .has-tooltip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #000;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      max-width: 240px;
+      white-space: normal;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .has-tooltip:hover::after {
+      opacity: 1;
+    }
+
+    /* Main Canvas View */
+    #viewport {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0c;
+      position: relative;
+      padding: 20px;
+    }
+
+    canvas {
+      background: #000;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      image-rendering: pixelated;
+      max-width: 100%;
+      max-height: 100%;
+      cursor: crosshair;
+    }
+
+    .stats {
+      position: absolute;
+      top: 30px;
+      right: 30px;
+      background: rgba(30, 30, 36, 0.85);
+      backdrop-filter: blur(4px);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      display: flex;
+      gap: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <aside id="sidebar">
+    <h1>Game of Life</h1>
+
+    <!-- Controles de simulación -->
+    <div class="section">
+      <div class="section-title">Simulación</div>
+      <div class="grid-2">
+        <button id="btn-play" class="has-tooltip" data-tooltip="Inicia o pausa la simulación (Espacio)">Pausar</button>
+        <button id="btn-step" class="secondary has-tooltip" data-tooltip="Avanza un único fotograma">Paso a Paso</button>
+      </div>
+      <button id="btn-clear" class="secondary has-tooltip" data-tooltip="Limpia el tablero por completo">Limpiar Tablero</button>
+
+      <div class="grid-2">
+        <button id="btn-random" class="secondary has-tooltip" data-tooltip="Llena el tablero aleatoriamente">Población Aleatoria</button>
+        <button id="btn-spawn-glider" class="secondary has-tooltip" data-tooltip="Lanza un Glider tradicional de Conway desde el centro">Lanzar Glider</button>
+      </div>
+
+      <label class="has-tooltip" data-tooltip="Frecuencia de actualización en cuadros por segundo">
+        Velocidad (FPS)
+        <input type="range" id="input-fps" min="1" max="60" value="30">
+      </label>
+    </div>
+
+    <!-- Modificación de Resolución del Canvas -->
+    <div class="section">
+      <div class="section-title">Matriz & Canvas</div>
+      <div class="grid-2">
+        <label class="has-tooltip" data-tooltip="Columnas horizontales de la grilla">
+          Ancho (Celdas)
+          <input type="number" id="input-cols" value="100" min="10" max="500">
+        </label>
+        <label class="has-tooltip" data-tooltip="Filas verticales de la grilla">
+          Alto (Celdas)
+          <input type="number" id="input-rows" value="100" min="10" max="500">
+        </label>
+      </div>
+      <button id="btn-resize" class="secondary">Aplicar Resolución</button>
+    </div>
+
+    <!-- Reglas dinámicas -->
+    <div class="section">
+      <div class="section-title has-tooltip" data-tooltip="Ajusta las condiciones de Nacimiento (B) y Supervivencia (S) de las células">
+        Reglas de Vida (B / S)
+      </div>
+
+      <label class="has-tooltip" data-tooltip="Vecinos necesarios para que una célula MUERTA nazca (Born - B)">
+        Nacimiento (Born - B)
+      </label>
+      <div class="checkbox-group" id="group-born"></div>
+
+      <label class="has-tooltip" data-tooltip="Vecinos necesarios para que una célula VIVA continúe con vida (Survive - S)">
+        Supervivencia (Survive - S)
+      </label>
+      <div class="checkbox-group" id="group-survive"></div>
+
+      <label class="has-tooltip" data-tooltip="Presets con reglas famosas y efectos emergentes únicos">
+        Presets Famosos
+        <select id="select-presets">
+          <optgroup label="Reglas Clásicas & Naves">
+            <option value="23/3" selected>Conway estándar (B3/S23) - Gliders clásicos</option>
+            <option value="23/36">HighLife (B36/S23) - Replicadores y naves</option>
+            <option value="2/34">Day & Night (B34/S2) - Simetría dentro/fuera</option>
+            <option value="23/37">DryLife (B37/S23) - Genera Gliders gigantes</option>
+          </optgroup>
+          <optgroup label="Crecimiento Explosivo & Replicación">
+            <option value="2/2">Seeds (B2/S) - Crecimiento explosivo</option>
+
+            <option value="1357/1357">Fredkin (B1357/S1357) - Replicador fractal</option>
+            <option value="34/34">34 Life (B34/S34) - Expansión caótica</option>
+          </optgroup>
+          <optgroup label="Estructuras Orgánicas & Laberintos">
+            <option value="12345/3">Mazectric (B3/S12345) - Crea pasillos delgados</option>
+            <option value="1234/3">Maze (B3/S1234) - Laberintos conectados</option>
+            <option value="012345678/3">Coral (B3/S012345678) - Crecimiento marino</option>
+            <option value="1/1">Gnarl (B1/S1) - Filamentos de red</option>
+          </optgroup>
+        </select>
+      </label>
+    </div>
+  </aside>
+
+  <main id="viewport">
+    <div class="stats">
+      <span>Generación: <strong id="stat-gen">0</strong></span>
+      <span>Células: <strong id="stat-count">0</strong></span>
+    </div>
+    <canvas id="life-canvas"></canvas>
+  </main>
+
+  <script>
+    // --- ESTADO GLOBAL ---
+    let COLS = 100;
+    let ROWS = 100;
+    let fps = 30;
+    let isRunning = false;
+    let generation = 0;
+    let intervalId = null;
+
+    let bornRules = new Set([3]);
+    let surviveRules = new Set([2, 3]);
+
+    let grid = new Uint8Array(COLS * ROWS);
+    let nextGrid = new Uint8Array(COLS * ROWS);
+
+    // --- ELEMENTOS DOM ---
+    const canvas = document.getElementById('life-canvas');
+    const ctx = canvas.getContext('2d');
+    const btnPlay = document.getElementById('btn-play');
+    const btnStep = document.getElementById('btn-step');
+    const btnClear = document.getElementById('btn-clear');
+    const btnRandom = document.getElementById('btn-random');
+    const btnSpawnGlider = document.getElementById('btn-spawn-glider');
+    const btnResize = document.getElementById('btn-resize');
+    const inputCols = document.getElementById('input-cols');
+    const inputRows = document.getElementById('input-rows');
+    const inputFps = document.getElementById('input-fps');
+    const groupBorn = document.getElementById('group-born');
+    const groupSurvive = document.getElementById('group-survive');
+    const selectPresets = document.getElementById('select-presets');
+    const statGen = document.getElementById('stat-gen');
+    const statCount = document.getElementById('stat-count');
+
+    // --- RENDERIZADO DE REGLAS Y CHECKBOXES ---
+    function buildRuleCheckboxes(container, ruleSet) {
+      container.innerHTML = '';
+      for (let i = 0; i <= 8; i++) {
+        const label = document.createElement('label');
+        label.className = 'checkbox-btn';
+        
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = ruleSet.has(i);
+        input.dataset.num = i;
+
+        input.addEventListener('change', (e) => {
+          const val = parseInt(e.target.dataset.num, 10);
+          if (e.target.checked) ruleSet.add(val);
+          else ruleSet.delete(val);
+        });
+
+        const span = document.createElement('span');
+        span.textContent = i;
+
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+      }
+    }
+
+    function syncRuleCheckboxes() {
+      buildRuleCheckboxes(groupBorn, bornRules);
+      buildRuleCheckboxes(groupSurvive, surviveRules);
+    }
+
+    // --- INICIALIZACIÓN Y MOTOR ---
+    function initGrids() {
+      grid = new Uint8Array(COLS * ROWS);
+      nextGrid = new Uint8Array(COLS * ROWS);
+      
+      const parent = canvas.parentElement;
+      canvas.width = COLS * 8;
+      canvas.height = ROWS * 8;
+      
+      generation = 0;
+      updateStats();
+      render();
+    }
+
+    function getIndex(x, y) {
+      return x + y * COLS;
+    }
+
+    function countNeighbors(x, y) {
+      let count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = (x + dx + COLS) % COLS;
+          const ny = (y + dy + ROWS) % ROWS;
+          count += grid[getIndex(nx, ny)];
+        }
+      }
+      return count;
+    }
+
+    function step() {
+      let population = 0;
+
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const idx = getIndex(x, y);
+          const neighbors = countNeighbors(x, y);
+          const isAlive = grid[idx] === 1;
+
+          if (isAlive) {
+            nextGrid[idx] = surviveRules.has(neighbors) ? 1 : 0;
+          } else {
+            nextGrid[idx] = bornRules.has(neighbors) ? 1 : 0;
+          }
+
+          if (nextGrid[idx] === 1) population++;
+        }
+      }
+
+      const temp = grid;
+      grid = nextGrid;
+      nextGrid = temp;
+
+      generation++;
+      updateStats(population);
+      render();
+    }
+
+    function render() {
+      ctx.fillStyle = '#0a0a0c';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const cellW = canvas.width / COLS;
+      const cellH = canvas.height / ROWS;
+
+      ctx.fillStyle = '#22c55e';
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          if (grid[getIndex(x, y)] === 1) {
+            ctx.fillRect(x * cellW, y * cellH, cellW - 0.5, cellH - 0.5);
+          }
+        }
+      }
+    }
+
+    function updateStats(popCount) {
+      statGen.textContent = generation;
+      if (popCount !== undefined) {
+        statCount.textContent = popCount;
+      } else {
+        let alive = 0;
+        for (let i = 0; i < grid.length; i++) alive += grid[i];
+        statCount.textContent = alive;
+      }
+    }
+
+    function seedRandom() {
+      for (let i = 0; i < grid.length; i++) {
+        grid[i] = Math.random() > 0.85 ? 1 : 0;
+      }
+      generation = 0;
+      updateStats();
+      render();
+    }
+
+    // Genera un Glider en la posición (cx, cy)
+    function spawnGlider(cx, cy) {
+      const pattern = [
+        [0, 1, 0],
+        [0, 0, 1],
+        [1, 1, 1]
+      ];
+      for (let r = 0; r < pattern.length; r++) {
+        for (let c = 0; c < pattern[r].length; c++) {
+          const x = (cx + c) % COLS;
+          const y = (cy + r) % ROWS;
+          grid[getIndex(x, y)] = pattern[r][c];
+        }
+      }
+      render();
+      updateStats();
+    }
+
+    // --- CONTROLE DE TIEMPO ---
+    function play() {
+      if (isRunning) return;
+      isRunning = true;
+      btnPlay.textContent = 'Pausar';
+      intervalId = setInterval(step, 1000 / fps);
+    }
+
+    function pause() {
+      if (!isRunning) return;
+      isRunning = false;
+      btnPlay.textContent = 'Reanudar';
+      clearInterval(intervalId);
+    }
+
+    function togglePlay() {
+      if (isRunning) pause();
+      else play();
+    }
+
+    // --- EVENTOS ---
+    let isDrawing = false;
+    let drawState = 1;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / (rect.width / COLS));
+      const y = Math.floor((e.clientY - rect.top) / (rect.height / ROWS));
+      
+      if (x >= 0 && x < COLS && y >= 0 && y < ROWS) {
+        const idx = getIndex(x, y);
+        drawState = grid[idx] === 1 ? 0 : 1;
+        grid[idx] = drawState;
+        updateStats();
+        render();
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / (rect.width / COLS));
+      const y = Math.floor((e.clientY - rect.top) / (rect.height / ROWS));
+
+      if (x >= 0 && x < COLS && y >= 0 && y < ROWS) {
+        grid[getIndex(x, y)] = drawState;
+        updateStats();
+        render();
+      }
+    });
+
+    window.addEventListener('mouseup', () => isDrawing = false);
+
+    btnPlay.addEventListener('click', togglePlay);
+    btnStep.addEventListener('click', () => { pause(); step(); });
+    
+    btnClear.addEventListener('click', () => {
+      pause();
+      grid.fill(0);
+      generation = 0;
+      updateStats(0);
+      render();
+    });
+
+    btnRandom.addEventListener('click', () => {
+      pause();
+      seedRandom();
+    });
+
+    btnSpawnGlider.addEventListener('click', () => {
+      spawnGlider(Math.floor(COLS / 2), Math.floor(ROWS / 2));
+    });
+
+    btnResize.addEventListener('click', () => {
+      pause();
+      COLS = parseInt(inputCols.value, 10) || 50;
+      ROWS = parseInt(inputRows.value, 10) || 50;
+      initGrids();
+      seedRandom();
+    });
+
+    inputFps.addEventListener('input', (e) => {
+      fps = parseInt(e.target.value, 10);
+      if (isRunning) {
+        pause();
+        play();
+      }
+    });
+
+    selectPresets.addEventListener('change', (e) => {
+      const [sRules, bRules] = e.target.value.split('/');
+      surviveRules = new Set(sRules ? sRules.split('').map(Number) : []);
+      bornRules = new Set(bRules ? bRules.split('').map(Number) : []);
+      syncRuleCheckboxes();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+        e.preventDefault();
+        togglePlay();
+      }
+    });
+
+    // --- INICIALIZACIÓN ---
+    syncRuleCheckboxes();
+    initGrids();
+    seedRandom();
+  </script>
+</body>
+</html>

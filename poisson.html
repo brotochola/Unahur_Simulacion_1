@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distribución Exponencial — ECDF</title>
+    <style>
+        :root {
+            --bg-color: #f5f5f7;
+            --card-bg: #ffffff;
+            --text-main: #1d1d1f;
+            --text-sub: #86868b;
+            --primary: #0066cc;
+            --accent: #ff3b30;
+            --border: #d2d2d7;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+
+        h1, h2, h3 {
+            margin-top: 0;
+            font-weight: 600;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+        }
+
+        h3 {
+            font-size: 15px;
+            margin: 20px 0 8px 0;
+            color: var(--primary);
+        }
+
+        .explain {
+            font-size: 14px;
+            line-height: 1.55;
+            color: var(--text-main);
+        }
+
+        .explain p {
+            margin: 0 0 12px 0;
+            color: var(--text-sub);
+        }
+
+        .explain p strong {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .explain ul {
+            margin: 0 0 12px 0;
+            padding-left: 20px;
+            color: var(--text-sub);
+        }
+
+        .explain li {
+            margin-bottom: 6px;
+        }
+
+        .explain code, .explain .math {
+            font-family: "SF Mono", Consolas, monospace;
+            font-size: 13px;
+            color: var(--text-main);
+            background: #f0f0f2;
+            padding: 1px 5px;
+            border-radius: 4px;
+        }
+
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        @media (min-width: 768px) {
+            .layout-grid {
+                grid-template-columns: 280px 1fr;
+            }
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .val-display {
+            font-family: monospace;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 4px 0;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            background: #fff;
+            border-radius: 4px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            justify-content: center;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="card explain">
+            <h1>Distribución exponencial y función de distribución acumulada empírica (ECDF)</h1>
+            <p>
+                Simulación interactiva para una clase de probabilidad / procesos estocásticos.
+                Generamos tiempos entre eventos con distribución <strong>exponencial</strong>
+                y comparamos la curva empírica de los datos (ECDF) con la CDF teórica.
+            </p>
+
+            <h3>¿Qué modelamos?</h3>
+            <p>
+                La distribución <strong>exponencial</strong> describe el tiempo de espera entre eventos
+                de un proceso de Poisson (llegadas a un servidor, fallas de un componente, etc.).
+                Si la media del tiempo entre eventos es <span class="math">μ</span>, la densidad es
+                <span class="math">f(x) = (1/μ)·e<sup>−x/μ</sup></span> para <span class="math">x ≥ 0</span>.
+            </p>
+            <p>
+                La <strong>función de distribución acumulada (CDF)</strong> teórica es
+                <span class="math">F(x) = P(X ≤ x) = 1 − e<sup>−x/μ</sup></span>.
+                Dice qué proporción de tiempos es menor o igual a <span class="math">x</span>.
+            </p>
+
+            <h3>¿Qué es la ECDF?</h3>
+            <p>
+                La <strong>ECDF</strong> (Empirical Cumulative Distribution Function) es la versión
+                empírica de <span class="math">F</span>: se ordenan las <span class="math">N</span> muestras
+                <span class="math">x<sub>(1)</sub> ≤ … ≤ x<sub>(N)</sub></span> y se grafica el punto
+                <span class="math">(x<sub>(i)</sub>, i/N)</span>. No hay histogramas ni bins:
+                cada muestra es un punto. Con <span class="math">N</span> grande, la ECDF se acerca
+                a la CDF teórica (línea roja).
+            </p>
+
+            <h3>Cómo se generan las muestras</h3>
+            <p>
+                Usamos la transformada inversa: si <span class="math">U ~ Uniforme(0,1)</span>, entonces
+                <span class="math">X = −μ · ln(1 − U)</span> tiene distribución Exponencial(media = μ).
+                Eso es lo que hace el deslizador de media al regenerar los puntos.
+            </p>
+
+            <h3>Cómo leer el gráfico</h3>
+            <ul>
+                <li><strong>Eje X:</strong> valor del tiempo entre eventos (escala fija; no depende de μ).</li>
+                <li><strong>Eje Y:</strong> percentil acumulado (0% abajo, 100% arriba).</li>
+                <li><strong>Puntos azules:</strong> ECDF de la muestra simulada.</li>
+                <li><strong>Curva roja:</strong> CDF teórica <span class="math">1 − e<sup>−x/μ</sup></span>.</li>
+            </ul>
+            <p>
+                Si aumentás μ, los tiempos suelen ser más largos: la nube azul y la curva roja
+                se “estiran” hacia la derecha, pero el rango del eje X permanece el que elegiste
+                con el control de máximo.
+            </p>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 8px;">Simulación</h2>
+            <p style="color: var(--text-sub); margin: 0 0 16px 0; font-size: 14px;">
+                Mové los controles y observá cómo la ECDF se acerca (o se aleja en la cola) de la CDF teórica.
+            </p>
+
+            <div class="layout-grid">
+                <div class="controls">
+                    <h2>Controles</h2>
+                    <div class="control-group">
+                        <label>Media (μ): <span id="meanVal" class="val-display">50</span></label>
+                        <input type="range" id="paramMean" min="1" max="500" value="50" step="1">
+                    </div>
+                    <div class="control-group">
+                        <label>Muestras (N): <span id="samplesVal" class="val-display">5.000</span></label>
+                        <input type="range" id="paramSamples" min="100" max="50000" value="5000" step="100">
+                    </div>
+                    <div class="control-group">
+                        <label>Máximo eje X: <span id="scaleVal" class="val-display">250</span></label>
+                        <input type="range" id="paramScale" min="50" max="2000" value="250" step="50">
+                    </div>
+                    <div class="control-group">
+                        <label style="justify-content: flex-start; gap: 8px; align-items: center;">
+                            <input type="checkbox" id="paramLinearScale" checked>
+                            Escala lineal en X
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <label style="justify-content: flex-start; gap: 8px; align-items: center;">
+                            <input type="checkbox" id="paramShowTheory" checked>
+                            Mostrar CDF teórica
+                        </label>
+                    </div>
+
+                    <p style="font-size: 12px; color: var(--text-sub); margin: 0; line-height: 1.45;">
+                        <strong style="color: var(--text-main);">Media:</strong> tiempo promedio entre eventos.<br>
+                        <strong style="color: var(--text-main);">Muestras:</strong> cuántos valores se simulan (más N → ECDF más suave).<br>
+                        <strong style="color: var(--text-main);">Máximo eje X:</strong> hasta dónde se dibuja el gráfico (fijo, independiente de μ).<br>
+                        <strong style="color: var(--text-main);">Escala lineal:</strong> desmarcar usa escala logarítmica en X (útil para ver la cola).
+                    </p>
+                </div>
+
+                <div>
+                    <canvas id="distributionCanvas" width="550" height="380"></canvas>
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: var(--primary);"></div>
+                            <span>Muestras ordenadas (ECDF)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: var(--accent); height: 3px;"></div>
+                            <span>CDF teórica</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 8px;">Valores crudos ordenados (estadísticos de orden)</h2>
+            <p style="color: var(--text-sub); margin: 0 0 16px 0; font-size: 14px; line-height: 1.5;">
+                Mismas muestras que la ECDF, pero ejes “al revés” en espíritu:
+                <span style="font-family:monospace;color:#1d1d1f;">X = rango i</span> (1º, 2º, …, Nº más chico)
+                y <span style="font-family:monospace;color:#1d1d1f;">Y = x<sub>(i)</sub></span> el valor ordenado.
+                La ECDF grafica <span style="font-family:monospace;color:#1d1d1f;">(x<sub>(i)</sub>, i/N)</span>;
+                acá grafica <span style="font-family:monospace;color:#1d1d1f;">(i, x<sub>(i)</sub>)</span>.
+                La curva roja es el cuantíl teórico
+                <span style="font-family:monospace;color:#1d1d1f;">F<sup>−1</sup>(p) = −μ·ln(1−p)</span> con p = i/N.
+                La línea verde horizontal es la media μ: la cruza cerca del percentil 63%
+                (<span style="font-family:monospace;color:#1d1d1f;">F(μ) = 1 − e<sup>−1</sup> ≈ 0,632</span>), no en el 50%.
+                Notá la cola: los últimos rangos saltan mucho (valores raros grandes).
+            </p>
+            <canvas id="sortedCanvas" width="850" height="320"></canvas>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: var(--primary);"></div>
+                    <span>x<sub>(i)</sub> ordenado</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: var(--accent); height: 3px;"></div>
+                    <span>Cuantíl teórico F⁻¹(i/N)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #34c759; height: 3px;"></div>
+                    <span>Media Y = μ</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 8px;">Normal — Box-Muller (<code>randomGaussian</code>)</h2>
+            <p style="color: var(--text-sub); margin: 0 0 16px 0; font-size: 14px; line-height: 1.5;">
+                Genera una normal exacta (en teoría) transformando dos uniformes U₁, U₂ con
+                <span style="font-family:monospace;color:#1d1d1f;">R = √(−2 ln U₁)</span>,
+                <span style="font-family:monospace;color:#1d1d1f;">Θ = 2π U₂</span>,
+                <span style="font-family:monospace;color:#1d1d1f;">Z = R cos Θ</span>,
+                luego <span style="font-family:monospace;color:#1d1d1f;">X = μ + σ Z</span>.
+                Acá: valores ordenados — <span style="font-family:monospace;color:#1d1d1f;">X = rango i</span>,
+                <span style="font-family:monospace;color:#1d1d1f;">Y = x<sub>(i)</sub></span>.
+                Rojo = cuantíl teórico Φ⁻¹(i/N). Verde = media μ (cruza ~50%, simétrica).
+                Usamos μ del control y σ = μ/4 (mínimo 1).
+            </p>
+            <canvas id="boxMullerCanvas" width="850" height="320"></canvas>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: var(--primary);"></div>
+                    <span>x<sub>(i)</sub> ordenado (Box-Muller)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: var(--accent); height: 3px;"></div>
+                    <span>Cuantíl teórico Φ⁻¹(i/N)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #34c759; height: 3px;"></div>
+                    <span>Media Y = μ</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 8px;">Normal aproximada — suma de 12 (<code>cheapGaussian</code>)</h2>
+            <p style="color: var(--text-sub); margin: 0 0 16px 0; font-size: 14px; line-height: 1.5;">
+                Truco clásico del TLC: sumá 12 uniformes U(0,1), restá 6 → aproxima N(0,1)
+                (media de Uniforme = 1/2, entonces 12·½ = 6). Luego
+                <span style="font-family:monospace;color:#1d1d1f;">X = μ + σ (ΣUᵢ − 6)</span>.
+                Mismo formato ordenado (rango → valor). Soporte de Z en
+                <span style="font-family:monospace;color:#1d1d1f;">[−6, 6]</span> antes de escalar:
+                las colas extremas no existen — compará con Box-Muller arriba.
+            </p>
+            <canvas id="cheapGaussCanvas" width="850" height="320"></canvas>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: var(--primary);"></div>
+                    <span>x<sub>(i)</sub> ordenado (cheapGaussian)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: var(--accent); height: 3px;"></div>
+                    <span>Cuantíl teórico Φ⁻¹(i/N)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #34c759; height: 3px;"></div>
+                    <span>Media Y = μ</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card explain">
+            <h2>Qué experimentar en clase</h2>
+            <ul>
+                <li>Fijá el máximo de X y cambiá solo μ: la forma de la curva exponencial cambia, el eje no se reescala.</li>
+                <li>Subí N de 100 a 50.000: la ECDF se pega más a la línea roja (ley de los grandes números).</li>
+                <li>Apagá la CDF teórica y estimá a ojo la mediana (percentil 50%): para exponencial, mediana ≈ μ·ln(2) ≈ 0,693·μ.</li>
+                <li>Desmarcá escala lineal: la cola derecha de la exponencial se ve con más detalle en log.</li>
+                <li>Compará ECDF vs ordenados: mismos datos; uno pone el valor en X y el % en Y, el otro al revés (rango → valor).</li>
+                <li>Compará Box-Muller vs cheapGaussian (ambos ordenados): mirá las colas — cheapGaussian no puede ir más allá de μ ± 6σ.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('distributionCanvas');
+        const ctx = canvas.getContext('2d');
+        const sortedCanvas = document.getElementById('sortedCanvas');
+        const sortedCtx = sortedCanvas.getContext('2d');
+        const boxMullerCanvas = document.getElementById('boxMullerCanvas');
+        const boxMullerCtx = boxMullerCanvas.getContext('2d');
+        const cheapGaussCanvas = document.getElementById('cheapGaussCanvas');
+        const cheapGaussCtx = cheapGaussCanvas.getContext('2d');
+
+        const inputMean = document.getElementById('paramMean');
+        const inputSamples = document.getElementById('paramSamples');
+        const inputScale = document.getElementById('paramScale');
+        const inputLinearScale = document.getElementById('paramLinearScale');
+        const inputShowTheory = document.getElementById('paramShowTheory');
+
+        const lblMean = document.getElementById('meanVal');
+        const lblSamples = document.getElementById('samplesVal');
+        const lblScale = document.getElementById('scaleVal');
+
+        function getExponentialRandom(mean) {
+            return -mean * Math.log(1 - Math.random());
+        }
+
+        function randomGaussian(mean = 0, stdDev = 1) {
+            let u1 = 1 - Math.random();
+            let u2 = Math.random();
+            let radius = Math.sqrt(-2.0 * Math.log(u1));
+            let angle = 2.0 * Math.PI * u2;
+            let z0 = radius * Math.cos(angle);
+            return z0 * stdDev + mean;
+        }
+
+        function cheapGaussian(mean = 0, stdDev = 1) {
+            let sum = 0;
+            for (let i = 0; i < 12; i++) {
+                sum += Math.random();
+            }
+            let z0 = sum - 6;
+            return z0 * stdDev + mean;
+        }
+
+        // Inverse standard normal CDF (Acklam) — for theoretical quantile curve only
+        function invNorm(p) {
+            if (p <= 0) return -Infinity;
+            if (p >= 1) return Infinity;
+            const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+            const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+            const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+            const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+            const plow = 0.02425;
+            const phigh = 1 - plow;
+            let q, r;
+            if (p < plow) {
+                q = Math.sqrt(-2 * Math.log(p));
+                return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+            }
+            if (p > phigh) {
+                q = Math.sqrt(-2 * Math.log(1 - p));
+                return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+            }
+            q = p - 0.5;
+            r = q * q;
+            return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5]) * q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+        }
+
+        function invNormal(p, mean, stdDev) {
+            return mean + stdDev * invNorm(p);
+        }
+
+        function drawAxes(c, cctx, pad, w, h, xMax, yMax, xLabel, yLabel) {
+            cctx.strokeStyle = '#86868b';
+            cctx.lineWidth = 1;
+            cctx.beginPath();
+            cctx.moveTo(pad.left, pad.top);
+            cctx.lineTo(pad.left, c.height - pad.bottom);
+            cctx.lineTo(c.width - pad.right, c.height - pad.bottom);
+            cctx.stroke();
+
+            cctx.fillStyle = '#1d1d1f';
+            cctx.font = '11px sans-serif';
+            cctx.textAlign = 'center';
+            for (let i = 0; i <= 5; i++) {
+                const val = (xMax / 5) * i;
+                const label = val >= 10 ? Math.round(val) : val.toFixed(1);
+                cctx.fillText(label, pad.left + (i * (w / 5)), c.height - pad.bottom + 18);
+            }
+            cctx.font = 'bold 12px sans-serif';
+            cctx.fillText(xLabel, pad.left + w / 2, c.height - 10);
+
+            cctx.textAlign = 'right';
+            cctx.font = '11px sans-serif';
+            cctx.fillStyle = '#86868b';
+            for (let i = 0; i <= 4; i++) {
+                const frac = i / 4;
+                const val = yMax * (1 - frac);
+                const label = val >= 10 ? Math.round(val) : val.toFixed(1);
+                cctx.fillText(label, pad.left - 8, pad.top + frac * h + 4);
+            }
+            cctx.save();
+            cctx.translate(14, pad.top + h / 2);
+            cctx.rotate(-Math.PI / 2);
+            cctx.textAlign = 'center';
+            cctx.fillStyle = '#1d1d1f';
+            cctx.font = 'bold 12px sans-serif';
+            cctx.fillText(yLabel, 0, 0);
+            cctx.restore();
+        }
+
+        function drawGaussianSorted(c, cctx, samples, mean, stdDev, showTheory) {
+            const pad = { top: 25, right: 20, bottom: 45, left: 55 };
+            const w = c.width - pad.left - pad.right;
+            const h = c.height - pad.top - pad.bottom;
+            const n = samples.length;
+            // Y window: μ ± 4σ (same visual window for both generators)
+            const yMin = mean - 4 * stdDev;
+            const yMax = mean + 4 * stdDev;
+            const ySpan = yMax - yMin;
+
+            cctx.clearRect(0, 0, c.width, c.height);
+
+            cctx.strokeStyle = '#f0f0f2';
+            cctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = pad.top + (h / 4) * i;
+                cctx.beginPath();
+                cctx.moveTo(pad.left, y);
+                cctx.lineTo(c.width - pad.right, y);
+                cctx.stroke();
+            }
+
+            const step = Math.max(1, Math.floor(n / 8000));
+            cctx.fillStyle = 'rgba(0, 102, 204, 0.4)';
+            for (let i = 0; i < n; i += step) {
+                const val = samples[i];
+                if (val < yMin || val > yMax) continue;
+                const xPixel = pad.left + ((i + 1) / n) * w;
+                const yPixel = c.height - pad.bottom - ((val - yMin) / ySpan) * h;
+                cctx.beginPath();
+                cctx.arc(xPixel, yPixel, 1.5, 0, 2 * Math.PI);
+                cctx.fill();
+            }
+
+            if (showTheory) {
+                cctx.strokeStyle = '#ff3b30';
+                cctx.lineWidth = 2.5;
+                cctx.beginPath();
+                let started = false;
+                for (let px = 0; px <= w; px++) {
+                    const p = Math.min(Math.max(px / w, 1e-6), 1 - 1e-6);
+                    const q = invNormal(p, mean, stdDev);
+                    if (q < yMin || q > yMax) {
+                        if (started) break;
+                        continue;
+                    }
+                    const yPixel = c.height - pad.bottom - ((q - yMin) / ySpan) * h;
+                    if (!started) {
+                        cctx.moveTo(pad.left + px, yPixel);
+                        started = true;
+                    } else {
+                        cctx.lineTo(pad.left + px, yPixel);
+                    }
+                }
+                cctx.stroke();
+            }
+
+            // Horizontal mean Y = μ
+            const meanY = c.height - pad.bottom - ((mean - yMin) / ySpan) * h;
+            cctx.strokeStyle = '#34c759';
+            cctx.lineWidth = 2;
+            cctx.beginPath();
+            cctx.moveTo(pad.left, meanY);
+            cctx.lineTo(c.width - pad.right, meanY);
+            cctx.stroke();
+
+            // Axes (X = rank 0..N, Y = value in [yMin, yMax])
+            cctx.strokeStyle = '#86868b';
+            cctx.lineWidth = 1;
+            cctx.beginPath();
+            cctx.moveTo(pad.left, pad.top);
+            cctx.lineTo(pad.left, c.height - pad.bottom);
+            cctx.lineTo(c.width - pad.right, c.height - pad.bottom);
+            cctx.stroke();
+
+            cctx.fillStyle = '#1d1d1f';
+            cctx.font = '11px sans-serif';
+            cctx.textAlign = 'center';
+            for (let i = 0; i <= 5; i++) {
+                const val = Math.round((n / 5) * i);
+                cctx.fillText(val, pad.left + (i * (w / 5)), c.height - pad.bottom + 18);
+            }
+            cctx.font = 'bold 12px sans-serif';
+            cctx.fillText("Rango i (1 → N, ordenados de menor a mayor)", pad.left + w / 2, c.height - 10);
+
+            cctx.textAlign = 'right';
+            cctx.font = '11px sans-serif';
+            cctx.fillStyle = '#86868b';
+            for (let i = 0; i <= 4; i++) {
+                const frac = i / 4;
+                const val = yMax - frac * ySpan;
+                const label = Math.abs(val) >= 10 ? Math.round(val) : val.toFixed(1);
+                cctx.fillText(label, pad.left - 8, pad.top + frac * h + 4);
+            }
+            cctx.save();
+            cctx.translate(14, pad.top + h / 2);
+            cctx.rotate(-Math.PI / 2);
+            cctx.textAlign = 'center';
+            cctx.fillStyle = '#1d1d1f';
+            cctx.font = 'bold 12px sans-serif';
+            cctx.fillText("Valor ordenado x₍ᵢ₎", 0, 0);
+            cctx.restore();
+        }
+
+        function updateAndRender() {
+            const mean = parseFloat(inputMean.value);
+            const totalSamples = parseInt(inputSamples.value);
+            const maxDomainVal = parseFloat(inputScale.value);
+            const linearX = inputLinearScale.checked;
+
+            lblMean.textContent = mean;
+            lblSamples.textContent = totalSamples.toLocaleString('es-AR');
+            lblScale.textContent = maxDomainVal.toLocaleString('es-AR');
+
+            const samples = [];
+            for (let i = 0; i < totalSamples; i++) {
+                samples.push(getExponentialRandom(mean));
+            }
+            samples.sort((a, b) => a - b);
+
+            // --- ECDF ---
+            const minDomainVal = Math.max(maxDomainVal * 0.01, 1e-6);
+            const pad = { top: 30, right: 20, bottom: 45, left: 55 };
+            const w = canvas.width - pad.left - pad.right;
+            const h = canvas.height - pad.top - pad.bottom;
+
+            function valToX(val) {
+                if (linearX) return pad.left + (val / maxDomainVal) * w;
+                const t = (Math.log(Math.max(val, minDomainVal)) - Math.log(minDomainVal))
+                    / (Math.log(maxDomainVal) - Math.log(minDomainVal));
+                return pad.left + t * w;
+            }
+
+            function xPixelToVal(xPixel) {
+                const t = xPixel / w;
+                if (linearX) return t * maxDomainVal;
+                return Math.exp(Math.log(minDomainVal) + t * (Math.log(maxDomainVal) - Math.log(minDomainVal)));
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = '#f0f0f2';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = pad.top + (h / 4) * i;
+                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(canvas.width - pad.right, y); ctx.stroke();
+            }
+
+            ctx.fillStyle = 'rgba(0, 102, 204, 0.4)';
+            samples.forEach((val, index) => {
+                if (val <= maxDomainVal && (linearX || val >= minDomainVal)) {
+                    const xPixel = valToX(val);
+                    const percentile = index / totalSamples;
+                    const yPixel = canvas.height - pad.bottom - (percentile * h);
+                    ctx.beginPath();
+                    ctx.arc(xPixel, yPixel, 1.5, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            });
+
+            if (inputShowTheory.checked) {
+                ctx.strokeStyle = '#ff3b30';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                for (let xPixel = 0; xPixel <= w; xPixel++) {
+                    const xVal = xPixelToVal(xPixel);
+                    const theoreticalCDF = 1 - Math.exp(-xVal / mean);
+                    const yPixel = canvas.height - pad.bottom - (theoreticalCDF * h);
+                    if (xPixel === 0) ctx.moveTo(pad.left + xPixel, yPixel);
+                    else ctx.lineTo(pad.left + xPixel, yPixel);
+                }
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#86868b';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(pad.left, pad.top);
+            ctx.lineTo(pad.left, canvas.height - pad.bottom);
+            ctx.lineTo(canvas.width - pad.right, canvas.height - pad.bottom);
+            ctx.stroke();
+
+            ctx.fillStyle = '#1d1d1f';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            for (let i = 0; i <= 5; i++) {
+                const xVal = xPixelToVal((i / 5) * w);
+                const label = xVal >= 10 ? Math.round(xVal) : xVal.toFixed(1);
+                ctx.fillText(label, pad.left + (i * (w / 5)), canvas.height - pad.bottom + 18);
+            }
+            const axisTitle = linearX
+                ? "Tiempo entre eventos (x)"
+                : "Tiempo entre eventos (x, escala log)";
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(axisTitle, pad.left + w / 2, canvas.height - 10);
+
+            ctx.textAlign = 'right';
+            ctx.font = '11px sans-serif';
+            ctx.fillStyle = '#86868b';
+            ctx.fillText("100%", pad.left - 8, pad.top + 4);
+            ctx.fillText("75%", pad.left - 8, pad.top + (h * 0.25) + 4);
+            ctx.fillText("50%", pad.left - 8, pad.top + (h * 0.50) + 4);
+            ctx.fillText("25%", pad.left - 8, pad.top + (h * 0.75) + 4);
+            ctx.fillText("0%", pad.left - 8, canvas.height - pad.bottom + 4);
+
+            // --- Sorted raw values: X = rank i, Y = x_(i) ---
+            const sPad = { top: 25, right: 20, bottom: 45, left: 55 };
+            const sw = sortedCanvas.width - sPad.left - sPad.right;
+            const sh = sortedCanvas.height - sPad.top - sPad.bottom;
+            // Y scale: use X-max control so comparable; clip huge order stats in the far tail
+            const sortedYMax = maxDomainVal;
+
+            sortedCtx.clearRect(0, 0, sortedCanvas.width, sortedCanvas.height);
+
+            sortedCtx.strokeStyle = '#f0f0f2';
+            sortedCtx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = sPad.top + (sh / 4) * i;
+                sortedCtx.beginPath();
+                sortedCtx.moveTo(sPad.left, y);
+                sortedCtx.lineTo(sortedCanvas.width - sPad.right, y);
+                sortedCtx.stroke();
+            }
+
+            sortedCtx.fillStyle = 'rgba(0, 102, 204, 0.4)';
+            const sortedN = samples.length;
+            // Subsample drawing if huge N (keep shape, less overdraw)
+            const step = Math.max(1, Math.floor(sortedN / 8000));
+            for (let i = 0; i < sortedN; i += step) {
+                const val = samples[i];
+                if (val > sortedYMax) continue;
+                const xPixel = sPad.left + ((i + 1) / sortedN) * sw;
+                const yPixel = sortedCanvas.height - sPad.bottom - (val / sortedYMax) * sh;
+                sortedCtx.beginPath();
+                sortedCtx.arc(xPixel, yPixel, 1.5, 0, 2 * Math.PI);
+                sortedCtx.fill();
+            }
+
+            if (inputShowTheory.checked) {
+                // Quantile function: F^{-1}(p) = -μ ln(1-p)
+                sortedCtx.strokeStyle = '#ff3b30';
+                sortedCtx.lineWidth = 2.5;
+                sortedCtx.beginPath();
+                let started = false;
+                for (let px = 0; px <= sw; px++) {
+                    const p = Math.min(px / sw, 0.9999); // avoid ln(0)
+                    const q = -mean * Math.log(1 - p);
+                    if (q > sortedYMax) {
+                        if (started) break;
+                        continue;
+                    }
+                    const yPixel = sortedCanvas.height - sPad.bottom - (q / sortedYMax) * sh;
+                    if (!started) {
+                        sortedCtx.moveTo(sPad.left + px, yPixel);
+                        started = true;
+                    } else {
+                        sortedCtx.lineTo(sPad.left + px, yPixel);
+                    }
+                }
+                sortedCtx.stroke();
+            }
+
+            if (mean <= sortedYMax) {
+                const meanY = sortedCanvas.height - sPad.bottom - (mean / sortedYMax) * sh;
+                sortedCtx.strokeStyle = '#34c759';
+                sortedCtx.lineWidth = 2;
+                sortedCtx.beginPath();
+                sortedCtx.moveTo(sPad.left, meanY);
+                sortedCtx.lineTo(sortedCanvas.width - sPad.right, meanY);
+                sortedCtx.stroke();
+            }
+
+            drawAxes(sortedCanvas, sortedCtx, sPad, sw, sh, sortedN, sortedYMax,
+                "Rango i (1 → N, ordenados de menor a mayor)", "Valor ordenado x₍ᵢ₎");
+
+            // --- Gaussians: same μ, σ = μ/4 ---
+            const gaussStd = Math.max(1, mean / 4);
+            const boxSamples = [];
+            const cheapSamples = [];
+            for (let i = 0; i < totalSamples; i++) {
+                boxSamples.push(randomGaussian(mean, gaussStd));
+                cheapSamples.push(cheapGaussian(mean, gaussStd));
+            }
+            boxSamples.sort((a, b) => a - b);
+            cheapSamples.sort((a, b) => a - b);
+
+            const showTheory = inputShowTheory.checked;
+            drawGaussianSorted(boxMullerCanvas, boxMullerCtx, boxSamples, mean, gaussStd, showTheory);
+            drawGaussianSorted(cheapGaussCanvas, cheapGaussCtx, cheapSamples, mean, gaussStd, showTheory);
+        }
+
+        [inputMean, inputSamples, inputScale, inputLinearScale, inputShowTheory]
+            .forEach(el => el.addEventListener('input', updateAndRender));
+        updateAndRender();
+    </script>
+</body>
+</html>

@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Falling Sand — Autómata celular (clase de Simulaciones)</title>
+<style>
+  :root{
+    --bg: #14110f;
+    --panel: #1c1815;
+    --line: #332c26;
+    --amber: #e0a458;
+    --amber-dim: #8a6a3c;
+    --water: #4a90c4;
+    --stone: #6b6660;
+    --oil: #c4a035;
+    --smoke: #9a9590;
+    --text: #cfc7ba;
+    --text-dim: #83786c;
+    --warn: #c4784a;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; min-height:100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "JetBrains Mono","SFMono-Regular",Consolas,monospace;
+  }
+  body{
+    display:flex; justify-content:center;
+    padding: 16px 18px 28px;
+  }
+  #app{
+    display:flex; flex-direction:column; gap:10px;
+    max-width: 1180px; width:100%;
+  }
+  #titlebar{
+    display:flex; align-items:baseline; justify-content:space-between; gap:24px; flex-wrap:wrap;
+  }
+  #titlebar h1{
+    font-size:14px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+    margin:0; color:var(--amber);
+  }
+  #titlebar .sub{ font-size:11px; color:var(--text-dim); letter-spacing:.04em; max-width:56ch; }
+  #workspace{
+    display:grid;
+    grid-template-columns: minmax(0,1fr) 340px;
+    gap:12px;
+    align-items:start;
+  }
+  @media (max-width: 980px){
+    #workspace{ grid-template-columns: 1fr; }
+  }
+  #sim-col{ display:flex; flex-direction:column; gap:10px; min-width:0; }
+  #stage{
+    position:relative;
+    border:1px solid var(--line);
+    background:#000;
+    line-height:0;
+    box-shadow: 0 0 0 1px #000, 0 20px 60px -20px rgba(0,0,0,.8);
+    width:fit-content; max-width:100%;
+  }
+  canvas{ display:block; image-rendering: pixelated; cursor:crosshair; max-width:100%; height:auto; }
+  #hud{
+    position:absolute; top:8px; left:10px;
+    font-size:10px; color:var(--text-dim); letter-spacing:.05em;
+    pointer-events:none; user-select:none;
+    background:rgba(0,0,0,.35); padding:3px 7px; border-radius:3px;
+  }
+  #hud b{ color:var(--amber); font-weight:600; }
+  #controls, .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    font-size:11px;
+  }
+  #controls{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:10px 14px;
+  }
+  .group{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .group .label, .panel h2{
+    color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase; font-size:10px;
+  }
+  .panel h2{ margin:0 0 8px; font-weight:600; }
+  .panel{ padding:12px 14px; }
+  .panel + .panel{ margin-top:10px; }
+  button{
+    font-family:inherit; font-size:11px; letter-spacing:.03em;
+    background:#251f1a; color:var(--text);
+    border:1px solid var(--line);
+    padding:6px 11px; border-radius:3px; cursor:pointer;
+    transition: border-color .12s, color .12s, background .12s;
+  }
+  button:hover{ border-color:var(--amber-dim); color:#fff; }
+  button.active{
+    background: var(--amber); border-color: var(--amber); color:#181310; font-weight:600;
+  }
+  button.active[data-mat="2"]{ background:var(--water); border-color:var(--water); color:#0c1b26; }
+  button.active[data-mat="3"]{ background:var(--stone); border-color:var(--stone); color:#141210; }
+  button.active[data-mat="4"]{ background:var(--oil); border-color:var(--oil); color:#1a1408; }
+  button.active[data-mat="5"]{ background:var(--smoke); border-color:var(--smoke); color:#1a1816; }
+  button.active[data-mat="0"]{ background:#3a332b; border-color:#3a332b; color:var(--text); }
+  input[type=range]{ width:100px; accent-color: var(--amber); }
+  #fps{ color:var(--amber); font-weight:600; }
+  kbd{
+    background:#0e0b09; border:1px solid var(--line); border-radius:2px;
+    padding:0 4px; font-size:10px; color:var(--text-dim);
+  }
+  .callout{
+    border-left:3px solid var(--amber-dim);
+    padding:8px 10px; margin:0 0 12px;
+    background:#181410;
+    color:var(--text-dim);
+    font-size:11px; line-height:1.45;
+  }
+  .callout.warn{ border-left-color: var(--warn); }
+  .callout strong{ color:var(--text); font-weight:600; }
+  .rule-block{
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:10px;
+    margin-bottom:10px;
+    background:#17130f;
+  }
+  .rule-block:last-child{ margin-bottom:0; }
+  .rule-block .mat-name{
+    font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+    margin-bottom:4px;
+  }
+  .rule-block.sand .mat-name{ color:var(--amber); }
+  .rule-block.water .mat-name{ color:var(--water); }
+  .rule-block.wall .mat-name{ color:var(--stone); }
+  .rule-block.oil .mat-name{ color:var(--oil); }
+  .rule-block.smoke .mat-name{ color:var(--smoke); }
+  .rule-block .blurb{
+    color:var(--text-dim); font-size:10px; line-height:1.4; margin-bottom:8px;
+  }
+  .rule{
+    display:flex; gap:8px; align-items:flex-start;
+    padding:5px 0;
+    border-top:1px solid #2a241e;
+  }
+  .rule:first-of-type{ border-top:none; padding-top:0; }
+  .rule input{ margin-top:2px; accent-color: var(--amber); flex-shrink:0; }
+  .rule label{ cursor:pointer; line-height:1.35; }
+  .rule .title{ color:var(--text); display:block; }
+  .rule .hint{ color:var(--text-dim); font-size:10px; display:block; margin-top:2px; }
+  #pseudocode{
+    font-size:10px; line-height:1.5;
+    color:var(--text-dim);
+    white-space:pre-wrap;
+    background:#0e0b09;
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:10px;
+    margin:0;
+    max-height:320px;
+    overflow:auto;
+  }
+  #pseudocode .on{ color:var(--amber); }
+  #pseudocode .off{ color:#5a5046; text-decoration:line-through; }
+  #theory details{ margin-top:8px; }
+  #theory summary{
+    cursor:pointer; color:var(--amber); font-size:11px; letter-spacing:.04em;
+  }
+  #theory .body{
+    margin-top:8px; color:var(--text-dim); font-size:11px; line-height:1.5;
+  }
+  #theory code{
+    color:var(--text); background:#0e0b09; padding:1px 4px; border-radius:2px;
+  }
+  #theory ul{ margin:6px 0 0; padding-left:18px; }
+  #theory li{ margin-bottom:4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="titlebar">
+    <h1>Falling Sand</h1>
+    <div class="sub">
+      Autómata celular · materiales = estados · reglas locales = física aparente
+    </div>
+  </div>
+
+  <div id="workspace">
+    <div id="sim-col">
+      <div id="stage">
+        <canvas id="view"></canvas>
+        <div id="hud">
+          <span id="fps">0</span> fps &nbsp;|&nbsp; <b id="cellcount">0</b> celdas activas &nbsp;|&nbsp; <span id="stepms">0</span>ms step
+        </div>
+      </div>
+
+      <div id="controls">
+        <div class="group">
+          <span class="label">Material</span>
+          <button data-mat="1" class="active" title="Sólido granular, denso">Arena</button>
+          <button data-mat="2" title="Fluido, fluye de costado">Agua</button>
+          <button data-mat="4" title="Fluido liviano: flota sobre el agua">Aceite</button>
+          <button data-mat="5" title="Gas: sube y se dispersa">Humo</button>
+          <button data-mat="3" title="Estático, obstáculo">Piedra</button>
+          <button data-mat="0" title="Vacío">Borrar</button>
+        </div>
+        <div class="group">
+          <span class="label">Pincel</span>
+          <input type="range" id="brush" min="1" max="18" value="5">
+          <span id="brushval">5</span>
+        </div>
+        <div class="group">
+          <span class="label">Velocidad</span>
+          <input type="range" id="speed" min="1" max="6" value="1" title="Pasos de autómata por frame">
+          <span id="speedval">1x</span>
+        </div>
+        <div class="group">
+          <button id="pause">Pausar</button>
+          <button id="clear">Limpiar</button>
+        </div>
+        <div class="group" style="margin-left:auto;color:var(--text-dim)">
+          <kbd>1</kbd>–<kbd>5</kbd> mats &nbsp;<kbd>0</kbd> borrar &nbsp;<kbd>space</kbd> pausa
+        </div>
+      </div>
+
+      <div class="panel" id="theory">
+        <h2>¿Qué estás viendo?</h2>
+        <div class="callout">
+          <strong>No hay partículas físicas.</strong>
+          Grilla de celdas + estados + reglas locales = <strong>autómata celular</strong>.
+          “Densidad”, “fluido”, “gas” son <em>ilusiones</em> de esas reglas, no ecuaciones de física.
+        </div>
+        <div class="callout warn">
+          <strong>Arena sobre agua → olas (displace), no teletransporte.</strong>
+          Antes: SWAP vertical (agua subía al chorro). Ahora: la arena baja y el agua se
+          <em>empuja a un hueco lateral</em> (splash). Si no hay hueco, fallback a SWAP.
+          Compará con la regla “Splash lateral” apagada.
+        </div>
+        <details open>
+          <summary>Ideas de clase</summary>
+          <div class="body">
+            <ul>
+              <li><strong>Alfabeto Σ:</strong> vacío, arena, agua, piedra, aceite, humo (6 de 8 posibles en 3 bits).</li>
+              <li><strong>Displace vs SWAP:</strong> displace conserva “volumen” empujando a un vecino vacío. SWAP solo invierte dos celdas.</li>
+              <li><strong>Aceite:</strong> mismas reglas de fluido que el agua, pero <em>no cae dentro del agua</em> → flota (densidad relativa sin ρ).</li>
+              <li><strong>Humo:</strong> gravedad invertida + dispersión + fade probabilístico → gas que se disipa.</li>
+              <li><strong>Experimento:</strong> poza de agua, chorro de arena con splash ON/OFF. Después aceite sobre agua + arena encima.</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <aside id="side">
+      <div class="panel">
+        <h2>Reglas del autómata</h2>
+        <p class="callout" style="margin-top:0">
+          Checkboxes en vivo. <code>step()</code> lee el objeto <code>rules</code>.
+        </p>
+
+        <div class="rule-block sand">
+          <div class="mat-name">Arena</div>
+          <div class="blurb">Sólido granular. Se hunde en fluidos empujándolos a los costados.</div>
+          <div class="rule">
+            <input type="checkbox" id="r-sand-fall" checked>
+            <label for="r-sand-fall">
+              <span class="title">Caer hacia abajo (vacío)</span>
+              <span class="hint">Gravedad básica.</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-sand-sink" checked>
+            <label for="r-sand-sink">
+              <span class="title">Hundirse en fluido (agua/aceite)</span>
+              <span class="hint">Si abajo es fluido → ocupar ese lugar.</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-sand-splash" checked>
+            <label for="r-sand-splash">
+              <span class="title">Splash lateral (olas)</span>
+              <span class="hint">Fluido empujado a izq/der vacío. OFF = SWAP viejo (agua al chorro).</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-sand-diag" checked>
+            <label for="r-sand-diag">
+              <span class="title">Caer en diagonal</span>
+              <span class="hint">Forma el cono de arena.</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rule-block water">
+          <div class="mat-name">Agua</div>
+          <div class="blurb">Fluido denso. No atraviesa aceite (el aceite flota arriba).</div>
+          <div class="rule">
+            <input type="checkbox" id="r-water-fall" checked>
+            <label for="r-water-fall">
+              <span class="title">Caer hacia abajo (vacío)</span>
+              <span class="hint">No cae dentro de aceite.</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-water-diag" checked>
+            <label for="r-water-diag">
+              <span class="title">Caer en diagonal</span>
+              <span class="hint">Cascadas / bordes.</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-water-flow" checked>
+            <label for="r-water-flow">
+              <span class="title">Flujo horizontal</span>
+              <span class="hint">Sin esto: columnas. Con splash: termina de “redondear” la ola.</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rule-block oil">
+          <div class="mat-name">Aceite</div>
+          <div class="blurb">Como agua, pero flota: no cae dentro del agua.</div>
+          <div class="rule">
+            <input type="checkbox" id="r-oil-fall" checked>
+            <label for="r-oil-fall">
+              <span class="title">Caer hacia abajo (vacío)</span>
+              <span class="hint">Si abajo == AGUA, se detiene (flota).</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-oil-diag" checked>
+            <label for="r-oil-diag">
+              <span class="title">Caer en diagonal</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-oil-flow" checked>
+            <label for="r-oil-flow">
+              <span class="title">Flujo horizontal</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rule-block smoke">
+          <div class="mat-name">Humo</div>
+          <div class="blurb">Gas: sube, se dispersa, a veces desaparece.</div>
+          <div class="rule">
+            <input type="checkbox" id="r-smoke-rise" checked>
+            <label for="r-smoke-rise">
+              <span class="title">Subir (vacío arriba)</span>
+              <span class="hint">Gravedad invertida.</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-smoke-diag" checked>
+            <label for="r-smoke-diag">
+              <span class="title">Subir en diagonal</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-smoke-flow" checked>
+            <label for="r-smoke-flow">
+              <span class="title">Dispersión horizontal</span>
+            </label>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="r-smoke-fade" checked>
+            <label for="r-smoke-fade">
+              <span class="title">Disiparse (probabilístico)</span>
+              <span class="hint">~2% por tick → vacío. Sin esto el humo acumula forever.</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rule-block wall">
+          <div class="mat-name">Piedra</div>
+          <div class="blurb">Sin movimiento. Obstáculo / borde.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Pseudocódigo activo</h2>
+        <pre id="pseudocode"></pre>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================================
+ * FALLING SAND — Autómata celular para clase de Simulaciones
+ * ----------------------------------------------------------------------------
+ * MODELO MENTAL:
+ *   Mundo = grilla W×H. Cada celda ∈ Σ = {vacío, arena, agua, piedra, aceite, humo}.
+ *   Tick: reglas locales sobre vecinos → “física” emergente.
+ *
+ * DENSIDAD SIN ρ:
+ *   - Arena se hunde en agua/aceite (displace o SWAP).
+ *   - Aceite no cae dentro de agua → flota.
+ *   - Humo sube (gravedad invertida).
+ *
+ * SPLASH / OLAS:
+ *   Al hundirse, el fluido NO vuelve al píxel de la arena. Se busca un vacío
+ *   lateral (izq/der, luego diagonales). Eso empuja “volumen” a los costados.
+ *   El flujo horizontal del agua termina de suavizar la ola en ticks siguientes.
+ * ==========================================================================*/
+
+const SIM_W = 320;
+const SIM_H = 190;
+const CELL_PX = 3;
+
+const MAT_EMPTY = 0, MAT_SAND = 1, MAT_WATER = 2, MAT_WALL = 3, MAT_OIL = 4, MAT_SMOKE = 5;
+const FLAG_BIT = 0x80;
+const MATVAR_MASK = 0x1F;
+const MAT_MASK = 0x07;
+
+function isFluid(mat) { return mat === MAT_WATER || mat === MAT_OIL; }
+
+const rules = {
+  sand: {
+    fallDown: true,
+    sinkInFluid: true,
+    splashDisplace: true, // ON = olas laterales; OFF = SWAP vertical clásico
+    diagonal: true,
+  },
+  water: {
+    fallDown: true,
+    diagonal: true,
+    flowHorizontal: true,
+  },
+  oil: {
+    fallDown: true,
+    diagonal: true,
+    flowHorizontal: true,
+  },
+  smoke: {
+    rise: true,
+    diagonal: true,
+    disperse: true,
+    fade: true,
+  },
+};
+
+const grid = new Uint8Array(SIM_W * SIM_H);
+let frameFlag = 0;
+
+const simCanvas = document.createElement("canvas");
+simCanvas.width = SIM_W; simCanvas.height = SIM_H;
+const simCtx = simCanvas.getContext("2d", { alpha:false });
+const imageData = simCtx.createImageData(SIM_W, SIM_H);
+const pixels32 = new Uint32Array(imageData.data.buffer);
+
+const view = document.getElementById("view");
+view.width = SIM_W * CELL_PX;
+view.height = SIM_H * CELL_PX;
+const viewCtx = view.getContext("2d", { alpha:false });
+viewCtx.imageSmoothingEnabled = false;
+
+function packColor(r, g, b, a) {
+  const buf = new ArrayBuffer(4);
+  new Uint8ClampedArray(buf).set([r, g, b, a]);
+  return new Uint32Array(buf)[0];
+}
+function shade(r, g, b, amount) {
+  const f = (v) => Math.max(0, Math.min(255, v + amount));
+  return [f(r), f(g), f(b)];
+}
+const PALETTE = new Uint32Array(32);
+{
+  const base = {
+    [MAT_EMPTY]: [16, 14, 12],
+    [MAT_SAND]:  [222, 178, 108],
+    [MAT_WATER]: [58, 122, 196],
+    [MAT_WALL]:  [96, 90, 82],
+    [MAT_OIL]:   [196, 160, 48],
+    [MAT_SMOKE]: [140, 136, 132],
+  };
+  const variantDelta = [-14, -4, 6, 16];
+  for (const mat of [MAT_EMPTY, MAT_SAND, MAT_WATER, MAT_WALL, MAT_OIL, MAT_SMOKE]) {
+    const [r, g, b] = base[mat];
+    for (let v = 0; v < 4; v++) {
+      const [sr, sg, sb] = mat === MAT_EMPTY ? [r, g, b] : shade(r, g, b, variantDelta[v]);
+      PALETTE[mat | (v << 3)] = packColor(sr, sg, sb, 255);
+    }
+  }
+}
+
+let currentMat = MAT_SAND;
+let brushRadius = 5;
+let simSpeed = 1;
+let paused = false;
+let mouseDown = false;
+let mouseX = -1, mouseY = -1;
+
+function idx(x, y) { return y * SIM_W + x; }
+function inBounds(x, y) { return x >= 0 && x < SIM_W && y >= 0 && y < SIM_H; }
+
+function setCell(x, y, mat) {
+  if (!inBounds(x, y)) return;
+  const i = idx(x, y);
+  if (mat === MAT_EMPTY) { grid[i] = 0; return; }
+  const variant = (Math.random() * 4) | 0;
+  grid[i] = mat | (variant << 3) | frameFlag;
+}
+
+function paintBrush(cx, cy, mat, r) {
+  const r2 = r * r;
+  const x0 = Math.max(0, cx - r), x1 = Math.min(SIM_W - 1, cx + r);
+  const y0 = Math.max(0, cy - r), y1 = Math.min(SIM_H - 1, cy + r);
+  for (let y = y0; y <= y1; y++) {
+    const dy = y - cy;
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx;
+      if (dx * dx + dy * dy <= r2) {
+        if (mat !== MAT_EMPTY) {
+          const existing = grid[idx(x, y)] & MAT_MASK;
+          if (existing === MAT_WALL) continue;
+          if (mat !== MAT_WALL && existing !== MAT_EMPTY) continue;
+        }
+        setCell(x, y, mat);
+      }
+    }
+  }
+}
+
+function tryMoveToEmpty(i, matvar, targetIdx, flag) {
+  if ((grid[targetIdx] & MAT_MASK) !== MAT_EMPTY) return false;
+  grid[targetIdx] = matvar | flag;
+  grid[i] = 0;
+  return true;
+}
+
+function tryDiagonalDown(i, x, matvar, belowBase, flag) {
+  const goLeftFirst = Math.random() < 0.5;
+  const dx1 = goLeftFirst ? -1 : 1;
+  for (const dx of [dx1, -dx1]) {
+    const nx = x + dx;
+    if (nx < 0 || nx >= SIM_W) continue;
+    if (tryMoveToEmpty(i, matvar, belowBase + nx, flag)) return true;
+  }
+  return false;
+}
+
+function tryDiagonalUp(i, x, matvar, aboveBase, flag) {
+  const goLeftFirst = Math.random() < 0.5;
+  const dx1 = goLeftFirst ? -1 : 1;
+  for (const dx of [dx1, -dx1]) {
+    const nx = x + dx;
+    if (nx < 0 || nx >= SIM_W) continue;
+    if (tryMoveToEmpty(i, matvar, aboveBase + nx, flag)) return true;
+  }
+  return false;
+}
+
+function tryHorizontal(i, x, matvar, rowBase, flag) {
+  const goLeftFirst = Math.random() < 0.5;
+  const dx1 = goLeftFirst ? -1 : 1;
+  for (const dx of [dx1, -dx1]) {
+    const nx = x + dx;
+    if (nx < 0 || nx >= SIM_W) continue;
+    if (tryMoveToEmpty(i, matvar, rowBase + nx, flag)) return true;
+  }
+  return false;
+}
+
+// Busca vacío cerca del fluido para empujar “volumen” a los costados (ola).
+// Prioridad: lados → arriba-lados → lados lejanos. Nunca el píxel de la arena primero.
+function findSplashEmpty(wx, wy) {
+  const lr = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+  const candidates = [];
+  for (const d of lr) candidates.push([wx + d, wy]);       // costados (ola)
+  for (const d of lr) candidates.push([wx + d, wy - 1]);   // splash arriba-lado
+  for (const d of lr) candidates.push([wx + 2 * d, wy]);
+  for (const d of lr) candidates.push([wx + 2 * d, wy - 1]);
+  for (const d of lr) candidates.push([wx + d, wy + 1]);   // abajo-lado si hay hueco
+  for (const [nx, ny] of candidates) {
+    if (!inBounds(nx, ny)) continue;
+    if ((grid[idx(nx, ny)] & MAT_MASK) === MAT_EMPTY) return idx(nx, ny);
+  }
+  return -1;
+}
+
+// Arena se hunde: ocupa el fluido; el fluido se va a un costado (o SWAP fallback).
+function sinkSandIntoFluid(sandIdx, sandX, sandY, fluidBelowIdx, fluidCell, sandMatvar, flag) {
+  const fluidMatvar = fluidCell & MATVAR_MASK;
+
+  if (rules.sand.splashDisplace) {
+    const splash = findSplashEmpty(sandX, sandY + 1);
+    if (splash >= 0) {
+      grid[splash] = fluidMatvar | flag;          // fluido → costado (ola)
+      grid[fluidBelowIdx] = sandMatvar | flag;    // arena → donde estaba el fluido
+      grid[sandIdx] = 0;                          // arriba queda vacío (no agua en el chorro)
+      return true;
+    }
+  }
+
+  // Fallback / modo clásico: SWAP vertical
+  grid[fluidBelowIdx] = sandMatvar | flag;
+  grid[sandIdx] = fluidMatvar; // sin flag: puede fluir después
+  return true;
+}
+
+function step() {
+  frameFlag ^= FLAG_BIT;
+  const flag = frameFlag;
+  const rs = rules.sand;
+  const rw = rules.water;
+  const ro = rules.oil;
+  const rk = rules.smoke;
+
+  for (let y = SIM_H - 1; y >= 0; y--) {
+    const rowBase = y * SIM_W;
+    const belowBase = rowBase + SIM_W;
+    const aboveBase = rowBase - SIM_W;
+    const hasBelow = y + 1 < SIM_H;
+    const hasAbove = y > 0;
+    const leftToRight = (y & 1) === 0;
+
+    for (let s = 0; s < SIM_W; s++) {
+      const x = leftToRight ? s : (SIM_W - 1 - s);
+      const i = rowBase + x;
+      const cell = grid[i];
+      const mat = cell & MAT_MASK;
+
+      if (mat === MAT_EMPTY || mat === MAT_WALL) continue;
+      if ((cell & FLAG_BIT) === flag) continue;
+
+      const matvar = cell & MATVAR_MASK;
+
+      // ========== ARENA ==========
+      if (mat === MAT_SAND) {
+        if (!hasBelow) { grid[i] = matvar | flag; continue; }
+        const below = grid[belowBase + x];
+        const belowMat = below & MAT_MASK;
+
+        if (rs.fallDown && belowMat === MAT_EMPTY) {
+          grid[belowBase + x] = matvar | flag;
+          grid[i] = 0;
+          continue;
+        }
+
+        if (rs.sinkInFluid && isFluid(belowMat)) {
+          sinkSandIntoFluid(i, x, y, belowBase + x, below, matvar, flag);
+          continue;
+        }
+
+        if (rs.diagonal && tryDiagonalDown(i, x, matvar, belowBase, flag)) continue;
+        grid[i] = matvar | flag;
+        continue;
+      }
+
+      // ========== AGUA ==========
+      // No cae dentro de aceite (aceite flota / agua queda debajo).
+      if (mat === MAT_WATER) {
+        if (hasBelow) {
+          const belowMat = grid[belowBase + x] & MAT_MASK;
+          if (rw.fallDown && belowMat === MAT_EMPTY) {
+            grid[belowBase + x] = matvar | flag;
+            grid[i] = 0;
+            continue;
+          }
+          if (rw.diagonal && tryDiagonalDown(i, x, matvar, belowBase, flag)) continue;
+        }
+        if (rw.flowHorizontal && tryHorizontal(i, x, matvar, rowBase, flag)) continue;
+        grid[i] = matvar | flag;
+        continue;
+      }
+
+      // ========== ACEITE ==========
+      // Igual que agua, pero NO cae si abajo es agua → flota.
+      if (mat === MAT_OIL) {
+        if (hasBelow) {
+          const belowMat = grid[belowBase + x] & MAT_MASK;
+          if (ro.fallDown && belowMat === MAT_EMPTY) {
+            grid[belowBase + x] = matvar | flag;
+            grid[i] = 0;
+            continue;
+          }
+          // abajo == AGUA: no hundirse; solo diagonal a vacío / flujo
+          if (ro.diagonal && tryDiagonalDown(i, x, matvar, belowBase, flag)) continue;
+        }
+        if (ro.flowHorizontal && tryHorizontal(i, x, matvar, rowBase, flag)) continue;
+        grid[i] = matvar | flag;
+        continue;
+      }
+
+      // ========== HUMO ==========
+      // Gas: prioriza subir. Fade probabilístico simula disipación.
+      if (mat === MAT_SMOKE) {
+        if (rk.fade && Math.random() < 0.02) {
+          grid[i] = 0;
+          continue;
+        }
+        if (hasAbove) {
+          if (rk.rise && tryMoveToEmpty(i, matvar, aboveBase + x, flag)) continue;
+          if (rk.diagonal && tryDiagonalUp(i, x, matvar, aboveBase, flag)) continue;
+        }
+        if (rk.disperse && tryHorizontal(i, x, matvar, rowBase, flag)) continue;
+        grid[i] = matvar | flag;
+      }
+    }
+  }
+}
+
+function updatePseudocode() {
+  const mark = (on, text) =>
+    `<span class="${on ? "on" : "off"}">${on ? "✓" : "✗"} ${text}</span>`;
+  const rs = rules.sand, rw = rules.water, ro = rules.oil, rk = rules.smoke;
+  document.getElementById("pseudocode").innerHTML =
+`si ARENA:
+  ${mark(rs.fallDown, "abajo==VACÍO → caer")}
+  ${mark(rs.sinkInFluid, "abajo==FLUIDO → hundirse")}
+  ${mark(rs.splashDisplace, "  splash: fluido → costado vacío (ola)")}
+  ${mark(!rs.splashDisplace && rs.sinkInFluid, "  fallback: SWAP vertical")}
+  ${mark(rs.diagonal, "sino diagonal abajo")}
+
+si AGUA:
+  ${mark(rw.fallDown, "caer a VACÍO (no dentro de aceite)")}
+  ${mark(rw.diagonal, "diagonal")}
+  ${mark(rw.flowHorizontal, "flujo horizontal")}
+
+si ACEITE:
+  ${mark(ro.fallDown, "caer a VACÍO (NO a agua → flota)")}
+  ${mark(ro.diagonal, "diagonal")}
+  ${mark(ro.flowHorizontal, "flujo horizontal")}
+
+si HUMO:
+  ${mark(rk.fade, "2% → desaparecer")}
+  ${mark(rk.rise, "subir a VACÍO")}
+  ${mark(rk.diagonal, "subir diagonal")}
+  ${mark(rk.disperse, "dispersar horizontal")}
+
+PIEDRA: nada`;
+}
+
+function bindRule(id, obj, key) {
+  const el = document.getElementById(id);
+  el.checked = !!obj[key];
+  el.addEventListener("change", () => {
+    obj[key] = el.checked;
+    updatePseudocode();
+  });
+}
+bindRule("r-sand-fall", rules.sand, "fallDown");
+bindRule("r-sand-sink", rules.sand, "sinkInFluid");
+bindRule("r-sand-splash", rules.sand, "splashDisplace");
+bindRule("r-sand-diag", rules.sand, "diagonal");
+bindRule("r-water-fall", rules.water, "fallDown");
+bindRule("r-water-diag", rules.water, "diagonal");
+bindRule("r-water-flow", rules.water, "flowHorizontal");
+bindRule("r-oil-fall", rules.oil, "fallDown");
+bindRule("r-oil-diag", rules.oil, "diagonal");
+bindRule("r-oil-flow", rules.oil, "flowHorizontal");
+bindRule("r-smoke-rise", rules.smoke, "rise");
+bindRule("r-smoke-diag", rules.smoke, "diagonal");
+bindRule("r-smoke-flow", rules.smoke, "disperse");
+bindRule("r-smoke-fade", rules.smoke, "fade");
+updatePseudocode();
+
+function render() {
+  const n = SIM_W * SIM_H;
+  for (let i = 0; i < n; i++) {
+    pixels32[i] = PALETTE[grid[i] & MATVAR_MASK];
+  }
+  simCtx.putImageData(imageData, 0, 0);
+  viewCtx.drawImage(simCanvas, 0, 0, view.width, view.height);
+
+  if (mouseX >= 0) {
+    viewCtx.strokeStyle = "rgba(255,255,255,0.35)";
+    viewCtx.lineWidth = 1;
+    viewCtx.beginPath();
+    viewCtx.arc(mouseX * CELL_PX, mouseY * CELL_PX, brushRadius * CELL_PX, 0, Math.PI * 2);
+    viewCtx.stroke();
+  }
+}
+
+const fpsEl = document.getElementById("fps");
+const stepmsEl = document.getElementById("stepms");
+const cellcountEl = document.getElementById("cellcount");
+let lastFpsTime = performance.now();
+let frames = 0;
+let lastStepMs = 0;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  if (mouseDown && mouseX >= 0) {
+    paintBrush(mouseX, mouseY, currentMat, brushRadius);
+  }
+
+  if (!paused) {
+    const t0 = performance.now();
+    for (let s = 0; s < simSpeed; s++) step();
+    lastStepMs = performance.now() - t0;
+  }
+
+  render();
+
+  frames++;
+  if (now - lastFpsTime >= 500) {
+    fpsEl.textContent = Math.round((frames * 1000) / (now - lastFpsTime));
+    frames = 0;
+    lastFpsTime = now;
+    stepmsEl.textContent = lastStepMs.toFixed(2);
+    let active = 0;
+    for (let i = 0; i < grid.length; i++) if ((grid[i] & MAT_MASK) !== MAT_EMPTY) active++;
+    cellcountEl.textContent = active;
+  }
+}
+requestAnimationFrame(frame);
+
+function screenToGrid(clientX, clientY) {
+  const rect = view.getBoundingClientRect();
+  const gx = ((clientX - rect.left) / rect.width) * SIM_W;
+  const gy = ((clientY - rect.top) / rect.height) * SIM_H;
+  return [gx | 0, gy | 0];
+}
+
+view.addEventListener("mousedown", (e) => {
+  mouseDown = true;
+  [mouseX, mouseY] = screenToGrid(e.clientX, e.clientY);
+});
+window.addEventListener("mouseup", () => { mouseDown = false; });
+view.addEventListener("mousemove", (e) => {
+  [mouseX, mouseY] = screenToGrid(e.clientX, e.clientY);
+});
+view.addEventListener("mouseleave", () => { mouseX = -1; mouseY = -1; });
+
+view.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  mouseDown = true;
+  const t = e.touches[0];
+  [mouseX, mouseY] = screenToGrid(t.clientX, t.clientY);
+}, { passive:false });
+view.addEventListener("touchmove", (e) => {
+  e.preventDefault();
+  const t = e.touches[0];
+  [mouseX, mouseY] = screenToGrid(t.clientX, t.clientY);
+}, { passive:false });
+window.addEventListener("touchend", () => { mouseDown = false; });
+
+document.querySelectorAll("button[data-mat]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("button[data-mat]").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentMat = parseInt(btn.dataset.mat, 10);
+  });
+});
+
+const brushEl = document.getElementById("brush");
+const brushvalEl = document.getElementById("brushval");
+brushEl.addEventListener("input", () => {
+  brushRadius = parseInt(brushEl.value, 10);
+  brushvalEl.textContent = brushRadius;
+});
+
+const speedEl = document.getElementById("speed");
+const speedvalEl = document.getElementById("speedval");
+speedEl.addEventListener("input", () => {
+  simSpeed = parseInt(speedEl.value, 10);
+  speedvalEl.textContent = simSpeed + "x";
+});
+
+const pauseBtn = document.getElementById("pause");
+pauseBtn.addEventListener("click", () => {
+  paused = !paused;
+  pauseBtn.textContent = paused ? "Reanudar" : "Pausar";
+});
+
+document.getElementById("clear").addEventListener("click", () => {
+  grid.fill(0);
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space") { e.preventDefault(); pauseBtn.click(); }
+  // 1 arena, 2 agua, 3 piedra, 4 aceite, 5 humo, 0 borrar
+  if (e.key === "1") document.querySelector('button[data-mat="1"]').click();
+  if (e.key === "2") document.querySelector('button[data-mat="2"]').click();
+  if (e.key === "3") document.querySelector('button[data-mat="3"]').click();
+  if (e.key === "4") document.querySelector('button[data-mat="4"]').click();
+  if (e.key === "5") document.querySelector('button[data-mat="5"]').click();
+  if (e.key === "0") document.querySelector('button[data-mat="0"]').click();
+});
+
+(function seed() {
+  for (let x = 40; x < 130; x++) setCell(x, SIM_H - 30, MAT_WALL);
+  for (let y = SIM_H - 30; y < SIM_H - 10; y++) {
+    setCell(40, y, MAT_WALL);
+    setCell(129, y, MAT_WALL);
+  }
+})();
+</script>
+</body>
+</html>

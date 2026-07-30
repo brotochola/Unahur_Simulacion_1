@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulación de Generación Procedural de Terrenos 3D</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #0b0f19;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #e2e8f0;
+        }
+        #webgl-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        #header-panel {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 16px 20px;
+            border-radius: 12px;
+            max-width: 380px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            pointer-events: auto;
+        }
+        #header-panel h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #38bdf8;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #header-panel h2 {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 10px;
+        }
+        #header-panel p {
+            font-size: 0.82rem;
+            line-height: 1.4;
+            color: #cbd5e1;
+        }
+
+        #legend-panel {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 14px 18px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            pointer-events: auto;
+        }
+        #legend-panel h3 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #94a3b8;
+            margin-bottom: 10px;
+        }
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px 16px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.78rem;
+            color: #e2e8f0;
+        }
+        .color-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            flex-shrink: 0;
+        }
+
+        #stats-panel {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #38bdf8;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 16px;
+        }
+
+        .lil-gui {
+            --background-color: rgba(15, 23, 42, 0.9) !important;
+            --text-color: #e2e8f0 !important;
+            --title-background-color: rgba(30, 41, 59, 0.95) !important;
+            --widget-color: #334155 !important;
+            --hover-color: #475569 !important;
+            --focus-color: #0284c7 !important;
+            --number-color: #38bdf8 !important;
+            --string-color: #4ade80 !important;
+            font-family: inherit !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+        }
+        .lil-gui .title {
+            font-weight: 700 !important;
+            letter-spacing: 0.03em !important;
+        }
+
+        #loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            color: #38bdf8;
+            font-size: 1rem;
+            font-weight: 600;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(15, 23, 42, 0.9);
+            padding: 16px 24px;
+            border-radius: 30px;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(56, 189, 248, 0.2);
+            border-top-color: #38bdf8;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.18"></script>
+    <style>
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 14px;
+            height: 14px;
+            margin: -7px 0 0 -7px;
+            z-index: 5;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(226, 232, 240, 0.85);
+        }
+        #crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
+        #crosshair::after { left: 0; top: 6px; width: 14px; height: 2px; }
+        body.flying #crosshair { opacity: 1; }
+        #fly-hint {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: #cbd5e1;
+            pointer-events: none;
+            transition: opacity 0.25s;
+        }
+        body.flying #fly-hint { opacity: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="webgl-container"></div>
+    <div id="crosshair"></div>
+    <div id="fly-hint">Click en el terreno · FPS fly: WASD · Space/Ctrl · Shift sprint · Esc soltar</div>
+
+    <div id="header-panel">
+        <h1>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            Generación Procedural 3D
+        </h1>
+        <h2>Simulación 1 &bull; Chunks + Biomas</h2>
+        <p>Mundo infinito por <b>chunks</b>. Cámara <b>FPS fly / god mode</b>: mouse look + WASD + Space/Ctrl. Ruido seamless, biomas y objetos por chunk.</p>
+    </div>
+
+    <div id="legend-panel">
+        <h3>Biomas Detectados</h3>
+        <div class="legend-grid">
+            <div class="legend-item"><div class="color-dot" style="background:#1d4ed8;"></div> Océano / Agua</div>
+            <div class="legend-item"><div class="color-dot" style="background:#eab308;"></div> Playa / Arena</div>
+            <div class="legend-item"><div class="color-dot" style="background:#84cc16;"></div> Pastizal / Pradera</div>
+            <div class="legend-item"><div class="color-dot" style="background:#15803d;"></div> Bosque denso</div>
+            <div class="legend-item"><div class="color-dot" style="background:#065f46;"></div> Pantano</div>
+            <div class="legend-item"><div class="color-dot" style="background:#d97706;"></div> Desierto</div>
+            <div class="legend-item"><div class="color-dot" style="background:#78716c;"></div> Roca / Montaña</div>
+            <div class="legend-item"><div class="color-dot" style="background:#f8fafc;"></div> Nieve / Glaciar</div>
+        </div>
+    </div>
+
+    <div id="stats-panel">
+        <div>Chunk: <span id="stat-chunk">0, 0</span></div>
+        <div>En memoria: <span id="stat-loaded">0</span></div>
+        <div>Vértices: <span id="stat-vertices">0</span></div>
+        <div>Árboles: <span id="stat-trees">0</span></div>
+        <div>Cactus: <span id="stat-cacti">0</span></div>
+        <div>Rocas: <span id="stat-rocks">0</span></div>
+        <div>Ríos: <span id="stat-rivers">0</span></div>
+    </div>
+
+    <div id="loader" style="opacity: 0;">
+        <div class="spinner"></div>
+        <span>Generando Terreno...</span>
+    </div>
+
+    <script>
+        /* =========================================================================
+           1. PSEUDO-RANDOM NUMBER GENERATOR (PRNG) & HASHING FUNCTIONS
+           ========================================================================= */
+
+        function createPRNG(seed) {
+            let s = seed >>> 0;
+            return function() {
+                s = (s + 0x6D2B79F5) | 0;
+                let t = Math.imul(s ^ (s >>> 15), 1 | s);
+                t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        }
+
+        function hash2D(x, z, seed = 0) {
+            let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(z, 668265263);
+            h = (h ^ (h >>> 13)) * 1274126177;
+            return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+        }
+
+        class SeededSimplexNoise {
+            constructor(seed = 1337) {
+                this.reseed(seed);
+            }
+
+            reseed(seed) {
+                const rng = createPRNG(seed);
+                const p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) p[i] = i;
+                for (let i = 255; i > 0; i--) {
+                    const r = Math.floor(rng() * (i + 1));
+                    const temp = p[i];
+                    p[i] = p[r];
+                    p[r] = temp;
+                }
+                this.perm = new Uint8Array(512);
+                this.permMod12 = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = p[i & 255];
+                    this.permMod12[i] = this.perm[i] % 12;
+                }
+            }
+
+            noise2D(xin, yin) {
+                const grad3 = [
+                    [1,1],[ -1,1],[1,-1],[ -1,-1],
+                    [1,0],[ -1,0],[0,1],[0,-1],
+                    [0,1],[0,-1],[1,0],[ -1,0]
+                ];
+                let n0, n1, n2;
+                const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+                const s = (xin + yin) * F2;
+                const i = Math.floor(xin + s);
+                const j = Math.floor(yin + s);
+                const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+                const t = (i + j) * G2;
+                const X0 = i - t;
+                const Y0 = j - t;
+                const x0 = xin - X0;
+                const y0 = yin - Y0;
+
+                let i1, j1;
+                if (x0 > y0) { i1 = 1; j1 = 0; } else { i1 = 0; j1 = 1; }
+
+                const x1 = x0 - i1 + G2;
+                const y1 = y0 - j1 + G2;
+                const x2 = x0 - 1.0 + 2.0 * G2;
+                const y2 = y0 - 1.0 + 2.0 * G2;
+
+                const ii = i & 255;
+                const jj = j & 255;
+
+                let t0 = 0.5 - x0 * x0 - y0 * y0;
+                if (t0 < 0) n0 = 0.0;
+                else {
+                    t0 *= t0;
+                    const gi0 = this.permMod12[ii + this.perm[jj]];
+                    n0 = t0 * t0 * (grad3[gi0][0] * x0 + grad3[gi0][1] * y0);
+                }
+
+                let t1 = 0.5 - x1 * x1 - y1 * y1;
+                if (t1 < 0) n1 = 0.0;
+                else {
+                    t1 *= t1;
+                    const gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]];
+                    n1 = t1 * t1 * (grad3[gi1][0] * x1 + grad3[gi1][1] * y1);
+                }
+
+                let t2 = 0.5 - x2 * x2 - y2 * y2;
+                if (t2 < 0) n2 = 0.0;
+                else {
+                    t2 *= t2;
+                    const gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
+                    n2 = t2 * t2 * (grad3[gi2][0] * x2 + grad3[gi2][1] * y2);
+                }
+
+                return 70.0 * (n0 + n1 + n2) * 0.5 + 0.5;
+            }
+
+            fbm(x, y, octaves = 4, persistence = 0.5, lacunarity = 2.0, scale = 0.01) {
+                let total = 0;
+                let frequency = scale;
+                let amplitude = 1;
+                let maxValue = 0;
+                for (let i = 0; i < octaves; i++) {
+                    total += this.noise2D(x * frequency, y * frequency) * amplitude;
+                    maxValue += amplitude;
+                    amplitude *= persistence;
+                    frequency *= lacunarity;
+                }
+                return total / maxValue;
+            }
+        }
+
+        /* =========================================================================
+           2. GLOBAL PARAMETERS & SIMULATION CONFIG
+           ========================================================================= */
+
+        const params = {
+            seed: 678,
+            chunkSize: 120,
+            gridSize: 80,
+            viewRadius: 1,
+            heightScale: 28,
+            flySpeed: 1.8,
+            sprintMultiplier: 3.0,
+            lookSensitivity: 0.0022,
+
+            octaves: 5,
+            persistence: 0.48,
+            lacunarity: 2.1,
+            noiseScale: 0.008,
+            exponent: 1.8,
+
+            waterLevel: 4.5,
+            tempScale: 0.005,
+            humidityScale: 0.006,
+            snowLevel: 18.0,
+            desertTempThreshold: 0.62,
+            desertHumidityThreshold: 0.38,
+
+            treeDensity: 0.35,
+            cactusDensity: 0.25,
+            rockDensity: 0.20,
+
+            enableRivers: true,
+            riverCount: 2,
+            riverMinStartHeight: 14.0,
+            riverCarveDepth: 1.2,
+
+            animateWater: true,
+            viewMode: 'Biomes',
+            wireframe: false,
+            flatShading: true,
+            showChunkBorders: true,
+
+            regenerate: () => rebuildWorld(),
+            resetCamera: () => resetCameraPosition()
+        };
+
+        const presets = {
+            'Archipielago / Islas': { seed: 1024, heightScale: 22, waterLevel: 7.0, octaves: 4, noiseScale: 0.012 },
+            'Cordillera Alpina': { seed: 888, heightScale: 45, waterLevel: 2.0, octaves: 6, exponent: 2.2, snowLevel: 16 },
+            'Cañón Desértico': { seed: 333, desertTempThreshold: 0.2, desertHumidityThreshold: 0.8, heightScale: 30 },
+            'Bosque Tropical': { seed: 555, humidityScale: 0.01, desertTempThreshold: 0.9, treeDensity: 0.7 }
+        };
+
+        /* =========================================================================
+           3. THREE.JS SCENE SETUP
+           ========================================================================= */
+
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f19);
+        scene.fog = new THREE.FogExp2(0x0b0f19, 0.0018);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+
+        // FPS fly / god mode — euler YXZ (yaw, pitch)
+        const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const PI_2 = Math.PI / 2;
+        let pointerLocked = false;
+
+        function applyLook() {
+            camera.quaternion.setFromEuler(lookEuler);
+        }
+
+        function resetCameraPosition() {
+            camera.position.set(40, 55, 90);
+            lookEuler.set(-0.45, -0.35, 0);
+            applyLook();
+        }
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+        resetCameraPosition();
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfffbeb, 0.9);
+        sunLight.position.set(120, 150, 80);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 10;
+        sunLight.shadow.camera.far = 600;
+        const d = 220;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
+        scene.add(sunLight);
+
+        let waterMesh;
+        function createWaterPlane() {
+            if (waterMesh) {
+                scene.remove(waterMesh);
+                waterMesh.geometry.dispose();
+                waterMesh.material.dispose();
+            }
+            const span = params.chunkSize * (params.viewRadius * 2 + 1) * 1.4;
+            const waterGeo = new THREE.PlaneGeometry(span, span);
+            const waterMat = new THREE.MeshStandardMaterial({
+                color: 0x1d4ed8,
+                roughness: 0.1,
+                metalness: 0.8,
+                transparent: true,
+                opacity: 0.75
+            });
+            waterMesh = new THREE.Mesh(waterGeo, waterMat);
+            waterMesh.rotation.x = -Math.PI / 2;
+            waterMesh.position.y = params.waterLevel;
+            scene.add(waterMesh);
+        }
+
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            // Evita scroll / shortcuts del browser en fly
+            if (pointerLocked && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+                e.preventDefault();
+            }
+        });
+        window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+        renderer.domElement.addEventListener('click', () => {
+            if (!pointerLocked) renderer.domElement.requestPointerLock();
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            pointerLocked = document.pointerLockElement === renderer.domElement;
+            document.body.classList.toggle('flying', pointerLocked);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!pointerLocked) return;
+            lookEuler.y -= e.movementX * params.lookSensitivity;
+            lookEuler.x -= e.movementY * params.lookSensitivity;
+            lookEuler.x = Math.max(-PI_2 + 0.01, Math.min(PI_2 - 0.01, lookEuler.x));
+            applyLook();
+        });
+
+        const _forward = new THREE.Vector3();
+        const _right = new THREE.Vector3();
+        const _worldUp = new THREE.Vector3(0, 1, 0);
+        const _move = new THREE.Vector3();
+
+        function updateFlyCamera() {
+            const sprint = keys['ShiftLeft'] || keys['ShiftRight'];
+            const speed = params.flySpeed * (sprint ? params.sprintMultiplier : 1);
+
+            camera.getWorldDirection(_forward);
+            _right.crossVectors(_forward, _worldUp).normalize();
+
+            _move.set(0, 0, 0);
+            if (keys['KeyW'] || keys['ArrowUp'])    _move.add(_forward);
+            if (keys['KeyS'] || keys['ArrowDown'])  _move.sub(_forward);
+            if (keys['KeyD'] || keys['ArrowRight']) _move.add(_right);
+            if (keys['KeyA'] || keys['ArrowLeft'])  _move.sub(_right);
+            // Vertical god-mode (no depende del pitch)
+            if (keys['Space'])                      _move.y += 1;
+            if (keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']) _move.y -= 1;
+
+            if (_move.lengthSq() > 0) {
+                // Horizontal from WASD stays on look dir (incluye pitch); Space/Ctrl ya en Y
+                _move.normalize().multiplyScalar(speed);
+                camera.position.add(_move);
+            }
+        }
+
+        /* =========================================================================
+           4. PROCEDURAL TERRAIN — PER CHUNK
+           ========================================================================= */
+
+        const noiseHeight = new SeededSimplexNoise();
+        const noiseTemp = new SeededSimplexNoise();
+        const noiseHum = new SeededSimplexNoise();
+
+        const BIOME_COLORS = {
+            ocean: new THREE.Color(0x1d4ed8),
+            beach: new THREE.Color(0xeab308),
+            grass: new THREE.Color(0x84cc16),
+            forest: new THREE.Color(0x15803d),
+            swamp: new THREE.Color(0x065f46),
+            desert: new THREE.Color(0xd97706),
+            rock: new THREE.Color(0x78716c),
+            snow: new THREE.Color(0xf8fafc),
+            river: new THREE.Color(0x38bdf8)
+        };
+
+        function disposeObject3D(obj) {
+            obj.traverse((child) => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                    else child.material.dispose();
+                }
+            });
+        }
+
+        function buildObjectInstances(count, posAttr, heights, slopes, biomes, humidities) {
+            const treeTransforms = [];
+            const cactusTransforms = [];
+            const rockTransforms = [];
+            const dummy = new THREE.Object3D();
+
+            for (let i = 0; i < count; i++) {
+                const h = heights[i];
+                const slope = slopes[i];
+                const biome = biomes[i];
+                const humidity = humidities[i];
+
+                if (h <= params.waterLevel + 0.8) continue;
+
+                const x = posAttr.getX(i);
+                const z = posAttr.getZ(i);
+
+                const gx = Math.round(x * 10);
+                const gz = Math.round(z * 10);
+
+                const rProb = hash2D(gx, gz, params.seed + 1000);
+                const rRot = hash2D(gx, gz, params.seed + 2000);
+                const rScale = hash2D(gx, gz, params.seed + 3000);
+                const rOffX = hash2D(gx, gz, params.seed + 4000);
+                const rOffZ = hash2D(gx, gz, params.seed + 5000);
+
+                if ((biome === 3 || biome === 2 || biome === 4) && slope < 0.25) {
+                    const biomeFactor = biome === 3 ? 1.0 : (biome === 4 ? 0.6 : 0.25);
+                    const treeChance = humidity * (1.0 - slope) * biomeFactor * params.treeDensity * 0.15;
+
+                    if (rProb < treeChance) {
+                        dummy.position.set(x + (rOffX - 0.5) * 1.2, h, z + (rOffZ - 0.5) * 1.2);
+                        const s = 0.6 + rScale * 0.8;
+                        dummy.scale.set(s, s * (0.8 + rRot * 0.5), s);
+                        dummy.rotation.set(0, rRot * Math.PI * 2, 0);
+                        dummy.updateMatrix();
+                        treeTransforms.push(dummy.matrix.clone());
+                    }
+                }
+
+                if (biome === 5 && slope < 0.2) {
+                    const cactusChance = (1.0 - humidity) * (1.0 - slope) * params.cactusDensity * 0.12;
+                    if (rProb < cactusChance) {
+                        dummy.position.set(x + (rOffX - 0.5) * 1.5, h, z + (rOffZ - 0.5) * 1.5);
+                        const s = 0.5 + rScale * 0.7;
+                        dummy.scale.set(s, s, s);
+                        dummy.rotation.set(0, rRot * Math.PI * 2, 0);
+                        dummy.updateMatrix();
+                        cactusTransforms.push(dummy.matrix.clone());
+                    }
+                }
+
+                if ((slope > 0.28 || biome === 6 || biome === 5) && h > params.waterLevel + 1.0) {
+                    const rockChance = slope * params.rockDensity * 0.18;
+                    if (rProb < rockChance) {
+                        dummy.position.set(x, h - 0.2, z);
+                        const s = 0.4 + rScale * 1.2;
+                        dummy.scale.set(s, s * 0.7, s);
+                        dummy.rotation.set(rRot * Math.PI, rOffX * Math.PI, rOffZ * Math.PI);
+                        dummy.updateMatrix();
+                        rockTransforms.push(dummy.matrix.clone());
+                    }
+                }
+            }
+
+            const meshes = [];
+            if (treeTransforms.length > 0) {
+                const treeGeo = new THREE.ConeGeometry(1.2, 4.5, 5);
+                treeGeo.translate(0, 2.25, 0);
+                const treeMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.9, flatShading: true });
+                const instancedTrees = new THREE.InstancedMesh(treeGeo, treeMat, treeTransforms.length);
+                treeTransforms.forEach((mat, idx) => instancedTrees.setMatrixAt(idx, mat));
+                instancedTrees.castShadow = true;
+                instancedTrees.receiveShadow = true;
+                meshes.push(instancedTrees);
+            }
+
+            if (cactusTransforms.length > 0) {
+                const cactusGeo = new THREE.CylinderGeometry(0.3, 0.35, 2.8, 6);
+                cactusGeo.translate(0, 1.4, 0);
+                const cactusMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7, flatShading: true });
+                const instancedCacti = new THREE.InstancedMesh(cactusGeo, cactusMat, cactusTransforms.length);
+                cactusTransforms.forEach((mat, idx) => instancedCacti.setMatrixAt(idx, mat));
+                instancedCacti.castShadow = true;
+                meshes.push(instancedCacti);
+            }
+
+            if (rockTransforms.length > 0) {
+                const rockGeo = new THREE.DodecahedronGeometry(1.2, 1);
+                const rockMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95, flatShading: true });
+                const instancedRocks = new THREE.InstancedMesh(rockGeo, rockMat, rockTransforms.length);
+                rockTransforms.forEach((mat, idx) => instancedRocks.setMatrixAt(idx, mat));
+                instancedRocks.castShadow = true;
+                instancedRocks.receiveShadow = true;
+                meshes.push(instancedRocks);
+            }
+
+            return {
+                meshes,
+                trees: treeTransforms.length,
+                cacti: cactusTransforms.length,
+                rocks: rockTransforms.length
+            };
+        }
+
+        /** Genera un chunk de terreno en coords de chunk (cx, cz). Ruido en world-space → bordes seamless. */
+        function generateTerrainChunk(cx, cz) {
+            const N = params.gridSize;
+            const size = params.chunkSize;
+            const halfSize = size / 2;
+            const step = size / (N - 1);
+            const originX = cx * size;
+            const originZ = cz * size;
+
+            const group = new THREE.Group();
+            group.name = `chunk_${cx}_${cz}`;
+
+            const geometry = new THREE.PlaneGeometry(size, size, N - 1, N - 1);
+            geometry.rotateX(-Math.PI / 2);
+
+            const posAttr = geometry.attributes.position;
+            const count = posAttr.count;
+
+            // Local plane → world coords (ruido global)
+            for (let i = 0; i < count; i++) {
+                posAttr.setX(i, posAttr.getX(i) + originX + halfSize);
+                posAttr.setZ(i, posAttr.getZ(i) + originZ + halfSize);
+            }
+
+            const heights = new Float32Array(count);
+            const temperatures = new Float32Array(count);
+            const humidities = new Float32Array(count);
+            const slopes = new Float32Array(count);
+            const biomes = new Uint8Array(count);
+            const colors = new Float32Array(count * 3);
+
+            const riverPRNG = createPRNG(params.seed + 303 + cx * 73856093 + cz * 19349663);
+
+            for (let i = 0; i < count; i++) {
+                const x = posAttr.getX(i);
+                const z = posAttr.getZ(i);
+
+                let rawNoise = noiseHeight.fbm(
+                    x + 5000, z + 5000,
+                    params.octaves,
+                    params.persistence,
+                    params.lacunarity,
+                    params.noiseScale
+                );
+
+                let h = Math.pow(rawNoise, params.exponent) * params.heightScale;
+                heights[i] = h;
+                posAttr.setY(i, h);
+
+                let baseT = noiseTemp.fbm(x + 1000, z + 1000, 3, 0.5, 2.0, params.tempScale);
+                let altitudeCooling = (h / params.heightScale) * 0.45;
+                temperatures[i] = Math.max(0, Math.min(1, baseT - altitudeCooling));
+
+                let hum = noiseHum.fbm(x + 2000, z + 2000, 3, 0.5, 2.0, params.humidityScale);
+                humidities[i] = Math.max(0, Math.min(1, hum));
+            }
+
+            geometry.computeVertexNormals();
+            const normAttr = geometry.attributes.normal;
+
+            for (let i = 0; i < count; i++) {
+                slopes[i] = 1.0 - normAttr.getY(i);
+            }
+
+            const riverLinesGroup = new THREE.Group();
+            let activeRivers = 0;
+
+            if (params.enableRivers) {
+                const candidates = [];
+                for (let i = 0; i < count; i++) {
+                    if (heights[i] >= params.riverMinStartHeight) candidates.push(i);
+                }
+
+                for (let i = candidates.length - 1; i > 0; i--) {
+                    const j = Math.floor(riverPRNG() * (i + 1));
+                    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+                }
+
+                const numRivers = Math.min(params.riverCount, candidates.length);
+                for (let r = 0; r < numRivers; r++) {
+                    let currentIdx = candidates[r];
+                    const riverPath = [currentIdx];
+                    const visited = new Set([currentIdx]);
+
+                    for (let stepCount = 0; stepCount < 200; stepCount++) {
+                        const curX = Math.round((posAttr.getX(currentIdx) - originX) / step);
+                        const curZ = Math.round((posAttr.getZ(currentIdx) - originZ) / step);
+
+                        if (heights[currentIdx] <= params.waterLevel) break;
+
+                        let lowestIdx = -1;
+                        let lowestH = heights[currentIdx];
+
+                        for (let dx = -1; dx <= 1; dx++) {
+                            for (let dz = -1; dz <= 1; dz++) {
+                                if (dx === 0 && dz === 0) continue;
+                                const nx = curX + dx;
+                                const nz = curZ + dz;
+                                if (nx >= 0 && nx < N && nz >= 0 && nz < N) {
+                                    const nIdx = nz * N + nx;
+                                    if (!visited.has(nIdx) && heights[nIdx] < lowestH) {
+                                        lowestH = heights[nIdx];
+                                        lowestIdx = nIdx;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (lowestIdx !== -1) {
+                            currentIdx = lowestIdx;
+                            riverPath.push(currentIdx);
+                            visited.add(currentIdx);
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if (riverPath.length > 5) {
+                        activeRivers++;
+                        const points = [];
+                        for (let pIdx of riverPath) {
+                            heights[pIdx] = Math.max(params.waterLevel - 0.5, heights[pIdx] - params.riverCarveDepth);
+                            posAttr.setY(pIdx, heights[pIdx]);
+                            humidities[pIdx] = 1.0;
+                            points.push(new THREE.Vector3(
+                                posAttr.getX(pIdx),
+                                heights[pIdx] + 0.3,
+                                posAttr.getZ(pIdx)
+                            ));
+                        }
+                        const riverGeo = new THREE.BufferGeometry().setFromPoints(points);
+                        const riverMat = new THREE.LineBasicMaterial({ color: 0x38bdf8 });
+                        riverLinesGroup.add(new THREE.Line(riverGeo, riverMat));
+                    }
+                }
+
+                geometry.computeVertexNormals();
+            }
+
+            for (let i = 0; i < count; i++) {
+                const h = heights[i];
+                const t = temperatures[i];
+                const m = humidities[i];
+                const slope = slopes[i];
+                let color = new THREE.Color();
+
+                if (params.viewMode === 'Biomes') {
+                    if (h < params.waterLevel) {
+                        biomes[i] = 0; color.copy(BIOME_COLORS.ocean);
+                    } else if (h < params.waterLevel + 1.2) {
+                        biomes[i] = 1; color.copy(BIOME_COLORS.beach);
+                    } else if (h > params.snowLevel || (t < 0.22 && h > params.heightScale * 0.5)) {
+                        biomes[i] = 7; color.copy(BIOME_COLORS.snow);
+                    } else if (slope > 0.38) {
+                        biomes[i] = 6; color.copy(BIOME_COLORS.rock);
+                    } else if (t > params.desertTempThreshold && m < params.desertHumidityThreshold) {
+                        biomes[i] = 5; color.copy(BIOME_COLORS.desert);
+                    } else if (m > 0.65 && h < params.waterLevel + 4.0) {
+                        biomes[i] = 4; color.copy(BIOME_COLORS.swamp);
+                    } else if (m > 0.55) {
+                        biomes[i] = 3; color.copy(BIOME_COLORS.forest);
+                    } else {
+                        biomes[i] = 2; color.copy(BIOME_COLORS.grass);
+                    }
+                } else if (params.viewMode === 'Heightmap') {
+                    const normH = Math.max(0, Math.min(1, h / params.heightScale));
+                    color.setRGB(normH, normH, normH);
+                } else if (params.viewMode === 'Temperature') {
+                    color.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
+                } else if (params.viewMode === 'Humidity') {
+                    color.setHSL(0.55, m, 0.2 + m * 0.5);
+                } else if (params.viewMode === 'Slope') {
+                    color.setRGB(slope, slope, slope);
+                }
+
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.attributes.position.needsUpdate = true;
+
+            const terrainMat = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                wireframe: params.wireframe,
+                flatShading: params.flatShading,
+                roughness: 0.85,
+                metalness: 0.1
+            });
+
+            const terrainMesh = new THREE.Mesh(geometry, terrainMat);
+            terrainMesh.receiveShadow = true;
+            terrainMesh.castShadow = true;
+            group.add(terrainMesh);
+            group.add(riverLinesGroup);
+
+            if (params.showChunkBorders) {
+                const border = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(new THREE.BoxGeometry(size, 0.1, size)),
+                    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
+                );
+                border.position.set(originX + halfSize, params.waterLevel + 0.5, originZ + halfSize);
+                group.add(border);
+            }
+
+            const objects = buildObjectInstances(count, posAttr, heights, slopes, biomes, humidities);
+            objects.meshes.forEach(m => group.add(m));
+
+            return {
+                cx, cz,
+                group,
+                vertices: count,
+                trees: objects.trees,
+                cacti: objects.cacti,
+                rocks: objects.rocks,
+                rivers: activeRivers
+            };
+        }
+
+        /* =========================================================================
+           5. CHUNK MANAGER (3x3 / NxN alrededor del target)
+           ========================================================================= */
+
+        class ChunkManager {
+            constructor(generator) {
+                this.generator = generator;
+                this.loadedChunks = new Map();
+                this.currentChunkKey = null;
+            }
+
+            worldToChunkCoords(x, z) {
+                const s = params.chunkSize;
+                return {
+                    cx: Math.floor(x / s),
+                    cz: Math.floor(z / s)
+                };
+            }
+
+            getOrCreateChunk(cx, cz) {
+                const key = `${cx},${cz}`;
+                if (!this.loadedChunks.has(key)) {
+                    const chunk = this.generator(cx, cz);
+                    this.loadedChunks.set(key, chunk);
+                    scene.add(chunk.group);
+                }
+                return this.loadedChunks.get(key);
+            }
+
+            unloadChunk(key) {
+                const chunk = this.loadedChunks.get(key);
+                if (!chunk) return;
+                scene.remove(chunk.group);
+                disposeObject3D(chunk.group);
+                this.loadedChunks.delete(key);
+            }
+
+            clear() {
+                for (const key of [...this.loadedChunks.keys()]) {
+                    this.unloadChunk(key);
+                }
+                this.currentChunkKey = null;
+            }
+
+            update(worldX, worldZ) {
+                const { cx, cz } = this.worldToChunkCoords(worldX, worldZ);
+                const centerKey = `${cx},${cz}`;
+                const R = params.viewRadius;
+                const visibleKeys = new Set();
+
+                for (let dx = -R; dx <= R; dx++) {
+                    for (let dz = -R; dz <= R; dz++) {
+                        const key = `${cx + dx},${cz + dz}`;
+                        visibleKeys.add(key);
+                        this.getOrCreateChunk(cx + dx, cz + dz);
+                    }
+                }
+
+                for (const key of [...this.loadedChunks.keys()]) {
+                    if (!visibleKeys.has(key)) this.unloadChunk(key);
+                }
+
+                this.currentChunkKey = centerKey;
+                return { activeChunk: { cx, cz } };
+            }
+
+            aggregateStats() {
+                let vertices = 0, trees = 0, cacti = 0, rocks = 0, rivers = 0;
+                for (const chunk of this.loadedChunks.values()) {
+                    vertices += chunk.vertices;
+                    trees += chunk.trees;
+                    cacti += chunk.cacti;
+                    rocks += chunk.rocks;
+                    rivers += chunk.rivers;
+                }
+                return { vertices, trees, cacti, rocks, rivers, loaded: this.loadedChunks.size };
+            }
+        }
+
+        const chunkManager = new ChunkManager(generateTerrainChunk);
+
+        function reseedNoise() {
+            noiseHeight.reseed(params.seed);
+            noiseTemp.reseed(params.seed + 101);
+            noiseHum.reseed(params.seed + 202);
+        }
+
+        function rebuildWorld() {
+            const loader = document.getElementById('loader');
+            loader.style.opacity = '1';
+
+            setTimeout(() => {
+                reseedNoise();
+                chunkManager.clear();
+                createWaterPlane();
+                lastChunkKey = null;
+                const { activeChunk } = chunkManager.update(camera.position.x, camera.position.z);
+                updateStats(activeChunk);
+                loader.style.opacity = '0';
+            }, 30);
+        }
+
+        function updateStats(activeChunk) {
+            const s = chunkManager.aggregateStats();
+            document.getElementById('stat-chunk').textContent = `${activeChunk.cx}, ${activeChunk.cz}`;
+            document.getElementById('stat-loaded').textContent = s.loaded;
+            document.getElementById('stat-vertices').textContent = s.vertices.toLocaleString();
+            document.getElementById('stat-trees').textContent = s.trees;
+            document.getElementById('stat-cacti').textContent = s.cacti;
+            document.getElementById('stat-rocks').textContent = s.rocks;
+            document.getElementById('stat-rivers').textContent = s.rivers;
+        }
+
+        /* =========================================================================
+           6. LIL-GUI KNOBS & CONTROLS SETUP
+           ========================================================================= */
+
+        const gui = new lil.GUI({ title: 'Parámetros de Simulación' });
+
+        const fSeed = gui.addFolder('1. Seed & Chunks');
+        fSeed.add(params, 'seed', 1, 9999, 1).name('Seed (Semilla)').onFinishChange(() => rebuildWorld());
+        fSeed.add(params, 'chunkSize', 60, 200, 10).name('Tamaño Chunk').onFinishChange(() => rebuildWorld());
+        fSeed.add(params, 'gridSize', 40, 160, 10).name('Resolución / Chunk').onFinishChange(() => rebuildWorld());
+        fSeed.add(params, 'viewRadius', 1, 2, 1).name('Radio Vista (1=3×3)').onFinishChange(() => rebuildWorld());
+        fSeed.add(params, 'heightScale', 5, 80, 1).name('Escala Altura').onFinishChange(() => rebuildWorld());
+        fSeed.add(params, 'waterLevel', 0, 20, 0.5).name('Nivel del Agua').onFinishChange(() => rebuildWorld());
+        fSeed.add(params, 'flySpeed', 0.3, 8, 0.1).name('Velocidad Fly');
+        fSeed.add(params, 'sprintMultiplier', 1.5, 6, 0.1).name('Multiplicador Sprint');
+        fSeed.add(params, 'lookSensitivity', 0.0005, 0.006, 0.0001).name('Sensibilidad Mouse');
+        fSeed.add(params, 'showChunkBorders').name('Bordes de Chunk').onFinishChange(() => rebuildWorld());
+
+        const fNoise = gui.addFolder('2. Ruido fBm (Heightmap)');
+        fNoise.add(params, 'octaves', 1, 8, 1).name('Octavas (Detalle)').onFinishChange(() => rebuildWorld());
+        fNoise.add(params, 'persistence', 0.1, 0.8, 0.02).name('Persistencia (Gain)').onFinishChange(() => rebuildWorld());
+        fNoise.add(params, 'lacunarity', 1.2, 3.5, 0.1).name('Lacunaridad (Freq)').onFinishChange(() => rebuildWorld());
+        fNoise.add(params, 'noiseScale', 0.002, 0.03, 0.001).name('Escala del Ruido').onFinishChange(() => rebuildWorld());
+        fNoise.add(params, 'exponent', 1.0, 3.5, 0.1).name('Exponente (Picos)').onFinishChange(() => rebuildWorld());
+
+        const fClimate = gui.addFolder('3. Clima y Biomas');
+        fClimate.add(params, 'tempScale', 0.001, 0.02, 0.001).name('Escala Temp.').onFinishChange(() => rebuildWorld());
+        fClimate.add(params, 'humidityScale', 0.001, 0.02, 0.001).name('Escala Humedad').onFinishChange(() => rebuildWorld());
+        fClimate.add(params, 'snowLevel', 10, 50, 1).name('Límite Nieve').onFinishChange(() => rebuildWorld());
+        fClimate.add(params, 'desertTempThreshold', 0.3, 0.9, 0.05).name('Umbral Desierto Temp').onFinishChange(() => rebuildWorld());
+
+        const fObjects = gui.addFolder('4. Colocación de Objetos');
+        fObjects.add(params, 'treeDensity', 0.0, 1.0, 0.05).name('Densidad Árboles').onFinishChange(() => rebuildWorld());
+        fObjects.add(params, 'cactusDensity', 0.0, 1.0, 0.05).name('Densidad Cactus').onFinishChange(() => rebuildWorld());
+        fObjects.add(params, 'rockDensity', 0.0, 1.0, 0.05).name('Densidad Rocas').onFinishChange(() => rebuildWorld());
+
+        const fRivers = gui.addFolder('5. Algoritmo de Ríos');
+        fRivers.add(params, 'enableRivers').name('Activar Ríos').onFinishChange(() => rebuildWorld());
+        fRivers.add(params, 'riverCount', 1, 6, 1).name('Ríos / Chunk').onFinishChange(() => rebuildWorld());
+        fRivers.add(params, 'riverCarveDepth', 0.2, 3.0, 0.1).name('Profundidad Cauce').onFinishChange(() => rebuildWorld());
+
+        const fVisuals = gui.addFolder('6. Visualización y Animación');
+        fVisuals.add(params, 'animateWater').name('Animar Agua');
+        fVisuals.add(params, 'viewMode', ['Biomes', 'Heightmap', 'Temperature', 'Humidity', 'Slope']).name('Modo Mapa').onFinishChange(() => rebuildWorld());
+        fVisuals.add(params, 'wireframe').name('Ver Malla (Wireframe)').onChange((v) => {
+            for (const chunk of chunkManager.loadedChunks.values()) {
+                chunk.group.traverse((child) => {
+                    if (child.isMesh && child.material && child.material.vertexColors) {
+                        child.material.wireframe = v;
+                    }
+                });
+            }
+        });
+        fVisuals.add(params, 'flatShading').name('Flat Shading').onFinishChange(() => rebuildWorld());
+
+        const fPresets = gui.addFolder('Presets de Mapa');
+        Object.keys(presets).forEach(name => {
+            fPresets.add({ [name]: () => {
+                Object.assign(params, presets[name]);
+                gui.controllersRecursive().forEach(c => c.updateDisplay());
+                rebuildWorld();
+            }}, name);
+        });
+
+        gui.add(params, 'regenerate').name('Regenerar Mundo');
+        gui.add(params, 'resetCamera').name('Resetear Cámara');
+
+        /* =========================================================================
+           7. ANIMATION & RESIZE HANDLING
+           ========================================================================= */
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        reseedNoise();
+        createWaterPlane();
+        {
+            const { activeChunk } = chunkManager.update(camera.position.x, camera.position.z);
+            updateStats(activeChunk);
+        }
+
+        let lastChunkKey = null;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            updateFlyCamera();
+
+            const { activeChunk } = chunkManager.update(camera.position.x, camera.position.z);
+            const key = `${activeChunk.cx},${activeChunk.cz}`;
+            if (key !== lastChunkKey) {
+                lastChunkKey = key;
+                updateStats(activeChunk);
+                const cx = (activeChunk.cx + 0.5) * params.chunkSize;
+                const cz = (activeChunk.cz + 0.5) * params.chunkSize;
+                if (waterMesh) {
+                    waterMesh.position.x = cx;
+                    waterMesh.position.z = cz;
+                }
+                sunLight.position.set(cx + 120, 150, cz + 80);
+                sunLight.target.position.set(cx, 0, cz);
+                sunLight.target.updateMatrixWorld();
+            }
+
+            if (waterMesh) {
+                if (params.animateWater) {
+                    waterMesh.position.y = params.waterLevel + Math.sin(Date.now() * 0.0015) * 0.15;
+                } else {
+                    waterMesh.position.y = params.waterLevel;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+    </script>
+</body>
+</html>

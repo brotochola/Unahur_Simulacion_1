@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discrete Event Simulation (DES) - Supermarket Queue</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #22c55e;
+            --accent-blue: #3b82f6;
+            --accent-orange: #f97316;
+            --accent-purple: #a855f7;
+            --border-color: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-height: 100vh;
+        }
+
+        header {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--accent-blue);
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Controls Panel */
+        .panel {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        input[type="number"], select {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #btn-start { background-color: var(--accent-green); color: white; }
+        #btn-pause { background-color: var(--accent-orange); color: white; }
+        #btn-reset { background-color: #ef4444; color: white; }
+
+        /* Main Workspace Grid */
+        .workspace {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .workspace { grid-template-columns: 1fr; }
+        }
+
+        /* Visualization Section */
+        .vis-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .cashiers-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+        }
+
+        .cashier-card {
+            background: var(--bg-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: border-color 0.2s;
+        }
+
+        .cashier-card.busy { border-color: var(--accent-orange); }
+        .cashier-card.free { border-color: var(--accent-green); }
+
+        .cashier-status {
+            font-weight: bold;
+            font-size: 0.85rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            width: fit-content;
+        }
+
+        .status-free { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+        .status-busy { background: rgba(249, 115, 22, 0.2); color: var(--accent-orange); }
+
+        .queue-container {
+            background: var(--bg-primary);
+            border: 1px dashed var(--border-color);
+            border-radius: 6px;
+            padding: 15px;
+            min-height: 80px;
+        }
+
+        .queue-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .customer-box {
+            background-color: var(--accent-blue);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        /* Stats & Debug Sections */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat-box {
+            background: var(--bg-primary);
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-box .val {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        .stat-box .lbl {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Log & Queue Debugger */
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .log-box, .event-queue-box {
+            background: var(--bg-primary);
+            font-family: monospace;
+            font-size: 0.8rem;
+            padding: 10px;
+            border-radius: 4px;
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        .log-entry { margin-bottom: 4px; }
+        .log-entry .time { color: var(--accent-purple); }
+
+        .event-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .event-item:first-child {
+            background-color: rgba(59, 130, 246, 0.15);
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h1>Discrete Event Simulation (DES) Architecture</h1>
+            <p>Supermarket Single-Queue Multi-Cashier Model</p>
+        </div>
+        <div id="sim-clock-display" style="font-size: 1.2rem; font-weight: bold; color: var(--accent-green);">
+            SIM TIME: 00:00:00.0
+        </div>
+    </header>
+
+    <!-- Control Panel -->
+    <div class="panel controls-grid">
+        <div class="control-group">
+            <label for="input-cashiers">Cashiers (Servers)</label>
+            <input type="number" id="input-cashiers" value="3" min="1" max="10">
+        </div>
+        <div class="control-group">
+            <label for="input-arrival">Mean Arrival Interval (min)</label>
+            <input type="number" id="input-arrival" value="2.0" step="0.1" min="0.1">
+        </div>
+        <div class="control-group">
+            <label for="input-service">Mean Service Duration (min)</label>
+            <input type="number" id="input-service" value="5.0" step="0.1" min="0.1">
+        </div>
+        <div class="control-group">
+            <label for="select-speed">Execution Speed</label>
+            <select id="select-speed">
+                <option value="1">1x (Realtime-ish)</option>
+                <option value="10">10x</option>
+                <option value="100" selected>100x</option>
+                <option value="1000">1000x</option>
+                <option value="0">Max (Instant Step)</option>
+            </select>
+        </div>
+        <div class="button-group">
+            <button id="btn-start">Start</button>
+            <button id="btn-pause" disabled>Pause</button>
+            <button id="btn-reset">Reset</button>
+        </div>
+    </div>
+
+    <!-- Main Content Workspace -->
+    <div class="workspace">
+        <div class="vis-section">
+            
+            <!-- Cashiers UI -->
+            <div class="panel">
+                <h3>Cashiers</h3>
+                <div id="cashiers-container" class="cashiers-container" style="margin-top: 10px;"></div>
+            </div>
+
+            <!-- Queue UI -->
+            <div class="panel">
+                <h3 id="queue-header">Waiting Queue (0)</h3>
+                <div class="queue-container">
+                    <div id="queue-list" class="queue-list"></div>
+                </div>
+            </div>
+
+            <!-- Statistics Panel -->
+            <div class="panel">
+                <h3>System Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-box"><div class="val" id="stat-created">0</div><div class="lbl">Created</div></div>
+                    <div class="stat-box"><div class="val" id="stat-served">0</div><div class="lbl">Served</div></div>
+                    <div class="stat-box"><div class="val" id="stat-waiting">0</div><div class="lbl">Current Queue</div></div>
+                    <div class="stat-box"><div class="val" id="stat-avg-wait">0.0m</div><div class="lbl">Avg Wait Time</div></div>
+                    <div class="stat-box"><div class="val" id="stat-max-wait">0.0m</div><div class="lbl">Max Wait Time</div></div>
+                    <div class="stat-box"><div class="val" id="stat-avg-service">0.0m</div><div class="lbl">Avg Service Time</div></div>
+                    <div class="stat-box"><div class="val" id="stat-max-queue">0</div><div class="lbl">Max Queue Length</div></div>
+                    <div class="stat-box"><div class="val" id="stat-system-util">0%</div><div class="lbl">Avg Cashier Util.</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Educational Debugging Panels -->
+        <div class="side-panel">
+            <div class="panel">
+                <h3>Future Event Queue (FEC)</h3>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px;">
+                    Sorted by lowest execution time. Clock jumps to head of queue.
+                </p>
+                <div id="fec-list" class="event-queue-box"></div>
+            </div>
+
+            <div class="panel">
+                <h3>Event Execution Log</h3>
+                <div id="event-log" class="log-box"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ====================================================================
+         * 1. CORE DISCRETE EVENT SIMULATION (DES) DATA STRUCTURES
+         * ====================================================================
+         */
+
+        // Enumeration of Event Types
+        const EventType = {
+            CLIENT_ARRIVES: 'CLIENT_ARRIVES',
+            SERVICE_START: 'SERVICE_START',
+            SERVICE_END: 'SERVICE_END'
+        };
+
+        // Represents a discrete event scheduled to occur at a precise simulation time
+        class SimulationEvent {
+            constructor(time, type, payload = {}) {
+                this.time = time;         // Double: Abs simulation time (minutes)
+                this.type = type;         // String: EventType
+                this.payload = payload;   // Object: Custom metadata
+            }
+        }
+
+        // Priority Queue implementation for the Future Event Queue (FEC)
+        class PriorityEventQueue {
+            constructor() {
+                this.events = [];
+            }
+
+            enqueue(event) {
+                // Insert maintaining chronological order (lowest time first)
+                let added = false;
+                for (let i = 0; i < this.events.length; i++) {
+                    if (event.time < this.events[i].time) {
+                        this.events.splice(i, 0, event);
+                        added = true;
+                        break;
+                    }
+                }
+                if (!added) {
+                    this.events.push(event);
+                }
+            }
+
+            dequeue() {
+                return this.events.shift(); // Remove and return lowest-time event
+            }
+
+            isEmpty() {
+                return this.events.length === 0;
+            }
+
+            clear() {
+                this.events = [];
+            }
+        }
+
+        /**
+         * ====================================================================
+         * 2. DOMAIN MODELS
+         * ====================================================================
+         */
+
+        class Customer {
+            static idCounter = 1;
+            constructor(arrivalTime) {
+                this.id = Customer.idCounter++;
+                this.arrivalTime = arrivalTime;
+                this.serviceStartTime = null;
+                this.serviceTimeDuration = 0;
+            }
+        }
+
+        class Cashier {
+            constructor(id) {
+                this.id = id;
+                this.isBusy = false;
+                this.currentCustomer = null;
+                this.totalBusyTime = 0;
+                this.lastStateChangeTime = 0;
+            }
+
+            startService(customer, currentTime, duration) {
+                this.isBusy = true;
+                this.currentCustomer = customer;
+                this.lastStateChangeTime = currentTime;
+            }
+
+            endService(currentTime) {
+                this.totalBusyTime += (currentTime - this.lastStateChangeTime);
+                this.isBusy = false;
+                const customer = this.currentCustomer;
+                this.currentCustomer = null;
+                this.lastStateChangeTime = currentTime;
+                return customer;
+            }
+
+            getUtilizationPercentage(currentSimTime) {
+                let accumulatedBusy = this.totalBusyTime;
+                if (this.isBusy) {
+                    accumulatedBusy += (currentSimTime - this.lastStateChangeTime);
+                }
+                return currentSimTime === 0 ? 0 : (accumulatedBusy / currentSimTime) * 100;
+            }
+        }
+
+        /**
+         * ====================================================================
+         * 3. MATHEMATICAL HELPERS (STOCHASTIC PROCESSES)
+         * ====================================================================
+         */
+
+        // Generates exponentially distributed random variates (Poisson point process)
+        function getExponentialRandom(mean) {
+            return -mean * Math.log(1 - Math.random());
+        }
+
+        /**
+         * ====================================================================
+         * 4. MAIN SIMULATION ENGINE
+         * ====================================================================
+         */
+
+        class SupermarketSimulation {
+            constructor(config) {
+                this.config = config; // { numCashiers, meanArrival, meanService, maxTime }
+                this.currentTime = 0.0;
+                this.eventQueue = new PriorityEventQueue();
+                
+                // Entity States
+                this.cashiers = [];
+                for (let i = 1; i <= config.numCashiers; i++) {
+                    this.cashiers.push(new Cashier(i));
+                }
+                this.waitingQueue = [];
+
+                // Metrics Collection
+                this.stats = {
+                    totalCustomersCreated: 0,
+                    totalCustomersServed: 0,
+                    totalWaitTime: 0,
+                    maxWaitTime: 0,
+                    totalServiceTime: 0,
+                    maxQueueLength: 0
+                };
+
+                this.logHistory = [];
+                
+                // Initialize Simulation Schedule
+                Customer.idCounter = 1;
+                this.scheduleNextArrival();
+            }
+
+            // Schedule first/subsequent arrival
+            scheduleNextArrival() {
+                const interArrivalTime = getExponentialRandom(this.config.meanArrival);
+                const nextArrivalTime = this.currentTime + interArrivalTime;
+                
+                const arrivalEvent = new SimulationEvent(
+                    nextArrivalTime,
+                    EventType.CLIENT_ARRIVES,
+                    { customer: new Customer(nextArrivalTime) }
+                );
+                
+                this.eventQueue.enqueue(arrivalEvent);
+            }
+
+            // Core DES Step: Jumps clock forward directly to next event
+            step() {
+                if (this.eventQueue.isEmpty()) return false;
+
+                const event = this.eventQueue.dequeue();
+                
+                // ** CRITICAL DES CONCEPT **: Advance simulation clock to event time!
+                this.currentTime = event.time;
+
+                // Process based on type
+                switch (event.type) {
+                    case EventType.CLIENT_ARRIVES:
+                        this.handleClientArrives(event);
+                        break;
+                    case EventType.SERVICE_START:
+                        this.handleServiceStart(event);
+                        break;
+                    case EventType.SERVICE_END:
+                        this.handleServiceEnd(event);
+                        break;
+                }
+
+                return true;
+            }
+
+            handleClientArrives(event) {
+                const customer = event.payload.customer;
+                this.stats.totalCustomersCreated++;
+                this.log(`${this.formatTime(this.currentTime)} Customer ${customer.id} arrived.`);
+
+                // Find first free cashier
+                const freeCashier = this.cashiers.find(c => !c.isBusy);
+
+                if (freeCashier) {
+                    // Start service immediately
+                    this.eventQueue.enqueue(new SimulationEvent(
+                        this.currentTime,
+                        EventType.SERVICE_START,
+                        { customer, cashier: freeCashier }
+                    ));
+                } else {
+                    // Push to queue
+                    this.waitingQueue.push(customer);
+                    if (this.waitingQueue.length > this.stats.maxQueueLength) {
+                        this.stats.maxQueueLength = this.waitingQueue.length;
+                    }
+                    this.log(`${this.formatTime(this.currentTime)} Customer ${customer.id} joined waiting queue.`);
+                }
+
+                // Schedule next client arrival dynamically
+                this.scheduleNextArrival();
+            }
+
+            handleServiceStart(event) {
+                const { customer, cashier } = event.payload;
+                
+                const waitTime = this.currentTime - customer.arrivalTime;
+                customer.serviceStartTime = this.currentTime;
+                
+                this.stats.totalWaitTime += waitTime;
+                if (waitTime > this.stats.maxWaitTime) {
+                    this.stats.maxWaitTime = waitTime;
+                }
+
+                const serviceDuration = getExponentialRandom(this.config.meanService);
+                customer.serviceTimeDuration = serviceDuration;
+
+                cashier.startService(customer, this.currentTime, serviceDuration);
+
+                this.log(`${this.formatTime(this.currentTime)} Cashier ${cashier.id} started serving Customer ${customer.id}.`);
+
+                // Schedule end of service event
+                this.eventQueue.enqueue(new SimulationEvent(
+                    this.currentTime + serviceDuration,
+                    EventType.SERVICE_END,
+                    { customer, cashier }
+                ));
+            }
+
+            handleServiceEnd(event) {
+                const { cashier } = event.payload;
+                const customer = cashier.endService(this.currentTime);
+
+                this.stats.totalCustomersServed++;
+                this.stats.totalServiceTime += customer.serviceTimeDuration;
+
+                this.log(`${this.formatTime(this.currentTime)} Customer ${customer.id} finished service at Cashier ${cashier.id}.`);
+
+                // Check if queue has waiting customers
+                if (this.waitingQueue.length > 0) {
+                    const nextCustomer = this.waitingQueue.shift();
+                    this.eventQueue.enqueue(new SimulationEvent(
+                        this.currentTime,
+                        EventType.SERVICE_START,
+                        { customer: nextCustomer, cashier }
+                    ));
+                }
+            }
+
+            log(message) {
+                this.logHistory.unshift(message); // Keep latest at top
+                if (this.logHistory.length > 100) this.logHistory.pop();
+            }
+
+            formatTime(minutes) {
+                const hrs = Math.floor(minutes / 60);
+                const mins = Math.floor(minutes % 60);
+                const secs = Math.floor((minutes * 60) % 60);
+                const tenths = Math.floor((minutes * 600) % 10);
+                
+                const pad = n => n.toString().padStart(2, '0');
+                return `${pad(hrs)}:${pad(mins)}:${pad(secs)}.${tenths}`;
+            }
+        }
+
+        /**
+         * ====================================================================
+         * 5. USER INTERFACE & EXECUTION RUNNER
+         * ====================================================================
+         */
+
+        class SimulationUIController {
+            constructor() {
+                this.sim = null;
+                this.isRunning = false;
+                this.timerId = null;
+
+                // Cache UI elements
+                this.dom = {
+                    inputCashiers: document.getElementById('input-cashiers'),
+                    inputArrival: document.getElementById('input-arrival'),
+                    inputService: document.getElementById('input-service'),
+                    selectSpeed: document.getElementById('select-speed'),
+                    btnStart: document.getElementById('btn-start'),
+                    btnPause: document.getElementById('btn-pause'),
+                    btnReset: document.getElementById('btn-reset'),
+                    clockDisplay: document.getElementById('sim-clock-display'),
+                    cashiersContainer: document.getElementById('cashiers-container'),
+                    queueList: document.getElementById('queue-list'),
+                    queueHeader: document.getElementById('queue-header'),
+                    fecList: document.getElementById('fec-list'),
+                    eventLog: document.getElementById('event-log'),
+                    
+                    // Stats Elements
+                    statCreated: document.getElementById('stat-created'),
+                    statServed: document.getElementById('stat-served'),
+                    statWaiting: document.getElementById('stat-waiting'),
+                    statAvgWait: document.getElementById('stat-avg-wait'),
+                    statMaxWait: document.getElementById('stat-max-wait'),
+                    statAvgService: document.getElementById('stat-avg-service'),
+                    statMaxQueue: document.getElementById('stat-max-queue'),
+                    statSystemUtil: document.getElementById('stat-system-util'),
+                };
+
+                this.bindEvents();
+                this.resetSimulation();
+            }
+
+            bindEvents() {
+                this.dom.btnStart.addEventListener('click', () => this.start());
+                this.dom.btnPause.addEventListener('click', () => this.pause());
+                this.dom.btnReset.addEventListener('click', () => this.resetSimulation());
+            }
+
+            resetSimulation() {
+                this.pause();
+                const config = {
+                    numCashiers: parseInt(this.dom.inputCashiers.value) || 3,
+                    meanArrival: parseFloat(this.dom.inputArrival.value) || 2.0,
+                    meanService: parseFloat(this.dom.inputService.value) || 5.0
+                };
+
+                this.sim = new SupermarketSimulation(config);
+                this.updateUI();
+            }
+
+            start() {
+                if (this.isRunning) return;
+                this.isRunning = true;
+                this.dom.btnStart.disabled = true;
+                this.dom.btnPause.disabled = false;
+                this.dom.inputCashiers.disabled = true;
+
+                this.runLoop();
+            }
+
+            pause() {
+                this.isRunning = false;
+                this.dom.btnStart.disabled = false;
+                this.dom.btnPause.disabled = true;
+                if (this.timerId) clearTimeout(this.timerId);
+            }
+
+            runLoop() {
+                if (!this.isRunning) return;
+
+                const speed = parseInt(this.dom.selectSpeed.value);
+
+                if (speed === 0) {
+                    // Maximum Speed mode: run multiple steps synchronously per tick
+                    for (let i = 0; i < 50; i++) {
+                        if (!this.sim.step()) break;
+                    }
+                } else {
+                    // Controlled time execution step
+                    this.sim.step();
+                }
+
+                this.updateUI();
+
+                // Compute dynamic timeout based on speed parameter
+                const delay = speed === 0 ? 10 : Math.max(10, 1000 / speed);
+                this.timerId = setTimeout(() => this.runLoop(), delay);
+            }
+
+            updateUI() {
+                // 1. Clock Display
+                this.dom.clockDisplay.innerText = `SIM TIME: ${this.sim.formatTime(this.sim.currentTime)}`;
+
+                // 2. Cashiers Status
+                this.dom.cashiersContainer.innerHTML = '';
+                this.sim.cashiers.forEach(c => {
+                    const card = document.createElement('div');
+                    card.className = `cashier-card ${c.isBusy ? 'busy' : 'free'}`;
+                    
+                    const utilStr = c.getUtilizationPercentage(this.sim.currentTime).toFixed(1);
+
+                    card.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <strong>Cashier ${c.id}</strong>
+                            <span class="cashier-status ${c.isBusy ? 'status-busy' : 'status-free'}">
+                                ${c.isBusy ? 'BUSY' : 'FREE'}
+                            </span>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">
+                            ${c.isBusy ? `Serving: Customer ${c.currentCustomer.id}` : 'Idle'}
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--accent-purple); margin-top:3px;">
+                            Util: ${utilStr}%
+                        </div>
+                    `;
+                    this.dom.cashiersContainer.appendChild(card);
+                });
+
+                // 3. Queue Display
+                this.dom.queueHeader.innerText = `Waiting Queue (${this.sim.waitingQueue.length})`;
+                this.dom.queueList.innerHTML = '';
+                this.sim.waitingQueue.forEach(customer => {
+                    const box = document.createElement('div');
+                    box.className = 'customer-box';
+                    box.innerText = `C${customer.id}`;
+                    this.dom.queueList.appendChild(box);
+                });
+
+                // 4. Statistics Panel
+                const s = this.sim.stats;
+                this.dom.statCreated.innerText = s.totalCustomersCreated;
+                this.dom.statServed.innerText = s.totalCustomersServed;
+                this.dom.statWaiting.innerText = this.sim.waitingQueue.length;
+                
+                const avgWait = s.totalCustomersServed > 0 ? (s.totalWaitTime / s.totalCustomersServed).toFixed(2) : '0.0';
+                this.dom.statAvgWait.innerText = `${avgWait}m`;
+                this.dom.statMaxWait.innerText = `${s.maxWaitTime.toFixed(2)}m`;
+
+                const avgService = s.totalCustomersServed > 0 ? (s.totalServiceTime / s.totalCustomersServed).toFixed(2) : '0.0';
+                this.dom.statAvgService.innerText = `${avgService}m`;
+                this.dom.statMaxQueue.innerText = s.maxQueueLength;
+
+                const overallUtil = this.sim.cashiers.reduce((acc, c) => acc + c.getUtilizationPercentage(this.sim.currentTime), 0) / this.sim.cashiers.length;
+                this.dom.statSystemUtil.innerText = `${overallUtil.toFixed(1)}%`;
+
+                // 5. Future Event Queue (FEC) Display
+                this.dom.fecList.innerHTML = '';
+                this.sim.eventQueue.events.forEach(e => {
+                    const item = document.createElement('div');
+                    item.className = 'event-item';
+                    
+                    let meta = '';
+                    if (e.payload.customer) meta += ` [C${e.payload.customer.id}]`;
+                    if (e.payload.cashier) meta += ` (Cashier ${e.payload.cashier.id})`;
+
+                    item.innerHTML = `
+                        <span>${e.type}${meta}</span>
+                        <span class="time">${this.sim.formatTime(e.time)}</span>
+                    `;
+                    this.dom.fecList.appendChild(item);
+                });
+
+                // 6. Log Window
+                this.dom.eventLog.innerHTML = this.sim.logHistory
+                    .map(msg => `<div class="log-entry">${msg}</div>`)
+                    .join('');
+            }
+        }
+
+        // Initialize Web Application when DOM Ready
+        window.addEventListener('DOMContentLoaded', () => {
+            new SimulationUIController();
+        });
+    </script>
+</body>
+</html>

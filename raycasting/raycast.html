@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Raycasting 2D - DDA & Formas Geométricas</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      background: #121214;
+      color: #e1e1e6;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.4rem;
+      color: #40916c;
+      text-align: center;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: #1e1e24;
+      border-radius: 8px;
+      padding: 15px;
+      border: 1px solid #2d2d38;
+    }
+
+    canvas {
+      background: #0b0b0e;
+      border: 1px solid #3a3a4c;
+      border-radius: 4px;
+      cursor: crosshair;
+      display: block;
+    }
+
+    .control-group {
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: #a8a8b3;
+      margin-bottom: 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    .btn {
+      background: #2d6a4f;
+      color: #fff;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 5px;
+      font-weight: bold;
+    }
+
+    .btn:hover {
+      background: #40916c;
+    }
+
+    .btn-sec {
+      background: #3a3a4c;
+    }
+
+    .btn-sec:hover {
+      background: #4e4e66;
+    }
+
+    .telemetry {
+      font-family: monospace;
+      font-size: 0.8rem;
+      background: #111116;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid #2a2a35;
+      color: #74c69d;
+      margin-top: 10px;
+    }
+
+    .telemetry div {
+      margin-bottom: 4px;
+    }
+
+    .val {
+      color: #f8f9fa;
+      font-weight: bold;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      color: #e1e1e6;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Raycasting 2D: DDA Grid + AABB / OBB / Círculo</h1>
+  <div class="layout">
+    <div class="panel">
+      <h3>Controles</h3>
+      <p style="font-size:0.8rem; color:#a8a8b3;">Usa <b style="color:#fff;">WASD</b> para mover al Jugador (Azul).
+        Mueve el <b style="color:#fff;">Mouse</b> para apuntar el rayo.</p>
+
+      <div class="control-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkDDA" checked> Mostrar DDA en Grilla
+        </label>
+      </div>
+
+      <div class="control-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkObjects" checked> Intersección con Objetos
+        </label>
+      </div>
+
+      <div class="control-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkStepByStep"> Modo DDA Paso a Paso
+        </label>
+      </div>
+
+      <div class="control-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkNormals" checked> Mostrar Normales (n · d)
+        </label>
+      </div>
+
+      <div id="stepControls" style="display:none; margin-bottom: 15px;">
+        <button class="btn" id="btnNextStep">Siguiente Paso DDA</button>
+        <button class="btn btn-sec" id="btnResetStep">Reiniciar Rayo</button>
+      </div>
+
+      <div class="control-group">
+        <label>Rotación OBB: <span id="valRot">30</span>°</label>
+        <input type="range" id="sliderRot" min="0" max="360" value="30">
+      </div>
+
+      <h3>Telemetría</h3>
+      <div class="telemetry" id="telemetryBox"></div>
+    </div>
+
+    <div class="panel" style="display:flex; justify-center:center; align-items:center;">
+      <canvas id="canvas" width="600" height="600"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const GRID_SIZE = 30;
+    const COLS = canvas.width / GRID_SIZE;
+    const ROWS = canvas.height / GRID_SIZE;
+
+    // Mapa Grilla (1 = Pared)
+    const gridMap = Array.from({ length: ROWS }, (_, r) =>
+      Array.from({ length: COLS }, (_, c) =>
+        (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1 || (r === 4 && c > 3 && c < 9) || (r > 12 && r < 17 && c === 14)) ? 1 : 0
+      )
+    );
+
+    // Player AABB
+    const player = { x: 100, y: 300, w: 20, h: 20, speed: 3 };
+    const keys = {};
+
+    // Objetos 2D
+    const aabbObj = { x: 220, y: 100, w: 80, h: 60 };
+    const obbObj = { x: 420, y: 220, w: 90, h: 50, angle: 30 * Math.PI / 180 };
+    const circleObj = { x: 250, y: 450, r: 40 };
+
+    let mouse = { x: 300, y: 300 };
+    let currentDDAStepLimit = 999;
+    let manualStepActive = false;
+
+    // Listeners
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+
+    document.getElementById('sliderRot').addEventListener('input', (e) => {
+      obbObj.angle = parseFloat(e.target.value) * Math.PI / 180;
+      document.getElementById('valRot').textContent = e.target.value;
+    });
+
+    const chkDDA = document.getElementById('chkDDA');
+    const chkObjects = document.getElementById('chkObjects');
+    const chkStepByStep = document.getElementById('chkStepByStep');
+    const chkNormals = document.getElementById('chkNormals');
+    const stepControls = document.getElementById('stepControls');
+    const NORMAL_LEN = 45;
+
+    chkStepByStep.addEventListener('change', (e) => {
+      manualStepActive = e.target.checked;
+      stepControls.style.display = manualStepActive ? 'block' : 'none';
+      currentDDAStepLimit = manualStepActive ? 0 : 999;
+    });
+
+    document.getElementById('btnNextStep').addEventListener('click', () => { currentDDAStepLimit++; });
+    document.getElementById('btnResetStep').addEventListener('click', () => { currentDDAStepLimit = 0; });
+
+    // --- INTERSECCIONES GEOMÉTRICAS ---
+
+    // Ray vs AABB → { t, nx, ny } | null
+    function rayAABB(px, py, dx, dy, box) {
+      let tmin = 0, tmax = Infinity;
+      let nx = 0, ny = 0;
+      // Eje X
+      if (Math.abs(dx) < 1e-8) {
+        if (px < box.x || px > box.x + box.w) return null;
+      } else {
+        let t1 = (box.x - px) / dx;
+        let t2 = (box.x + box.w - px) / dx;
+        let n1 = -1, n2 = 1;
+        if (t1 > t2) { [t1, t2] = [t2, t1]; [n1, n2] = [n2, n1]; }
+        if (t1 > tmin) { tmin = t1; nx = n1; ny = 0; }
+        tmax = Math.min(tmax, t2);
+        if (tmin > tmax) return null;
+      }
+      // Eje Y
+      if (Math.abs(dy) < 1e-8) {
+        if (py < box.y || py > box.y + box.h) return null;
+      } else {
+        let t1 = (box.y - py) / dy;
+        let t2 = (box.y + box.h - py) / dy;
+        let n1 = -1, n2 = 1;
+        if (t1 > t2) { [t1, t2] = [t2, t1]; [n1, n2] = [n2, n1]; }
+        if (t1 > tmin) { tmin = t1; nx = 0; ny = n1; }
+        tmax = Math.min(tmax, t2);
+        if (tmin > tmax) return null;
+      }
+      return tmin > 0 ? { t: tmin, nx, ny } : null;
+    }
+
+    // Ray vs Círculo → { t, nx, ny } | null
+    function rayCircle(px, py, dx, dy, circle) {
+      const cx = circle.x - px;
+      const cy = circle.y - py;
+      const proj = cx * dx + cy * dy;
+      if (proj < 0) return null;
+      const distSq = (cx * cx + cy * cy) - proj * proj;
+      const rSq = circle.r * circle.r;
+      if (distSq > rSq) return null;
+      const th = Math.sqrt(rSq - distSq);
+      const t = proj - th;
+      if (t <= 0) return null;
+      const hx = px + dx * t;
+      const hy = py + dy * t;
+      const nx = (hx - circle.x) / circle.r;
+      const ny = (hy - circle.y) / circle.r;
+      return { t, nx, ny };
+    }
+
+    // Ray vs OBB (espacio local → normal vuelta a mundo)
+    function rayOBB(px, py, dx, dy, obb) {
+      const cx = obb.x + obb.w / 2;
+      const cy = obb.y + obb.h / 2;
+      const relX = px - cx;
+      const relY = py - cy;
+      const cosN = Math.cos(-obb.angle);
+      const sinN = Math.sin(-obb.angle);
+
+      const localPx = relX * cosN - relY * sinN;
+      const localPy = relX * sinN + relY * cosN;
+      const localDx = dx * cosN - dy * sinN;
+      const localDy = dx * sinN + dy * cosN;
+
+      const localBox = { x: -obb.w / 2, y: -obb.h / 2, w: obb.w, h: obb.h };
+      const hit = rayAABB(localPx, localPy, localDx, localDy, localBox);
+      if (!hit) return null;
+
+      // Rotar normal local → mundo (ángulo +obb)
+      const cos = Math.cos(obb.angle);
+      const sin = Math.sin(obb.angle);
+      return {
+        t: hit.t,
+        nx: hit.nx * cos - hit.ny * sin,
+        ny: hit.nx * sin + hit.ny * cos
+      };
+    }
+
+    function drawArrow(x, y, vx, vy, color, label) {
+      const ex = x + vx;
+      const ey = y + vy;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(ex, ey);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      const len = Math.hypot(vx, vy) || 1;
+      const ux = vx / len, uy = vy / len;
+      const ah = 8;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - ux * ah - uy * ah * 0.5, ey - uy * ah + ux * ah * 0.5);
+      ctx.lineTo(ex - ux * ah + uy * ah * 0.5, ey - uy * ah - ux * ah * 0.5);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      if (label) {
+        ctx.fillStyle = color;
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(label, ex + ux * 6, ey + uy * 6);
+      }
+    }
+
+    function drawNormalViz(hx, hy, nx, ny, dx, dy) {
+      // n · d  (ambos unitarios → cos θ)
+      const dot = nx * dx + ny * dy;
+      const angleDeg = Math.acos(Math.max(-1, Math.min(1, -dot))) * 180 / Math.PI; // ángulo incidencia
+
+      // Normal (cian)
+      drawArrow(hx, hy, nx * NORMAL_LEN, ny * NORMAL_LEN, '#00e5ff', 'n');
+
+      // Dirección rayo entrante invertida (-d) para ver ángulo con n
+      drawArrow(hx, hy, -dx * NORMAL_LEN, -dy * NORMAL_LEN, '#ff6b6b', '-d');
+
+      // Proyección de -d sobre n:  (-d · n) * n  =  -dot * n
+      const projScale = -dot * NORMAL_LEN;
+      drawArrow(hx, hy, nx * projScale, ny * projScale, '#ffe066', 'proj');
+
+      // Etiqueta n·d en el hit
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(`n·d = ${dot.toFixed(3)}`, hx + 10, hy - 14);
+      ctx.fillStyle = '#a8a8b3';
+      ctx.font = '11px monospace';
+      ctx.fillText(`θ ≈ ${angleDeg.toFixed(1)}°`, hx + 10, hy - 1);
+
+      return { dot, angleDeg };
+    }
+
+    // --- BUCLE PRINCIPAL ---
+    function update() {
+      // Movimiento Jugador
+      if (keys['w'] || keys['arrowup']) player.y -= player.speed;
+      if (keys['s'] || keys['arrowdown']) player.y += player.speed;
+      if (keys['a'] || keys['arrowleft']) player.x -= player.speed;
+      if (keys['d'] || keys['arrowright']) player.x += player.speed;
+
+      // Mantener dentro del canvas
+      player.x = Math.max(GRID_SIZE, Math.min(canvas.width - GRID_SIZE - player.w, player.x));
+      player.y = Math.max(GRID_SIZE, Math.min(canvas.height - GRID_SIZE - player.h, player.y));
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 1. Dibujar Grilla y Paredes DDA
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (gridMap[r][c] === 1) {
+            ctx.fillStyle = '#2d2d38';
+            ctx.fillRect(c * GRID_SIZE, r * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+          } else {
+            ctx.strokeStyle = '#181820';
+            ctx.strokeRect(c * GRID_SIZE, r * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+          }
+        }
+      }
+
+      // 2. Dibujar Objetos 2D Primitivos
+      // AABB
+      ctx.fillStyle = 'rgba(40, 167, 69, 0.4)';
+      ctx.strokeStyle = '#28a745';
+      ctx.fillRect(aabbObj.x, aabbObj.y, aabbObj.w, aabbObj.h);
+      ctx.strokeRect(aabbObj.x, aabbObj.y, aabbObj.w, aabbObj.h);
+      ctx.fillStyle = '#28a745'; ctx.fillText("AABB", aabbObj.x + 5, aabbObj.y + 15);
+
+      // Círculo
+      ctx.beginPath();
+      ctx.arc(circleObj.x, circleObj.y, circleObj.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(111, 66, 193, 0.4)';
+      ctx.fill();
+      ctx.strokeStyle = '#6f42c1';
+      ctx.stroke();
+      ctx.fillStyle = '#6f42c1'; ctx.fillText("Círculo", circleObj.x - 15, circleObj.y);
+
+      // OBB
+      ctx.save();
+      ctx.translate(obbObj.x + obbObj.w / 2, obbObj.y + obbObj.h / 2);
+      ctx.rotate(obbObj.angle);
+      ctx.fillStyle = 'rgba(253, 126, 20, 0.4)';
+      ctx.fillRect(-obbObj.w / 2, -obbObj.h / 2, obbObj.w, obbObj.h);
+      ctx.strokeStyle = '#fd7e14';
+      ctx.strokeRect(-obbObj.w / 2, -obbObj.h / 2, obbObj.w, obbObj.h);
+      ctx.fillStyle = '#fd7e14'; ctx.fillText("OBB", -15, 5);
+      ctx.restore();
+
+      // 3. Dibujar Jugador (AABB)
+      const pCenterX = player.x + player.w / 2;
+      const pCenterY = player.y + player.h / 2;
+      ctx.fillStyle = '#007bff';
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+
+      // 4. Raycasting
+      const rayDirX = mouse.x - pCenterX;
+      const rayDirY = mouse.y - pCenterY;
+      const rayLen = Math.hypot(rayDirX, rayDirY) || 1;
+      const dx = rayDirX / rayLen;
+      const dy = rayDirY / rayLen;
+
+      let closestT = Infinity;
+      let hitType = 'Ninguno';
+      let hitN = null;
+      let dotInfo = null;
+
+      // --- OBJETOS PRIMERO (DDA corta en este t) ---
+      if (chkObjects.checked) {
+        const hAABB = rayAABB(pCenterX, pCenterY, dx, dy, aabbObj);
+        if (hAABB && hAABB.t < closestT) {
+          closestT = hAABB.t; hitType = 'AABB';
+          hitN = { nx: hAABB.nx, ny: hAABB.ny };
+        }
+
+        const hCircle = rayCircle(pCenterX, pCenterY, dx, dy, circleObj);
+        if (hCircle && hCircle.t < closestT) {
+          closestT = hCircle.t; hitType = 'Círculo';
+          hitN = { nx: hCircle.nx, ny: hCircle.ny };
+        }
+
+        const hOBB = rayOBB(pCenterX, pCenterY, dx, dy, obbObj);
+        if (hOBB && hOBB.t < closestT) {
+          closestT = hOBB.t; hitType = 'OBB';
+          hitN = { nx: hOBB.nx, ny: hOBB.ny };
+        }
+      }
+
+      // --- DDA: para al llegar al hit de objeto ---
+      let ddaVisitedCells = [];
+
+      if (chkDDA.checked) {
+        let mapX = Math.floor(pCenterX / GRID_SIZE);
+        let mapY = Math.floor(pCenterY / GRID_SIZE);
+
+        const deltaDistX = Math.abs(1 / (dx || 1e-30));
+        const deltaDistY = Math.abs(1 / (dy || 1e-30));
+
+        let stepX = dx < 0 ? -1 : 1;
+        let stepY = dy < 0 ? -1 : 1;
+
+        let sideDistX = dx < 0 ? (pCenterX / GRID_SIZE - mapX) * deltaDistX : (mapX + 1.0 - pCenterX / GRID_SIZE) * deltaDistX;
+        let sideDistY = dy < 0 ? (pCenterY / GRID_SIZE - mapY) * deltaDistY : (mapY + 1.0 - pCenterY / GRID_SIZE) * deltaDistY;
+
+        let hit = false;
+        let side = 0;
+        let steps = 0;
+        const stepLimit = manualStepActive ? currentDDAStepLimit : 80;
+
+        while (!hit && steps < stepLimit) {
+          ddaVisitedCells.push({ x: mapX, y: mapY });
+          steps++;
+
+          const nextDist = Math.min(sideDistX, sideDistY) * GRID_SIZE;
+          if (nextDist >= closestT) break;
+
+          if (sideDistX < sideDistY) {
+            sideDistX += deltaDistX;
+            mapX += stepX;
+            side = 0;
+          } else {
+            sideDistY += deltaDistY;
+            mapY += stepY;
+            side = 1;
+          }
+
+          if (mapX >= 0 && mapX < COLS && mapY >= 0 && mapY < ROWS) {
+            if (gridMap[mapY][mapX] === 1) hit = true;
+          } else { break; }
+        }
+
+        ctx.fillStyle = 'rgba(255, 193, 7, 0.25)';
+        ddaVisitedCells.forEach(cell => {
+          ctx.fillRect(cell.x * GRID_SIZE, cell.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        });
+
+        if (hit) {
+          const perpDist = (side === 0) ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
+          const ddaHitT = perpDist * GRID_SIZE;
+          if (ddaHitT < closestT) {
+            closestT = ddaHitT;
+            hitType = 'Pared DDA (Grilla)';
+            hitN = side === 0 ? { nx: -stepX, ny: 0 } : { nx: 0, ny: -stepY };
+          }
+        }
+      }
+
+      // Render Ray Line
+      const drawDist = closestT < Infinity ? closestT : 1000;
+      const hitX = pCenterX + dx * drawDist;
+      const hitY = pCenterY + dy * drawDist;
+
+      ctx.beginPath();
+      ctx.moveTo(pCenterX, pCenterY);
+      ctx.lineTo(hitX, hitY);
+      ctx.strokeStyle = '#e63946';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (closestT < Infinity) {
+        ctx.beginPath();
+        ctx.arc(hitX, hitY, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        if (chkNormals.checked && hitN) {
+          dotInfo = drawNormalViz(hitX, hitY, hitN.nx, hitN.ny, dx, dy);
+        }
+      }
+
+      const nStr = hitN ? `(${hitN.nx.toFixed(2)}, ${hitN.ny.toFixed(2)})` : '—';
+      const dotStr = dotInfo ? dotInfo.dot.toFixed(3) : '—';
+      const frontStr = dotInfo
+        ? (dotInfo.dot < 0 ? 'frente (n·d < 0)' : 'espalda (n·d ≥ 0)')
+        : '—';
+      document.getElementById('telemetryBox').innerHTML = `
+        <div>Jugador (AABB): <span class="val">(${pCenterX.toFixed(0)}, ${pCenterY.toFixed(0)})</span></div>
+        <div>Dirección Rayo d: <span class="val">(${dx.toFixed(2)}, ${dy.toFixed(2)})</span></div>
+        <div>Celdas DDA Pasos: <span class="val">${ddaVisitedCells.length}</span></div>
+        <div>Impacto Detectado: <span class="val">${hitType}</span></div>
+        <div>Distancia t: <span class="val">${closestT < Infinity ? closestT.toFixed(1) + 'px' : 'Sin Colisión'}</span></div>
+        <div>Normal n: <span class="val">${nStr}</span></div>
+        <div>n · d: <span class="val">${dotStr}</span></div>
+        <div>Cara: <span class="val">${frontStr}</span></div>
+        <div>Ángulo incidencia θ: <span class="val">${dotInfo ? dotInfo.angleDeg.toFixed(1) + '°' : '—'}</span></div>
+      `;
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>

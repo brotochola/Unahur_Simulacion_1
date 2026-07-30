@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falling Sand + Verlet (Pelotas, Cajas & Constraints)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: #121214;
+      color: #e0e0e0;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 12px;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      color: #a0a0a0;
+    }
+
+    canvas {
+      border: 2px solid #333;
+      background: #000;
+      image-rendering: pixelated;
+      cursor: crosshair;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.85rem;
+      background: #1e1e24;
+      padding: 10px 16px;
+      border-radius: 6px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .key {
+      background: #333;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #fff;
+    }
+
+    button {
+      background: #3a3a4c;
+      color: #fff;
+      border: 1px solid #555;
+      padding: 5px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #52526e;
+    }
+
+    button.active {
+      background: #6a6a9a;
+      border-color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Falling Sand & Verlet Physics (Pelotas, Cajas & Constraints)</h1>
+
+  <canvas id="canvas"></canvas>
+
+  <div class="controls">
+    <button id="btnSand" class="active">🏖️ Arena</button>
+    <button id="btnBall">⚽ Pelota</button>
+    <button id="btnBox">📦 Caja</button>
+    <button id="btnClear">🧹 Limpiar</button>
+    <span>|</span>
+    <span><span class="key">Izq</span> Colocar / Pintar</span>
+    <span><span class="key">Der</span> Pared</span>
+  </div>
+
+  <script>
+    // --- CONFIGURACIÓN DE LA GRILLA ---
+    const WIDTH = 200;
+    const HEIGHT = 150;
+    const SCALE = 4;
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = WIDTH * SCALE;
+    canvas.height = HEIGHT * SCALE;
+
+    const grid = new Uint8Array(WIDTH * HEIGHT);
+    const imgData = ctx.createImageData(WIDTH * SCALE, HEIGHT * SCALE);
+    const buf32 = new Uint32Array(imgData.data.buffer);
+
+    const EMPTY = 0;
+    const SAND = 1;
+    const WALL = 2;
+
+    const DENSITY = new Uint8Array(256);
+    DENSITY[EMPTY] = 0;
+    DENSITY[SAND] = 140;
+    DENSITY[WALL] = 255;
+
+    const COLOR_EMPTY = 0xFF000000;
+    const COLOR_SAND = 0xFF40D0E6;
+    const COLOR_WALL = 0xFF808080;
+
+    // --- ESTRUCTURA FÍSICA (VERLET) ---
+    const particles = [];   // Nodos de masa
+    const constraints = []; // Enlaces de distancia
+    const GRAVITY = 0.25;
+    const SAND_RESTITUTION = 0.45;
+    let nextGroupId = 1;
+
+    function createParticle(x, y, radius, color = 0xFF5050E6, groupId = 0) {
+      const p = {
+        x, y,
+        oldX: x - (Math.random() * 2 - 1),
+        oldY: y,
+        radius,
+        color,
+        groupId
+      };
+      particles.push(p);
+      return p;
+    }
+
+    function createConstraint(p1, p2, distance) {
+      const c = { p1, p2, distance };
+      constraints.push(c);
+      return c;
+    }
+
+    function createBox(cx, cy, size) {
+      const hs = size / 2;
+      // Solape 33% del diámetro entre vecinos: 2r - size = 0.33 * 2r → r = size / 1.34
+      const r = size / (2 * (1 - 0.33));
+      const boxColor = 0xFF40E640;
+      const groupId = nextGroupId++;
+
+      const p1 = createParticle(cx - hs, cy - hs, r, boxColor, groupId);
+      const p2 = createParticle(cx + hs, cy - hs, r, boxColor, groupId);
+      const p3 = createParticle(cx + hs, cy + hs, r, boxColor, groupId);
+      const p4 = createParticle(cx - hs, cy + hs, r, boxColor, groupId);
+
+      createConstraint(p1, p2, size);
+      createConstraint(p2, p3, size);
+      createConstraint(p3, p4, size);
+      createConstraint(p4, p1, size);
+
+      const diag = Math.sqrt(size * size + size * size);
+      createConstraint(p1, p3, diag);
+      createConstraint(p2, p4, diag);
+    }
+
+    // Precalculado de Kernel
+    const SAMPLES = 8;
+    const COS_TABLE = new Float32Array(SAMPLES);
+    const SIN_TABLE = new Float32Array(SAMPLES);
+
+    for (let i = 0; i < SAMPLES; i++) {
+      const angle = (i / SAMPLES) * Math.PI * 2;
+      COS_TABLE[i] = Math.cos(angle);
+      SIN_TABLE[i] = Math.sin(angle);
+    }
+
+    // --- FALLING SAND ENGINE ---
+    function updateSand() {
+      for (let y = HEIGHT - 2; y >= 0; y--) {
+        const dir = Math.random() < 0.5 ? 1 : -1;
+
+        for (let x = 0; x < WIDTH; x++) {
+          const idx = y * WIDTH + x;
+
+          if (grid[idx] === SAND) {
+            const below = idx + WIDTH;
+            const belowLeft = below - dir;
+            const belowRight = below + dir;
+
+            if (grid[below] === EMPTY) {
+              grid[below] = SAND;
+              grid[idx] = EMPTY;
+            }
+            else if (x - dir >= 0 && x - dir < WIDTH && grid[belowLeft] === EMPTY) {
+              grid[belowLeft] = SAND;
+              grid[idx] = EMPTY;
+            }
+            else if (x + dir >= 0 && x + dir < WIDTH && grid[belowRight] === EMPTY) {
+              grid[belowRight] = SAND;
+              grid[idx] = EMPTY;
+            }
+          }
+        }
+      }
+    }
+
+    // --- COLISIÓN PARTÍCULA vs ARENA ---
+    function resolveGridParticleInteraction(body) {
+      let gradX = 0;
+      let gradY = 0;
+      let totalOverlapDensity = 0;
+
+      const cx = body.x;
+      const cy = body.y;
+      const r = body.radius;
+
+      for (let i = 0; i < SAMPLES; i++) {
+        const nx = COS_TABLE[i];
+        const ny = SIN_TABLE[i];
+
+        const px = Math.floor(cx + nx * (r - 0.5));
+        const py = Math.floor(cy + ny * (r - 0.5));
+
+        if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT) {
+          const cellType = grid[py * WIDTH + px];
+          const density = DENSITY[cellType];
+
+          if (density > 0) {
+            gradX -= nx * density;
+            gradY -= ny * density;
+            totalOverlapDensity += density;
+          }
+        }
+      }
+
+      if (totalOverlapDensity === 0) return;
+
+      const magSq = gradX * gradX + gradY * gradY;
+
+      if (magSq > 0.0001) {
+        const invMag = 1 / Math.sqrt(magSq);
+        const nx = gradX * invMag;
+        const ny = gradY * invMag;
+
+        const avgDensity = totalOverlapDensity / SAMPLES;
+        const densityRatio = avgDensity / 255;
+
+        const vx = body.x - body.oldX;
+        const vy = body.y - body.oldY;
+
+        body.x += nx * densityRatio * 0.6;
+        body.y += ny * densityRatio * 0.6;
+
+        const dot = vx * nx + vy * ny;
+
+        if (dot < 0) {
+          const vNormalX = nx * dot;
+          const vNormalY = ny * dot;
+
+          const vTangX = vx - vNormalX;
+          const vTangY = vy - vNormalY;
+
+          const bounce = SAND_RESTITUTION * densityRatio;
+          const tangentFriction = Math.max(0.60, 1.0 - densityRatio * 0.4);
+
+          const newVx = vTangX * tangentFriction - vNormalX * bounce;
+          const newVy = vTangY * tangentFriction - vNormalY * bounce;
+
+          body.oldX = body.x - newVx;
+          body.oldY = body.y - newVy;
+        }
+
+        displaceSand(cx, cy, r, nx, ny, Math.abs(dot));
+      }
+    }
+
+    function displaceSand(cx, cy, radius, nx, ny, impactVelocity) {
+      const impactX = Math.round(cx - nx * (radius * 0.9));
+      const impactY = Math.round(cy - ny * (radius * 0.9));
+
+      const splashForce = Math.min(Math.floor(impactVelocity * 1.5), 4);
+
+      for (let i = 0; i <= splashForce; i++) {
+        const offsetX = (Math.random() < 0.5 ? -1 : 1) * (i + 1);
+        const px = impactX + offsetX;
+        const py = impactY;
+
+        if (px > 0 && px < WIDTH - 1 && py > 0 && py < HEIGHT - 1) {
+          const idx = py * WIDTH + px;
+
+          if (grid[idx] === SAND) {
+            const targetIdx = (py - 1) * WIDTH + (px + Math.sign(offsetX));
+            if (grid[targetIdx] === EMPTY) {
+              grid[targetIdx] = SAND;
+              grid[idx] = EMPTY;
+            }
+          }
+        }
+      }
+    }
+
+    // --- FÍSICA Y CONSTRAINTS ---
+    function updatePhysics() {
+      // 1. Integración Verlet
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const vx = p.x - p.oldX;
+        const vy = p.y - p.oldY;
+
+        p.oldX = p.x;
+        p.oldY = p.y;
+
+        p.x += vx;
+        p.y += vy + GRAVITY;
+
+        // Colisión contra bordes del canvas
+        if (p.x < p.radius) { p.x = p.radius; p.oldX = p.x + vx * 0.5; }
+        if (p.x > WIDTH - p.radius) { p.x = WIDTH - p.radius; p.oldX = p.x + vx * 0.5; }
+        if (p.y < p.radius) { p.y = p.radius; p.oldY = p.y + vy * 0.5; }
+        if (p.y > HEIGHT - p.radius) { p.y = HEIGHT - p.radius; p.oldY = p.y; }
+
+        resolveGridParticleInteraction(p);
+      }
+
+      // 2. Resolver Colisiones entre Partículas (Círculos / Nodos)
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const p1 = particles[i];
+          const p2 = particles[j];
+
+          // Esquinas de la misma caja no colisionan entre sí
+          if (p1.groupId && p1.groupId === p2.groupId) continue;
+
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const distSq = dx * dx + dy * dy;
+          const minDist = p1.radius + p2.radius;
+
+          if (distSq < minDist * minDist && distSq > 0.0001) {
+            const dist = Math.sqrt(distSq);
+            const overlap = 0.5 * (minDist - dist);
+
+            const nx = dx / dist;
+            const ny = dy / dist;
+
+            // Mover posiciones
+            p1.x -= nx * overlap;
+            p1.y -= ny * overlap;
+            p2.x += nx * overlap;
+            p2.y += ny * overlap;
+
+            // Intercambiar/Transferir momento en Verlet
+            const vx1 = p1.x - p1.oldX;
+            const vy1 = p1.y - p1.oldY;
+            const vx2 = p2.x - p2.oldX;
+            const vy2 = p2.y - p2.oldY;
+
+            const kx = vx1 - vx2;
+            const ky = vy1 - vy2;
+            const p = 2 * (nx * kx + ny * ky) / 2;
+
+            if (p > 0) {
+              p1.oldX += nx * p;
+              p1.oldY += ny * p;
+              p2.oldX -= nx * p;
+              p2.oldY -= ny * p;
+            }
+          }
+        }
+      }
+
+      // 3. Relaxación de Constraints (Rigidez de las cajas)
+      const ITERATIONS = 4;
+      for (let step = 0; step < ITERATIONS; step++) {
+        for (let i = 0; i < constraints.length; i++) {
+          const c = constraints[i];
+          const dx = c.p2.x - c.p1.x;
+          const dy = c.p2.y - c.p1.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist > 0.0001) {
+            const delta = (dist - c.distance) / dist * 0.5;
+            const offsetX = dx * delta;
+            const offsetY = dy * delta;
+
+            c.p1.x += offsetX;
+            c.p1.y += offsetY;
+            c.p2.x -= offsetX;
+            c.p2.y -= offsetY;
+          }
+        }
+      }
+    }
+
+    // --- RENDERIZADO ---
+    function render() {
+      buf32.fill(COLOR_EMPTY);
+
+      // Render Arena / Paredes
+      for (let y = 0; y < HEIGHT; y++) {
+        for (let x = 0; x < WIDTH; x++) {
+          const cell = grid[y * WIDTH + x];
+          if (cell === EMPTY) continue;
+
+          const color = (cell === SAND) ? COLOR_SAND : COLOR_WALL;
+
+          for (let sy = 0; sy < SCALE; sy++) {
+            let py = (y * SCALE + sy) * (WIDTH * SCALE) + (x * SCALE);
+            for (let sx = 0; sx < SCALE; sx++) {
+              buf32[py + sx] = color;
+            }
+          }
+        }
+      }
+
+      // Render Nodos de Partículas
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const cx = Math.floor(p.x * SCALE);
+        const cy = Math.floor(p.y * SCALE);
+        const r = Math.max(1, Math.floor(p.radius * SCALE));
+
+        for (let y = -r; y <= r; y++) {
+          for (let x = -r; x <= r; x++) {
+            if (x * x + y * y <= r * r) {
+              const px = cx + x;
+              const py = cy + y;
+              if (px >= 0 && px < WIDTH * SCALE && py >= 0 && py < HEIGHT * SCALE) {
+                buf32[py * (WIDTH * SCALE) + px] = p.color;
+              }
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+
+      // Dibujar líneas de los constraints de las cajas encima del canvas
+      ctx.strokeStyle = '#30C030';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < constraints.length; i++) {
+        const c = constraints[i];
+        ctx.moveTo(c.p1.x * SCALE, c.p1.y * SCALE);
+        ctx.lineTo(c.p2.x * SCALE, c.p2.y * SCALE);
+      }
+      ctx.stroke();
+    }
+
+    function loop() {
+      handleInput();
+      updateSand();
+      updatePhysics();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // --- CONTROLES E INPUTS ---
+    let mouseX = 100, mouseY = 20;
+    let isMouseDown = false;
+    let mouseButton = 0;
+    let placeMode = 'sand'; // 'sand' | 'ball' | 'box'
+
+    const btnSand = document.getElementById('btnSand');
+    const btnBall = document.getElementById('btnBall');
+    const btnBox = document.getElementById('btnBox');
+
+    function setPlaceMode(mode) {
+      placeMode = mode;
+      btnSand.classList.toggle('active', mode === 'sand');
+      btnBall.classList.toggle('active', mode === 'ball');
+      btnBox.classList.toggle('active', mode === 'box');
+    }
+
+    btnSand.onclick = () => setPlaceMode('sand');
+    btnBall.onclick = () => setPlaceMode('ball');
+    btnBox.onclick = () => setPlaceMode('box');
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = Math.floor((e.clientX - rect.left) / SCALE);
+      mouseY = Math.floor((e.clientY - rect.top) / SCALE);
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      isMouseDown = true;
+      mouseButton = e.button;
+
+      if (e.button === 0) {
+        if (placeMode === 'ball') {
+          createParticle(mouseX, mouseY, Math.floor(Math.random() * 3) + 5);
+        } else if (placeMode === 'box') {
+          createBox(mouseX, mouseY, 16);
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', () => isMouseDown = false);
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    document.getElementById('btnClear').onclick = () => {
+      grid.fill(EMPTY);
+      particles.length = 0;
+      constraints.length = 0;
+    };
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Digit1') setPlaceMode('sand');
+      if (e.code === 'Digit2') setPlaceMode('ball');
+      if (e.code === 'Digit3') setPlaceMode('box');
+      if (e.code === 'Space') createParticle(mouseX, mouseY, Math.floor(Math.random() * 3) + 5);
+      if (e.code === 'KeyB') createBox(mouseX, mouseY, 16);
+      if (e.code === 'KeyC') {
+        grid.fill(EMPTY);
+        particles.length = 0;
+        constraints.length = 0;
+      }
+    });
+
+    function handleInput() {
+      if (!isMouseDown) return;
+
+      // Click derecho = pared; izquierdo solo pinta arena en modo sand
+      const paintingWall = mouseButton !== 0;
+      if (!paintingWall && placeMode !== 'sand') return;
+
+      const brushRadius = 3;
+      const type = paintingWall ? WALL : SAND;
+
+      for (let dy = -brushRadius; dy <= brushRadius; dy++) {
+        for (let dx = -brushRadius; dx <= brushRadius; dx++) {
+          if (dx * dx + dy * dy <= brushRadius * brushRadius) {
+            const px = mouseX + dx;
+            const py = mouseY + dy;
+
+            if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT) {
+              if (type === WALL || grid[py * WIDTH + px] === EMPTY) {
+                grid[py * WIDTH + px] = type;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    loop();
+  </script>
+</body>
+</html>

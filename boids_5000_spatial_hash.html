@@ -1,30 +1,382 @@
-
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids 3D — Spatial Hash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-#c{display:block;width:100%;height:520px;background:#060d1a;border-radius:12px;cursor:grab;}
-#c:active{cursor:grabbing;}
-.ui-row{display:flex;gap:10px;flex-wrap:wrap;padding:8px 2px;align-items:center;}
-.ui-row label{font-size:12px;color:var(--color-text-secondary);display:flex;align-items:center;gap:6px;white-space:nowrap;}
-.ui-row input[type=range]{width:80px;}
-.ui-row span{font-size:12px;font-weight:500;min-width:32px;color:var(--color-text-primary);}
-#stats{font-size:12px;color:var(--color-text-secondary);padding:2px 2px 6px;display:flex;gap:16px;}
+:root {
+  --bg: #060d1a;
+  --panel: #0a1528;
+  --border: #1a2d4a;
+  --accent: #44bbff;
+  --accent-dim: rgba(68,187,255,.12);
+  --text: #d4e4f4;
+  --muted: #7a9bb8;
+  --tip: #0e1f35;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Space Grotesk', sans-serif;
+  background:
+    radial-gradient(ellipse 70% 50% at 20% 0%, rgba(68,187,255,.08), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 90% 100%, rgba(0,80,180,.06), transparent 50%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 1.25rem 1.5rem 2rem;
+}
+header { max-width: 1100px; margin: 0 auto 1rem; }
+header h1 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+header h1 em { color: var(--accent); font-style: normal; }
+header .lead {
+  margin-top: .45rem;
+  font-size: .9rem;
+  color: var(--muted);
+  line-height: 1.45;
+  max-width: 62ch;
+}
+.wrap { max-width: 1100px; margin: 0 auto; }
+.stage {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #040a14;
+}
+#c {
+  display: block;
+  width: 100%;
+  height: min(62vh, 560px);
+  background: #060d1a;
+  cursor: grab;
+}
+#c:active { cursor: grabbing; }
+#c.fps { cursor: none; }
+.hud {
+  position: absolute;
+  top: 10px; left: 10px;
+  display: flex; gap: 10px; flex-wrap: wrap;
+  pointer-events: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.hud b { color: var(--accent); font-weight: 600; }
+.hud span {
+  background: rgba(6,13,26,.75);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  backdrop-filter: blur(4px);
+}
+.hint {
+  position: absolute;
+  bottom: 10px; left: 10px; right: 10px;
+  display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  pointer-events: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.hint kbd {
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(6,13,26,.8);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--text);
+}
+.crosshair {
+  display: none;
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
+  pointer-events: none;
+}
+.crosshair::before, .crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(68,187,255,.7);
+}
+.crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
+.crosshair::after { top: 6px; left: 0; width: 14px; height: 2px; }
+.stage.fps-on .crosshair { display: block; }
+.stage.fps-on .hint-orbit { display: none; }
+.stage:not(.fps-on) .hint-fps { display: none; }
+
+.panel {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 720px) { .panel { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.card h2 {
+  font-size: .72rem;
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.card p {
+  font-size: .82rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: .65rem;
+}
+.card p:last-child { margin-bottom: 0; }
+.rules { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.rules li {
+  font-size: .82rem;
+  color: var(--muted);
+  line-height: 1.4;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+.rules li strong { color: var(--text); font-weight: 500; }
+
+.controls {
+  margin-top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.controls-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.controls-head h2 {
+  font-size: .72rem;
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--accent);
+}
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: #061018;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+.mode-toggle button {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.mode-toggle button.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.ui-row {
+  display: flex;
+  gap: 12px 18px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.ui-row:last-child { margin-bottom: 0; }
+.ctrl {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ctrl .lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+  border-bottom: 1px dotted var(--border);
+}
+.ctrl .val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 28px;
+  color: var(--text);
+}
+.ctrl input[type=range] {
+  width: 90px;
+  accent-color: var(--accent);
+}
+.tip-bubble {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: min(260px, 70vw);
+  background: var(--tip);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  pointer-events: none;
+}
+.tip-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%; left: 16px;
+  border: 6px solid transparent;
+  border-top-color: var(--border);
+}
+.ctrl:hover .tip-bubble,
+.ctrl:focus-within .tip-bubble { display: block; }
 </style>
-<canvas id="c"></canvas>
-<div id="stats">
-  <span>peces: <b id="sc">0</b></span>
-  <span>fps: <b id="fps">0</b></span>
-  <span>vecinos avg: <b id="nav">0</b></span>
+</head>
+<body>
+<header>
+  <h1>Boids 3D · <em>Spatial Hash</em></h1>
+  <p class="lead">
+    Cardumen de hasta 5000 agentes. Cada pez aplica las 3 reglas de Reynolds
+    (separación, alineación, cohesión). Un <strong>spatial hash</strong> evita
+    comparar todos contra todos: O(n²) → ~O(n).
+  </p>
+</header>
+
+<div class="wrap">
+  <div class="stage" id="stage">
+    <canvas id="c" tabindex="0"></canvas>
+    <div class="hud">
+      <span>peces <b id="sc">0</b></span>
+      <span>fps <b id="fps">0</b></span>
+      <span>vecinos avg <b id="nav">0</b></span>
+      <span id="modeLabel">órbita</span>
+    </div>
+    <div class="crosshair" aria-hidden="true"></div>
+    <div class="hint">
+      <span class="hint-orbit">
+        <kbd>arrastrar</kbd> órbita ·
+        <kbd>rueda</kbd> zoom ·
+        <kbd>click</kbd> en FPS para pointer lock
+      </span>
+      <span class="hint-fps">
+        <kbd>WASD</kbd> mover ·
+        <kbd>Space/Ctrl</kbd> subir/bajar ·
+        <kbd>Shift</kbd> sprint ·
+        <kbd>Esc</kbd> salir
+      </span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <h2>Qué muestra</h2>
+      <p>
+        Simulación de flocking en 3D con SoA (arrays planos), object pool e
+        InstancedMesh de Three.js. Cada frame reconstruye la grilla espacial
+        y cada pez solo mira vecinos de celdas adyacentes.
+      </p>
+      <p>
+        Subí el conteo hacia 5000: sin spatial hash el navegador se ahoga;
+        acá el costo crece casi lineal.
+      </p>
+    </div>
+    <div class="card">
+      <h2>Reglas de Reynolds</h2>
+      <ul class="rules">
+        <li><strong>Separación</strong> — alejarse de vecinos demasiado cerca (anti-colisión).</li>
+        <li><strong>Alineación</strong> — copiar dirección/velocidad promedio del grupo.</li>
+        <li><strong>Cohesión</strong> — girar hacia el centro de masa de los vecinos.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="controls-head">
+      <h2>Parámetros</h2>
+      <div class="mode-toggle" role="group" aria-label="Modo de cámara">
+        <button type="button" id="btnOrbit" class="active">Órbita</button>
+        <button type="button" id="btnFps">Freecam FPS</button>
+      </div>
+    </div>
+    <div class="ui-row">
+      <label class="ctrl">
+        <span class="lbl">peces</span>
+        <span class="tip-bubble">Cantidad de agentes activos. Más peces = más carga; el spatial hash mantiene el costo razonable hasta ~5000.</span>
+        <input type="range" id="cnt" min="50" max="5000" step="50" value="800">
+        <span class="val" id="cntv">800</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">separación</span>
+        <span class="tip-bubble">Peso de la fuerza que empuja lejos a vecinos dentro del radio de separación. Alto = cardumen más “suelto”.</span>
+        <input type="range" id="sep" min="0" max="3" step="0.1" value="1.5">
+        <span class="val" id="sepv">1.5</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">alineación</span>
+        <span class="tip-bubble">Peso para igualar la velocidad de los vecinos visibles. Alto = bandadas más ordenadas y paralelas.</span>
+        <input type="range" id="ali" min="0" max="3" step="0.1" value="1.0">
+        <span class="val" id="aliv">1.0</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">cohesión</span>
+        <span class="tip-bubble">Peso para acercarse al centro del grupo. Alto = cardumen más compacto; bajo = grupos que se dispersan.</span>
+        <input type="range" id="coh" min="0" max="3" step="0.1" value="1.0">
+        <span class="val" id="cohv">1.0</span>
+      </label>
+    </div>
+    <div class="ui-row">
+      <label class="ctrl">
+        <span class="lbl">radio sep</span>
+        <span class="tip-bubble">Distancia máxima a la que actúa la separación. Suele ser menor que el radio de visión.</span>
+        <input type="range" id="rsep" min="1" max="20" step="1" value="6">
+        <span class="val" id="rsepv">6</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">radio visión</span>
+        <span class="tip-bubble">Alcance para alineación y cohesión. También define el tamaño de celda del spatial hash.</span>
+        <input type="range" id="rvis" min="5" max="50" step="1" value="18">
+        <span class="val" id="rvisv">18</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">velocidad</span>
+        <span class="tip-bubble">Tope de velocidad de cada pez. Afecta fuerza máxima y ritmo del cardumen.</span>
+        <input type="range" id="spd" min="1" max="10" step="1" value="4">
+        <span class="val" id="spdv">4</span>
+      </label>
+    </div>
+  </div>
 </div>
-<div class="ui-row">
-  <label>peces <input type="range" id="cnt" min="50" max="5000" step="50" value="800"><span id="cntv">800</span></label>
-  <label>separación <input type="range" id="sep" min="0" max="3" step="0.1" value="1.5"><span id="sepv">1.5</span></label>
-  <label>alineación <input type="range" id="ali" min="0" max="3" step="0.1" value="1.0"><span id="aliv">1.0</span></label>
-  <label>cohesión <input type="range" id="coh" min="0" max="3" step="0.1" value="1.0"><span id="cohv">1.0</span></label>
-</div>
-<div class="ui-row">
-  <label>radio sep <input type="range" id="rsep" min="1" max="20" step="1" value="6"><span id="rsepv">6</span></label>
-  <label>radio visión <input type="range" id="rvis" min="5" max="50" step="1" value="18"><span id="rvisv">18</span></label>
-  <label>velocidad <input type="range" id="spd" min="1" max="10" step="1" value="4"><span id="spdv">4</span></label>
-</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const CAP = 5000
@@ -202,7 +554,8 @@ class Fish {
 
   static syncToThree(mesh,dummy){
     const {x,y,z,vx,vy,vz,_active,_activeCount}=Fish
-    const up=new THREE.Vector3(0,1,0)
+    // ConeGeometry tip = +Y; geo.rotateX(PI/2) → tip = +Z
+    const tip=new THREE.Vector3(0,0,1)
     const dir=new THREE.Vector3()
     for(let i=0;i<_activeCount;i++){
       const idx=_active[i]
@@ -210,7 +563,7 @@ class Fish {
       const spd=Math.sqrt(vx[idx]*vx[idx]+vy[idx]*vy[idx]+vz[idx]*vz[idx])
       if(spd>0.0001){
         dir.set(vx[idx]/spd,vy[idx]/spd,vz[idx]/spd)
-        dummy.quaternion.setFromUnitVectors(up,dir)
+        dummy.quaternion.setFromUnitVectors(tip,dir)
       }
       dummy.updateMatrix()
       mesh.setMatrixAt(i,dummy.matrix)
@@ -235,17 +588,27 @@ function spawnN(n){
 }
 
 const canvas=document.getElementById('c')
-const W=canvas.clientWidth, H=520
-renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true})
+const stage=document.getElementById('stage')
+const modeLabel=document.getElementById('modeLabel')
+
+function sizeCanvas(){
+  const W=canvas.clientWidth, H=canvas.clientHeight
+  renderer.setSize(W,H,false)
+  camera.aspect=W/H
+  camera.updateProjectionMatrix()
+}
+
+const renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))
-renderer.setSize(W,H)
 
 const scene=new THREE.Scene()
 scene.fog=new THREE.FogExp2(0x060d1a,0.005)
 
-const camera=new THREE.PerspectiveCamera(65,W/H,0.1,2000)
+const camera=new THREE.PerspectiveCamera(65,1,0.1,2000)
 camera.position.set(0,30,160)
 camera.lookAt(0,0,0)
+sizeCanvas()
+window.addEventListener('resize',sizeCanvas)
 
 scene.add(new THREE.AmbientLight(0x223366,2))
 const dl=new THREE.DirectionalLight(0xaaddff,2)
@@ -282,16 +645,116 @@ bind('rvis','rvisv',v=>visR=v)
 bind('spd','spdv',v=>maxSpd=v)
 bind('cnt','cntv',v=>{targetCount=parseInt(v);spawnN(targetCount)})
 
-let rotY=0.3,rotX=0.15,isDragging=false,lastX=0,lastY=0
-canvas.addEventListener('mousedown',e=>{isDragging=true;lastX=e.clientX;lastY=e.clientY})
+// —— Cámara: órbita + zoom / freecam FPS ——
+let camMode='orbit' // 'orbit' | 'fps'
+let orbitYaw=0.3, orbitPitch=0.15, orbitDist=160
+let isDragging=false, lastX=0, lastY=0
+let fpsYaw=0, fpsPitch=0
+const keys=Object.create(null)
+const FPS_SPEED=45, FPS_SPRINT=90
+const _fwd=new THREE.Vector3(), _right=new THREE.Vector3(), _up=new THREE.Vector3(0,1,0)
+
+const btnOrbit=document.getElementById('btnOrbit')
+const btnFps=document.getElementById('btnFps')
+
+function setMode(mode){
+  if(camMode===mode) return
+  camMode=mode
+  btnOrbit.classList.toggle('active', mode==='orbit')
+  btnFps.classList.toggle('active', mode==='fps')
+  stage.classList.toggle('fps-on', mode==='fps')
+  canvas.classList.toggle('fps', mode==='fps' && document.pointerLockElement===canvas)
+  modeLabel.textContent=mode==='orbit' ? 'órbita' : 'freecam'
+  if(mode==='orbit'){
+    if(document.pointerLockElement===canvas) document.exitPointerLock()
+    // sync orbit from current camera pos
+    const p=camera.position
+    orbitDist=Math.max(20, Math.sqrt(p.x*p.x+p.y*p.y+p.z*p.z))
+    orbitYaw=Math.atan2(p.x,p.z)
+    orbitPitch=Math.asin(Math.max(-1,Math.min(1,p.y/orbitDist)))
+  } else {
+    // sync FPS yaw/pitch from camera look
+    const e=new THREE.Euler().setFromQuaternion(camera.quaternion,'YXZ')
+    fpsYaw=e.y
+    fpsPitch=e.x
+    canvas.focus()
+  }
+}
+btnOrbit.addEventListener('click',()=>setMode('orbit'))
+btnFps.addEventListener('click',()=>setMode('fps'))
+
+canvas.addEventListener('mousedown',e=>{
+  if(camMode==='fps'){
+    if(document.pointerLockElement!==canvas) canvas.requestPointerLock()
+    return
+  }
+  if(e.button!==0) return
+  isDragging=true
+  lastX=e.clientX; lastY=e.clientY
+})
 window.addEventListener('mouseup',()=>isDragging=false)
 canvas.addEventListener('mousemove',e=>{
-  if(!isDragging)return
-  rotY+=(e.clientX-lastX)*0.004
-  rotX+=(e.clientY-lastY)*0.004
-  rotX=Math.max(-1.2,Math.min(1.2,rotX))
-  lastX=e.clientX;lastY=e.clientY
+  if(camMode==='orbit'){
+    if(!isDragging) return
+    orbitYaw+=(e.clientX-lastX)*0.004
+    orbitPitch+=(e.clientY-lastY)*0.004
+    orbitPitch=Math.max(-1.2,Math.min(1.2,orbitPitch))
+    lastX=e.clientX; lastY=e.clientY
+    return
+  }
+  if(document.pointerLockElement!==canvas) return
+  fpsYaw-=e.movementX*0.0022
+  fpsPitch-=e.movementY*0.0022
+  fpsPitch=Math.max(-1.45,Math.min(1.45,fpsPitch))
 })
+document.addEventListener('pointerlockchange',()=>{
+  canvas.classList.toggle('fps', camMode==='fps' && document.pointerLockElement===canvas)
+})
+
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault()
+  if(camMode==='orbit'){
+    orbitDist*=e.deltaY>0 ? 1.08 : 0.92
+    orbitDist=Math.max(20,Math.min(500,orbitDist))
+  } else {
+    // FOV zoom suave en FPS
+    camera.fov=Math.max(40,Math.min(90,camera.fov+(e.deltaY>0?3:-3)))
+    camera.updateProjectionMatrix()
+  }
+},{passive:false})
+
+window.addEventListener('keydown',e=>{
+  if(['KeyW','KeyA','KeyS','KeyD','Space','ControlLeft','ControlRight','ShiftLeft','ShiftRight'].includes(e.code)){
+    keys[e.code]=true
+    if(camMode==='fps') e.preventDefault()
+  }
+})
+window.addEventListener('keyup',e=>{ keys[e.code]=false })
+
+function updateCamera(dt){
+  if(camMode==='orbit'){
+    camera.position.x=orbitDist*Math.sin(orbitYaw)*Math.cos(orbitPitch)
+    camera.position.y=orbitDist*Math.sin(orbitPitch)
+    camera.position.z=orbitDist*Math.cos(orbitYaw)*Math.cos(orbitPitch)
+    camera.lookAt(0,0,0)
+    return
+  }
+  camera.rotation.order='YXZ'
+  camera.rotation.y=fpsYaw
+  camera.rotation.x=fpsPitch
+  camera.rotation.z=0
+
+  _fwd.set(-Math.sin(fpsYaw)*Math.cos(fpsPitch), Math.sin(fpsPitch), -Math.cos(fpsYaw)*Math.cos(fpsPitch)).normalize()
+  _right.crossVectors(_fwd,_up).normalize()
+  const sprint=keys.ShiftLeft||keys.ShiftRight
+  const speed=(sprint?FPS_SPRINT:FPS_SPEED)*dt
+  if(keys.KeyW) camera.position.addScaledVector(_fwd,speed)
+  if(keys.KeyS) camera.position.addScaledVector(_fwd,-speed)
+  if(keys.KeyA) camera.position.addScaledVector(_right,-speed)
+  if(keys.KeyD) camera.position.addScaledVector(_right,speed)
+  if(keys.Space) camera.position.y+=speed
+  if(keys.ControlLeft||keys.ControlRight) camera.position.y-=speed
+}
 
 let lastT=performance.now(),frames=0,fpsAcc=0
 const scEl=document.getElementById('sc')
@@ -301,8 +764,8 @@ const navEl=document.getElementById('nav')
 function animate(){
   requestAnimationFrame(animate)
   const now=performance.now()
-  const dt=now-lastT; lastT=now
-  fpsAcc+=dt; frames++
+  const dt=Math.min(0.05,(now-lastT)/1000); lastT=now
+  fpsAcc+=dt*1000; frames++
   if(fpsAcc>500){
     fpsEl.textContent=Math.round(1000/(fpsAcc/frames))
     fpsAcc=0;frames=0
@@ -310,12 +773,7 @@ function animate(){
 
   const avgN=Fish.tickAll(sepW,aliW,cohW,sepR,visR,maxSpd)
   Fish.syncToThree(iMesh,dummy)
-
-  const r=160
-  camera.position.x=r*Math.sin(rotY)*Math.cos(rotX)
-  camera.position.y=r*Math.sin(rotX)
-  camera.position.z=r*Math.cos(rotY)*Math.cos(rotX)
-  camera.lookAt(0,0,0)
+  updateCamera(dt)
 
   scEl.textContent=Fish._activeCount
   navEl.textContent=avgN
@@ -323,3 +781,5 @@ function animate(){
 }
 animate()
 </script>
+</body>
+</html>

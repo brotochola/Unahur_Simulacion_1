@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Procedural Chunk World - Fly Cam</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #111;
+      color: #fff;
+      font-family: monospace;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      pointer-events: none;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="ui">
+    <h3>Chunk Manager - 3x3 Grid</h3>
+    <p>Mové la cámara con <b>WASD</b> o <b>Flechas</b></p>
+    <br>
+    <div id="info">Cargando...</div>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const CHUNK_SIZE = 512; // Tamaño de cada chunk en píxeles
+    const SPEED = 8;        // Velocidad de movimiento de la cámara
+
+    // --- FUNCIÓN DE GENERACIÓN PROCEDURAL POR CHUNK ---
+    // Genera la textura del chunk en un canvas fuera de pantalla (Offscreen Canvas)
+    function generateChunk(cx, cy, size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Pseudo-random basado en coordenadas (semilla determinista)
+      const seed = Math.sin(cx * 12.9898 + cy * 78.233) * 43758.5453;
+      const hue = Math.abs(Math.floor(seed % 360));
+
+      // Fondo del chunk con color procedimental según su coordenada
+      ctx.fillStyle = `hsl(${hue}, 40%, 20%)`;
+      ctx.fillRect(0, 0, size, size);
+
+      // Dibujar una rejilla interna (sub-tiles/detalles)
+      ctx.strokeStyle = `hsl(${hue}, 40%, 30%)`;
+      ctx.lineWidth = 2;
+      const tileSize = 64;
+      for (let x = 0; x < size; x += tileSize) {
+        for (let y = 0; y < size; y += tileSize) {
+          ctx.strokeRect(x, y, tileSize, tileSize);
+        }
+      }
+
+      // Añadir elementos deterministas (ej: "árboles/estructuras" simulados)
+      const numElements = 8;
+      for (let i = 0; i < numElements; i++) {
+        const elemX = (Math.abs(Math.sin(seed + i)) * (size - 40)) + 20;
+        const elemY = (Math.abs(Math.cos(seed + i)) * (size - 40)) + 20;
+        
+        ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+        ctx.beginPath();
+        ctx.arc(elemX, elemY, 12, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Bordes y etiqueta para debug visual del chunk
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(0, 0, size, size);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText(`Chunk (${cx}, ${cy})`, 20, 40);
+
+      return {
+        cx,
+        cy,
+        canvas // Guardamos la textura prerenderizada
+      };
+    }
+
+    // --- CLASE CHUNK MANAGER ---
+    class ChunkManager {
+      constructor(generatorFunction) {
+        this.generator = generatorFunction;
+        this.loadedChunks = new Map();
+        this.currentChunkKey = null;
+      }
+
+      worldToChunkCoords(x, y) {
+        return {
+          cx: Math.floor(x / CHUNK_SIZE),
+          cy: Math.floor(y / CHUNK_SIZE)
+        };
+      }
+
+      getOrCreateChunk(cx, cy) {
+        const key = `${cx},${cy}`;
+        if (!this.loadedChunks.has(key)) {
+          const newChunk = this.generator(cx, cy, CHUNK_SIZE);
+          this.loadedChunks.set(key, newChunk);
+        }
+        return this.loadedChunks.get(key);
+      }
+
+      update(cameraX, cameraY) {
+        const { cx, cy } = this.worldToChunkCoords(cameraX, cameraY);
+        const centerKey = `${cx},${cy}`;
+
+        const visibleKeys = new Set();
+        const chunksToRender = [];
+
+        // Generamos/recuperamos el chunk actual y los 8 circundantes (-1 a +1 en X e Y)
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const targetCx = cx + dx;
+            const targetCy = cy + dy;
+            const key = `${targetCx},${targetCy}`;
+            
+            visibleKeys.add(key);
+            chunksToRender.push(this.getOrCreateChunk(targetCx, targetCy));
+          }
+        }
+
+        // Limpieza de chunks que salieron del rango de 3x3
+        for (const [key, chunk] of this.loadedChunks.entries()) {
+          if (!visibleKeys.has(key)) {
+            this.loadedChunks.delete(key);
+          }
+        }
+
+        this.currentChunkKey = centerKey;
+        return { chunksToRender, activeChunk: { cx, cy } };
+      }
+    }
+
+    // --- SETUP DEL JUEGO / ENGINE ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const infoDiv = document.getElementById('info');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Estado de la cámara y controles
+    const camera = { x: 0, y: 0 };
+    const keys = {};
+
+    window.addEventListener('keydown', (e) => keys[e.code] = true);
+    window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    const chunkManager = new ChunkManager(generateChunk);
+
+    // --- LOOP PRINCIPAL ---
+    function gameLoop() {
+      // 1. Movimiento de la Cámara (Fly Cam)
+      if (keys['KeyW'] || keys['ArrowUp'])    camera.y -= SPEED;
+      if (keys['KeyS'] || keys['ArrowDown'])  camera.y += SPEED;
+      if (keys['KeyA'] || keys['ArrowLeft'])  camera.x -= SPEED;
+      if (keys['KeyD'] || keys['ArrowRight']) camera.x += SPEED;
+
+      // 2. Actualizar Chunks activos
+      const { chunksToRender, activeChunk } = chunkManager.update(camera.x, camera.y);
+
+      // 3. Renderizar
+      ctx.fillStyle = '#050505';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const halfWidth = canvas.width / 2;
+      const halfHeight = canvas.height / 2;
+
+      // Renderizar los 9 chunks en pantalla
+      for (const chunk of chunksToRender) {
+        // Calcular posición relativa a la cámara centrada en pantalla
+        const screenX = (chunk.cx * CHUNK_SIZE) - camera.x + halfWidth;
+        const screenY = (chunk.cy * CHUNK_SIZE) - camera.y + halfHeight;
+
+        ctx.drawImage(chunk.canvas, screenX, screenY);
+      }
+
+      // Indicador visual del centro de la pantalla / Cámara
+      ctx.strokeStyle = '#ff0055';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(halfWidth, halfHeight, 6, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // UI Info
+      infoDiv.innerHTML = `
+        Cam Pos: X: ${Math.round(camera.x)}, Y: ${Math.round(camera.y)}<br>
+        Chunk Actual: (${activeChunk.cx}, ${activeChunk.cy})<br>
+        Chunks en Memoria: ${chunkManager.loadedChunks.size}
+      `;
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Iniciar loop
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>

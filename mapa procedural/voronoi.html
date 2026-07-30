@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagramas de Voronoi - Simulación 1 (Videojuegos)</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --panel-bg: #1a1a1e;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --text-color: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #2e2e38;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout principal */
+        #main-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        #sidebar {
+            width: 420px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid var(--border);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        /* Tipografía */
+        h1 {
+            font-size: 1.5rem;
+            color: #fff;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 8px;
+        }
+
+        h2 {
+            font-size: 1.1rem;
+            color: var(--accent);
+            margin-bottom: 6px;
+        }
+
+        p, li {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        ul {
+            padding-left: 18px;
+        }
+
+        /* Controles */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: #22222a;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+
+        select, button {
+            background: #2a2a36;
+            color: #fff;
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .btn-danger {
+            background: #3f1d1d;
+            border-color: #5c2828;
+        }
+        .btn-danger:hover {
+            background: #ef4444;
+            border-color: #ef4444;
+        }
+
+        .info-card {
+            background: #181822;
+            border-left: 4px solid var(--accent);
+            padding: 12px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        /* Stats */
+        .stats {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #10b981;
+        }
+    </style>
+</head>
+<body>
+
+<div id="main-container">
+    <div id="canvas-container">
+        <canvas id="voronoiCanvas"></canvas>
+    </div>
+
+    <div id="sidebar">
+        <div>
+            <h1>Diagramas de Voronoi</h1>
+            <p style="margin-top: 4px;">Simulación 1 · Prog. de Videojuegos</p>
+        </div>
+
+        <!-- Explicación Rápida -->
+        <div class="info-card">
+            <h2>¿Qué es?</h2>
+            <p>Es una partición del espacio basada en la **distancia a un conjunto de puntos semilla**. Cada píxel se pinta del color del punto más cercano a él.</p>
+        </div>
+
+        <!-- Controles Interactivos -->
+        <div class="control-group">
+            <h2>Controles de Simulación</h2>
+            
+            <div class="control-row">
+                <label for="metricSelect">Métrica de Distancia:</label>
+            </div>
+            <select id="metricSelect">
+                <option value="euclidean">Euclidiana (Estándar / Natural)</option>
+                <option value="manhattan">Manhattan (Grilla / Taxicab)</option>
+                <option value="chebyshev">Chebyshev (Ajedrez / Rey)</option>
+            </select>
+
+            <div class="control-row" style="margin-top: 8px;">
+                <label for="speedRange">Velocidad de Movimiento:</label>
+                <span id="speedVal" class="stats">1</span>
+            </div>
+            <input type="range" id="speedRange" min="0" max="5" step="0.5" value="1">
+
+            <div class="control-row" style="margin-top: 8px;">
+                <label for="showPoints">Mostrar Puntos Semilla:</label>
+                <input type="checkbox" id="showPoints" checked>
+            </div>
+
+            <div class="control-row" style="margin-top: 8px;">
+                <label for="resolutionSelect">Resolución del Render:</label>
+                <select id="resolutionSelect">
+                    <option value="1">Alta (1:1)</option>
+                    <option value="2" selected>Media (Optimizado)</option>
+                    <option value="4">Baja (Rápido)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button id="addPointsBtn" style="flex: 1;">+ 5 Puntos</button>
+                <button id="clearBtn" class="btn-danger">Limpiar</button>
+            </div>
+        </div>
+
+        <!-- Aplicaciones en Videojuegos -->
+        <div>
+            <h2>Uso en Videojuegos</h2>
+            <ul>
+                <li><strong>Generación Procedimental:</strong> Creación de mapas, bordes de continentes y biomas (ej: <em>Minecraft</em>, <em>RimWorld</em>).</li>
+                <li><strong>IA y Territorio:</strong> Control de zonas de influencia, patrullaje y distancia a cobertura.</li>
+                <li><strong>Shaders y VFX:</strong> Efectos de cáusticas de agua, grietas en piedra o escudos de energía.</li>
+                <li><strong>Destrucción 2D/3D:</strong> Fractura de malla (*Mesh Fracturing*) cuando un objeto recibe un impacto.</li>
+            </ul>
+        </div>
+
+        <!-- Interacción -->
+        <div class="info-card" style="border-left-color: #10b981;">
+            <p><strong>Tips para la clase:</strong></p>
+            <p>• Haz <strong>click en el canvas</strong> para añadir puntos manualmente.</p>
+            <p>• Cambia la métrica a <strong>Manhattan</strong> para mostrar cómo se vería un sistema basado en grilla (estilo Roguelike o Tilemap).</p>
+        </div>
+
+        <div class="stats">
+            Render Time: <span id="renderTime">0</span> ms
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('voronoiCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI Elements
+    const metricSelect = document.getElementById('metricSelect');
+    const speedRange = document.getElementById('speedRange');
+    const speedVal = document.getElementById('speedVal');
+    const showPointsCheckbox = document.getElementById('showPoints');
+    const resolutionSelect = document.getElementById('resolutionSelect');
+    const addPointsBtn = document.getElementById('addPointsBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const renderTimeEl = document.getElementById('renderTime');
+
+    let width, height;
+    let points = [];
+    let scale = 2; // Factor de escala para optimizar rendimiento renderizando a menor resolución
+
+    // Clase para representar cada Semilla (Sitio Voronoi)
+    class Point {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            // Velocidad aleatoria para animación
+            this.vx = (Math.random() - 0.5) * 2;
+            this.vy = (Math.random() - 0.5) * 2;
+            // Color HSL aleatorio pero vibrante
+            this.color = `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`;
+            // Color RGB precalculado para pintar en el ImageData
+            this.rgb = this.hslToRgb(Math.random(), 0.7, 0.4);
+        }
+
+        update(speed) {
+            this.x += this.vx * speed;
+            this.y += this.vy * speed;
+
+            // Rebote en las paredes
+            if (this.x < 0 || this.x > width) this.vx *= -1;
+            if (this.y < 0 || this.y > height) this.vy *= -1;
+        }
+
+        // Helper para convertir HSL a RGB para manipular píxeles directamente
+        hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+    }
+
+    // Distancia para comparar cercanía (no hace falta valor real).
+    // Euclidiana: dist² — sqrt monótono, mismo argmin, sin Math.sqrt.
+    function getDistance(x1, y1, x2, y2, metric) {
+        const dx = x1 - x2;
+        const dy = y1 - y2;
+
+        switch (metric) {
+            case 'manhattan':
+                return Math.abs(dx) + Math.abs(dy);
+            case 'chebyshev':
+                return Math.max(Math.abs(dx), Math.abs(dy));
+            case 'euclidean':
+            default:
+                return dx * dx + dy * dy;
+        }
+    }
+
+    function resize() {
+        const container = document.getElementById('canvas-container');
+        width = container.clientWidth;
+        height = container.clientHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+
+    function generateRandomPoints(count) {
+        for (let i = 0; i < count; i++) {
+            points.push(new Point(
+                Math.random() * width,
+                Math.random() * height
+            ));
+        }
+    }
+
+    // Renderizado por "Fuerza Bruta" a nivel de píxel
+    function renderVoronoi() {
+        const startTime = performance.now();
+        scale = parseInt(resolutionSelect.value);
+
+        const scaledW = Math.floor(width / scale);
+        const scaledH = Math.floor(height / scale);
+
+        // Crear búfer de imagen
+        const imgData = ctx.createImageData(scaledW, scaledH);
+        const data = imgData.data;
+        const metric = metricSelect.value;
+
+        if (points.length > 0) {
+            for (let y = 0; y < scaledH; y++) {
+                for (let x = 0; x < scaledW; x++) {
+                    // Mapear coordenadas de resolución reducida a la real
+                    const realX = x * scale;
+                    const realY = y * scale;
+
+                    let minDist = Infinity;
+                    let closestPoint = null;
+
+                    // Encontrar la semilla más cercana
+                    for (let i = 0; i < points.length; i++) {
+                        const p = points[i];
+                        const dist = getDistance(realX, realY, p.x, p.y, metric);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestPoint = p;
+                        }
+                    }
+
+                    // Pintar el píxel con el color de la semilla más cercana
+                    const index = (y * scaledW + x) * 4;
+                    if (closestPoint) {
+                        data[index] = closestPoint.rgb[0];     // Red
+                        data[index + 1] = closestPoint.rgb[1]; // Green
+                        data[index + 2] = closestPoint.rgb[2]; // Blue
+                        data[index + 3] = 255;                // Alpha
+                    }
+                }
+            }
+        } else {
+            // Fondo negro si no hay puntos
+            data.fill(0);
+        }
+
+        // Renderizar la imagen escalada en el canvas principal
+        createImageBitmap(imgData).then(bitmap => {
+            ctx.drawImage(bitmap, 0, 0, width, height);
+
+            // Dibujar los puntos/semillas por encima si está activo
+            if (showPointsCheckbox.checked) {
+                drawPoints();
+            }
+
+            renderTimeEl.textContent = (performance.now() - startTime).toFixed(1);
+        });
+    }
+
+    function drawPoints() {
+        for (let p of points) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#000000';
+            ctx.stroke();
+        }
+    }
+
+    function update() {
+        const speed = parseFloat(speedRange.value);
+        if (speed > 0) {
+            for (let p of points) {
+                p.update(speed);
+            }
+        }
+        renderVoronoi();
+        requestAnimationFrame(update);
+    }
+
+    // Event Listeners
+    window.addEventListener('resize', () => {
+        resize();
+    });
+
+    canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        points.push(new Point(x, y));
+    });
+
+    addPointsBtn.addEventListener('click', () => generateRandomPoints(5));
+    
+    clearBtn.addEventListener('click', () => {
+        points = [];
+    });
+
+    speedRange.addEventListener('input', (e) => {
+        speedVal.textContent = e.target.value;
+    });
+
+    // Inicialización
+    resize();
+    generateRandomPoints(8);
+    requestAnimationFrame(update);
+
+</script>
+</body>
+</html>

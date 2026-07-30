@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Particle Life 2D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #070b0a;
+      --bg-panel: #0e1614;
+      --bg-elevated: #15201c;
+      --bg-input: #0a100e;
+      --accent: #2dd4bf;
+      --accent-dim: rgba(45, 212, 191, 0.12);
+      --accent-strong: #14b8a6;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --danger-bg: #3f1212;
+      --text: #e8f0ed;
+      --text-soft: #9db5ab;
+      --text-faint: #5f7a6e;
+      --border: #24352e;
+      --border-strong: #355247;
+      --attract: #34d399;
+      --repel: #fb7185;
+      --radius: 10px;
+      --panel-w: 300px;
+      --controls-w: 360px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Sora', sans-serif;
+      background:
+        radial-gradient(ellipse 80% 60% at 10% 0%, rgba(45, 212, 191, 0.07), transparent 55%),
+        radial-gradient(ellipse 60% 50% at 100% 100%, rgba(245, 158, 11, 0.05), transparent 50%),
+        var(--bg-deep);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, select, label {
+      font-family: inherit;
+      user-select: none;
+    }
+
+    .panel-left,
+    .panel-right {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 18px 16px;
+      overflow-y: auto;
+      background: linear-gradient(180deg, var(--bg-panel) 0%, #0b1210 100%);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+    }
+
+    .panel-left {
+      width: var(--panel-w);
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .panel-right {
+      width: var(--controls-w);
+      border-left: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .viewport {
+      flex: 1;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-width: 0;
+      background:
+        radial-gradient(circle at 50% 40%, #0f1a16 0%, #050807 70%);
+      overflow: hidden;
+    }
+
+    .viewport::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(45, 212, 191, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(45, 212, 191, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black, transparent);
+    }
+
+    canvas {
+      display: block;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-bottom: 4px;
+    }
+
+    .brand-mark {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #fff;
+      line-height: 1.15;
+    }
+
+    .brand p {
+      font-size: 0.8rem;
+      color: var(--text-soft);
+      line-height: 1.4;
+    }
+
+    h2 {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h2 .hint {
+      font-size: 0.65rem;
+      letter-spacing: 0.04em;
+      text-transform: none;
+      font-weight: 400;
+      color: var(--text-faint);
+    }
+
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .info-block {
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .info-block:first-of-type {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .info-block h3 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .info-block p,
+    .info-block li {
+      font-size: 0.78rem;
+      line-height: 1.55;
+      color: var(--text-soft);
+    }
+
+    .info-block ul {
+      padding-left: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .info-block strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .species-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .species-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .matrix-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    }
+
+    .matrix-col-head {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      font-size: 0.62rem;
+      font-weight: 500;
+      color: var(--text-soft);
+      letter-spacing: 0.02em;
+    }
+
+    .matrix-row-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: var(--text-soft);
+      white-space: nowrap;
+      padding: 0 2px;
+    }
+
+    .matrix-corner {
+      font-size: 0.58rem;
+      font-weight: 500;
+      color: var(--text-soft);
+      line-height: 1.25;
+      text-align: left;
+      vertical-align: bottom;
+      min-width: 52px;
+    }
+
+    .matrix-corner span {
+      display: block;
+      opacity: 0.85;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: var(--bg-elevated);
+      padding: 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text);
+      gap: 8px;
+    }
+
+    .val-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 2px 7px;
+      border-radius: 4px;
+      min-width: 2.4em;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg-deep);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg-deep);
+      cursor: pointer;
+    }
+
+    button {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 7px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    button:hover {
+      background: #1a2823;
+      border-color: var(--border-strong);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      background: var(--accent-strong);
+      border-color: var(--accent-strong);
+      color: #042f2e;
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #042f2e;
+    }
+
+    .btn-danger {
+      background: var(--danger-bg);
+      border-color: #7f1d1d;
+      color: #fecaca;
+    }
+
+    .btn-danger:hover {
+      background: #5c1515;
+      border-color: #991b1b;
+    }
+
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .switch-row span {
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .toggle {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      flex-shrink: 0;
+      border-radius: 12px;
+      background: var(--border);
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle.on {
+      background: var(--accent-strong);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+    }
+
+    .toggle.on::after {
+      transform: translateX(18px);
+    }
+
+    /* Preset gallery */
+    .preset-gallery {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 2px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+    }
+
+    .preset-card {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .preset-card:hover {
+      border-color: var(--border-strong);
+      background: #121c18;
+    }
+
+    .preset-card.active {
+      border-color: var(--accent-strong);
+      background: var(--accent-dim);
+    }
+
+    .preset-card .preset-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .preset-card.active .preset-name {
+      color: var(--accent);
+    }
+
+    .preset-card .preset-desc {
+      font-size: 0.7rem;
+      color: var(--text-faint);
+      line-height: 1.35;
+      font-weight: 400;
+    }
+
+    .preset-card .preset-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .preset-tag {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.62rem;
+      color: var(--text-soft);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    .tab-buttons {
+      display: flex;
+      gap: 3px;
+      background: var(--bg-input);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 7px 4px;
+      font-size: 0.72rem;
+      border: none;
+      background: transparent;
+      color: var(--text-faint);
+      border-radius: 6px;
+      font-weight: 500;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-soft);
+      background: transparent;
+      border: none;
+    }
+
+    .tab-btn.active {
+      background: var(--bg-elevated);
+      color: var(--text);
+      font-weight: 600;
+      border: none;
+    }
+
+    .matrix-hint {
+      font-size: 0.7rem;
+      color: var(--text-faint);
+      line-height: 1.4;
+    }
+
+    .matrix-hint strong.pos { color: var(--attract); }
+    .matrix-hint strong.neg { color: var(--repel); }
+
+    .matrix-container {
+      overflow-x: auto;
+    }
+
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+    }
+
+    .matrix-table th,
+    .matrix-table td {
+      padding: 4px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+
+    .matrix-table th {
+      background: var(--bg-panel);
+      font-weight: 500;
+    }
+
+    .matrix-table th[data-species] {
+      background: color-mix(in srgb, var(--species-color) 14%, var(--bg-panel));
+    }
+
+    .matrix-table input[type="number"] {
+      width: 44px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      text-align: center;
+      border-radius: 4px;
+      padding: 4px 2px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      -moz-appearance: textfield;
+    }
+
+    .matrix-table input[type="number"]::-webkit-outer-spin-button,
+    .matrix-table input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+    }
+
+    .matrix-table input.attract-pos {
+      color: var(--attract);
+      border-color: rgba(52, 211, 153, 0.35);
+    }
+
+    .matrix-table input.attract-neg {
+      color: var(--repel);
+      border-color: rgba(251, 113, 133, 0.35);
+    }
+
+    .stats-overlay {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 2;
+      background: rgba(7, 11, 10, 0.72);
+      backdrop-filter: blur(10px);
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      pointer-events: none;
+      display: flex;
+      gap: 16px;
+      color: var(--text-soft);
+    }
+
+    .stats-overlay strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .stats-overlay .fps strong { color: var(--attract); }
+    .stats-overlay .count strong { color: var(--accent); }
+    .stats-overlay .cells strong { color: var(--warn); }
+
+    .viewport-hint {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      font-size: 0.7rem;
+      color: var(--text-faint);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .paused-badge {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 2;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      color: var(--warn);
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      padding: 6px 10px;
+      border-radius: 6px;
+      display: none;
+    }
+
+    .paused-badge.show { display: block; }
+
+    @media (max-width: 1100px) {
+      .panel-left { display: none; }
+      .panel-right { width: 300px; }
+    }
+
+    @media (max-width: 720px) {
+      body { flex-direction: column; }
+      .panel-right {
+        width: 100%;
+        max-height: 42vh;
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+      .viewport { min-height: 58vh; }
+    }
+  </style>
+</head>
+<body>
+
+  <aside class="panel-left">
+    <div class="brand">
+      <span class="brand-mark">Simulación emergente</span>
+      <h1>Particle Life</h1>
+      <p>Reglas simples. Estructuras complejas. Células, enjambres, depredadores.</p>
+    </div>
+
+    <div class="section">
+      <div class="info-block">
+        <h3>Cómo funciona</h3>
+        <p>Cada color es una especie. Una matriz dice si se atraen o se repelen. De ahí salen membranas, cadenas y cazadores sin programar el patrón a mano.</p>
+      </div>
+
+      <div class="info-block">
+        <h3>Física</h3>
+        <ul>
+          <li><strong>r &lt; Rmin:</strong> repulsión dura — evita colapso.</li>
+          <li><strong>Rmin…Rmax:</strong> fuerza según coeficiente (−1…+1).</li>
+          <li><strong>r &gt; Rmax:</strong> sin interacción.</li>
+          <li><strong>Fricción:</strong> apaga inercia y caos térmico.</li>
+        </ul>
+      </div>
+
+      <div class="info-block">
+        <h3>Spatial Hash</h3>
+        <p>Mundo en celdas de tamaño Rmax. Cada partícula solo mira vecinos cercanos: O(N) en vez de O(N²).</p>
+      </div>
+
+      <div class="info-block">
+        <h3>Especies</h3>
+        <div class="species-list">
+          <div class="species-row"><span class="color-dot" style="background:#ff3366"></span> Rojo — especie 0</div>
+          <div class="species-row"><span class="color-dot" style="background:#33ff66"></span> Verde — especie 1</div>
+          <div class="species-row"><span class="color-dot" style="background:#3388ff"></span> Azul — especie 2</div>
+          <div class="species-row"><span class="color-dot" style="background:#ffcc00"></span> Amarillo — especie 3</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="viewport">
+    <div class="stats-overlay">
+      <span class="fps">FPS <strong id="fps-val">60</strong></span>
+      <span class="count">N <strong id="count-val">1600</strong></span>
+      <span class="cells">Celdas <strong id="cells-val">0</strong></span>
+    </div>
+    <div class="paused-badge" id="paused-badge">PAUSA</div>
+    <canvas id="canvas"></canvas>
+    <div class="viewport-hint">Elegí un preset a la derecha · ajustá matriz en vivo</div>
+  </main>
+
+  <aside class="panel-right">
+    <div class="section">
+      <h2>Presets <span class="hint">click = cargar + reubicar</span></h2>
+      <div class="preset-gallery" id="preset-gallery"></div>
+    </div>
+
+    <div class="section">
+      <h2>Parámetros</h2>
+      <div class="control-group">
+        <div class="control-row">
+          <div class="control-header">
+            <span>Partículas</span>
+            <span class="val-badge" id="lbl-particles">1600</span>
+          </div>
+          <input type="range" id="input-particles" min="200" max="4000" step="100" value="1600">
+        </div>
+
+        <div class="control-row">
+          <div class="control-header">
+            <span>Fricción</span>
+            <span class="val-badge" id="lbl-friction">0.15</span>
+          </div>
+          <input type="range" id="input-friction" min="0.01" max="0.5" step="0.01" value="0.15">
+        </div>
+
+        <div class="control-row">
+          <div class="control-header">
+            <span>Fuerza global</span>
+            <span class="val-badge" id="lbl-force">1.0</span>
+          </div>
+          <input type="range" id="input-force" min="0.1" max="3.0" step="0.1" value="1.0">
+        </div>
+
+        <div class="switch-row">
+          <span>Bordes toroidales</span>
+          <button type="button" class="toggle on" id="btn-wrap" title="Wrap / paredes" aria-pressed="true"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Matriz de especies</h2>
+      <div class="tab-buttons">
+        <button type="button" class="tab-btn active" id="tab-btn-attract">Fuerzas</button>
+        <button type="button" class="tab-btn" id="tab-btn-rmin">Rmin</button>
+        <button type="button" class="tab-btn" id="tab-btn-rmax">Rmax</button>
+      </div>
+
+      <div id="tab-content-attract" class="control-group">
+        <p class="matrix-hint">
+          Celda = fuerza de <em>fila</em> sobre <em>columna</em> (color → color).
+          <strong class="pos">+ atracción</strong> ·
+          <strong class="neg">− repulsión</strong>
+        </p>
+        <div class="matrix-container" id="matrix-attract-holder"></div>
+      </div>
+
+      <div id="tab-content-rmin" class="control-group" style="display:none;">
+        <p class="matrix-hint">Radio de núcleo duro (px). Debajo de esto: repulsión máxima.</p>
+        <div class="matrix-container" id="matrix-rmin-holder"></div>
+      </div>
+
+      <div id="tab-content-rmax" class="control-group" style="display:none;">
+        <p class="matrix-hint">Alcance de interacción (px). También fija tamaño de celda hash.</p>
+        <div class="matrix-container" id="matrix-rmax-holder"></div>
+      </div>
+    </div>
+
+    <div class="btn-grid">
+      <button type="button" id="btn-random-rules">Reglas random</button>
+      <button type="button" id="btn-reset-pos">Reubicar</button>
+    </div>
+    <div class="btn-grid">
+      <button type="button" id="btn-pause" class="btn-primary">Pausar</button>
+      <button type="button" id="btn-clear" class="btn-danger">Limpiar</button>
+    </div>
+  </aside>
+
+  <script>
+    const SPECIES_COUNT = 4;
+    const COLORS = ['#ff3366', '#33ff66', '#3388ff', '#ffcc00'];
+    const SPECIES_LABELS = ['Rojo', 'Verde', 'Azul', 'Amarillo'];
+
+    let numParticles = 1600;
+    let friction = 0.15;
+    let forceScale = 1.0;
+    let wrapBoundaries = true;
+    let isPaused = false;
+    let activePreset = 'cells';
+
+    let px = new Float32Array(4000);
+    let py = new Float32Array(4000);
+    let vx = new Float32Array(4000);
+    let vy = new Float32Array(4000);
+    let types = new Uint8Array(4000);
+
+    let matrixAttract = Array.from({ length: SPECIES_COUNT }, () => new Float32Array(SPECIES_COUNT));
+    let matrixRMin = Array.from({ length: SPECIES_COUNT }, () => new Float32Array(SPECIES_COUNT));
+    let matrixRMax = Array.from({ length: SPECIES_COUNT }, () => new Float32Array(SPECIES_COUNT));
+
+    let maxGlobalRMax = 80;
+    let cellSize = 80;
+    let gridCols = 0;
+    let gridRows = 0;
+    let grid = [];
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+
+    // fillUniform(n) or full NxN matrix
+    function fillMatrix(src, fallback) {
+      if (typeof src === 'number') {
+        return Array.from({ length: SPECIES_COUNT }, () =>
+          Array.from({ length: SPECIES_COUNT }, () => src)
+        );
+      }
+      return src || Array.from({ length: SPECIES_COUNT }, () =>
+        Array.from({ length: SPECIES_COUNT }, () => fallback)
+      );
+    }
+
+    const PRESETS = {
+      cells: {
+        name: 'Células y membranas',
+        desc: 'Núcleos densos con corteza que los envuelve.',
+        tags: ['estable', 'orgánico'],
+        friction: 0.18,
+        force: 1.0,
+        particles: 1600,
+        attract: [
+          [ 0.85, -0.65,  0.15, -0.20],
+          [-0.45,  0.90, -0.55,  0.05],
+          [ 0.25, -0.35,  0.75, -0.80],
+          [-0.15,  0.10, -0.45,  0.88]
+        ],
+        rmin: 12,
+        rmax: 58
+      },
+      predators: {
+        name: 'Depredadores y presa',
+        desc: 'Rojo caza verde; azul huye en bandadas.',
+        tags: ['dinámico', 'caza'],
+        friction: 0.10,
+        force: 1.3,
+        particles: 1800,
+        attract: [
+          [ 0.20,  0.95, -0.70, -0.30],
+          [-0.90,  0.55,  0.15, -0.40],
+          [-0.20, -0.10,  0.85,  0.40],
+          [ 0.10, -0.50,  0.35,  0.70]
+        ],
+        rmin: [
+          [14, 10, 16, 14],
+          [18, 12, 14, 14],
+          [14, 14, 12, 12],
+          [14, 14, 12, 12]
+        ],
+        rmax: [
+          [70, 90, 55, 60],
+          [50, 65, 60, 55],
+          [55, 55, 75, 70],
+          [60, 55, 70, 70]
+        ]
+      },
+      snakes: {
+        name: 'Serpientes / gusanos',
+        desc: 'Cadenas que se persiguen en ciclo de colores.',
+        tags: ['cadenas', 'clásico'],
+        friction: 0.12,
+        force: 1.15,
+        particles: 1400,
+        attract: [
+          [ 0.15,  1.00, -0.60, -0.55],
+          [-0.55,  0.15,  1.00, -0.60],
+          [-0.60, -0.55,  0.15,  1.00],
+          [ 1.00, -0.60, -0.55,  0.15]
+        ],
+        rmin: 9,
+        rmax: 72
+      },
+      orbits: {
+        name: 'Órbitas y lunas',
+        desc: 'Núcleos masivos; satélites giran alrededor.',
+        tags: ['orbital', 'lento'],
+        friction: 0.08,
+        force: 0.85,
+        particles: 1200,
+        attract: [
+          [ 0.95,  0.70,  0.55,  0.40],
+          [-0.15,  0.10,  0.80, -0.30],
+          [-0.10, -0.35,  0.10,  0.75],
+          [-0.05,  0.20, -0.40,  0.15]
+        ],
+        rmin: [
+          [18, 14, 14, 14],
+          [12, 10, 10, 10],
+          [12, 10, 10, 10],
+          [12, 10, 10, 10]
+        ],
+        rmax: [
+          [55, 95, 90, 85],
+          [70, 50, 65, 60],
+          [70, 60, 50, 65],
+          [70, 60, 60, 50]
+        ]
+      },
+      crystal: {
+        name: 'Cristal / red',
+        desc: 'Auto-atracción fuerte; empuja vecinos distintos.',
+        tags: ['red', 'ordenado'],
+        friction: 0.22,
+        force: 0.9,
+        particles: 2000,
+        attract: [
+          [ 1.00, -0.55, -0.55, -0.55],
+          [-0.55,  1.00, -0.55, -0.55],
+          [-0.55, -0.55,  1.00, -0.55],
+          [-0.55, -0.55, -0.55,  1.00]
+        ],
+        rmin: 16,
+        rmax: 48
+      },
+      mitosis: {
+        name: 'Mitosis',
+        desc: 'Grupos se parten y vuelven a fusionar.',
+        tags: ['pulsante', 'orgánico'],
+        friction: 0.16,
+        force: 1.1,
+        particles: 1500,
+        attract: [
+          [ 0.60,  0.85, -0.75,  0.20],
+          [ 0.40,  0.55,  0.70, -0.60],
+          [-0.80,  0.30,  0.50,  0.75],
+          [ 0.25, -0.65,  0.40,  0.55]
+        ],
+        rmin: 11,
+        rmax: 62
+      },
+      fortress: {
+        name: 'Fortaleza',
+        desc: 'Paredes amarillas; núcleo rojo protegido dentro.',
+        tags: ['capas', 'defensa'],
+        friction: 0.20,
+        force: 1.0,
+        particles: 1700,
+        attract: [
+          [ 0.90, -0.80, -0.40,  0.70],
+          [-0.70,  0.40,  0.85, -0.50],
+          [-0.30,  0.60,  0.35, -0.75],
+          [ 0.55, -0.45, -0.70,  0.95]
+        ],
+        rmin: [
+          [14, 18, 16, 10],
+          [16, 12, 10, 14],
+          [14, 10, 12, 16],
+          [10, 14, 16, 14]
+        ],
+        rmax: [
+          [50, 45, 55, 75],
+          [55, 60, 80, 50],
+          [55, 75, 55, 45],
+          [80, 50, 45, 55]
+        ]
+      },
+      rainbow: {
+        name: 'Arcoíris fluido',
+        desc: 'Bandas de color que se deslizan y mezclan.',
+        tags: ['flujo', 'visual'],
+        friction: 0.11,
+        force: 1.2,
+        particles: 2200,
+        attract: [
+          [ 0.70,  0.55, -0.40, -0.20],
+          [-0.25,  0.70,  0.55, -0.40],
+          [-0.40, -0.25,  0.70,  0.55],
+          [ 0.55, -0.40, -0.25,  0.70]
+        ],
+        rmin: 10,
+        rmax: 68
+      },
+      symbiosis: {
+        name: 'Simbiosis',
+        desc: 'Pares mutualistas; rechazo leve a terceros.',
+        tags: ['pares', 'estable'],
+        friction: 0.17,
+        force: 1.0,
+        particles: 1600,
+        attract: [
+          [ 0.35,  0.90, -0.35, -0.10],
+          [ 0.90,  0.25, -0.15, -0.40],
+          [-0.35, -0.15,  0.35,  0.90],
+          [-0.10, -0.40,  0.90,  0.25]
+        ],
+        rmin: 13,
+        rmax: 60
+      },
+      galaxies: {
+        name: 'Galaxias',
+        desc: 'Brazos espirales y núcleos que orbitan.',
+        tags: ['cósmico', 'lento'],
+        friction: 0.06,
+        force: 0.75,
+        particles: 2400,
+        attract: [
+          [ 0.80,  0.45, -0.25,  0.30],
+          [ 0.35,  0.75,  0.50, -0.20],
+          [-0.30,  0.40,  0.70,  0.45],
+          [ 0.25, -0.25,  0.40,  0.85]
+        ],
+        rmin: 8,
+        rmax: 95
+      },
+      broth: {
+        name: 'Caldo primordial',
+        desc: 'Alta energía; patrones que nacen y mueren.',
+        tags: ['caótico', 'rápido'],
+        friction: 0.05,
+        force: 1.6,
+        particles: 2000,
+        attract: [
+          [-0.85,  0.90, -0.60,  0.70],
+          [ 0.65, -0.75,  0.95, -0.50],
+          [-0.55,  0.60, -0.90,  0.85],
+          [ 0.75, -0.65,  0.50, -0.80]
+        ],
+        rmin: 7,
+        rmax: 88
+      },
+      segregation: {
+        name: 'Segregación',
+        desc: 'Cada color se agrupa y empuja a los demás.',
+        tags: ['clusters', 'claro'],
+        friction: 0.19,
+        force: 1.05,
+        particles: 1800,
+        attract: [
+          [ 0.95, -0.85, -0.85, -0.85],
+          [-0.85,  0.95, -0.85, -0.85],
+          [-0.85, -0.85,  0.95, -0.85],
+          [-0.85, -0.85, -0.85,  0.95]
+        ],
+        rmin: 14,
+        rmax: 70
+      }
+    };
+
+    function resizeCanvas() {
+      const container = canvas.parentElement;
+      width = Math.max(100, container.clientWidth - 32);
+      height = Math.max(100, container.clientHeight - 32);
+      canvas.width = width;
+      canvas.height = height;
+      initGrid();
+    }
+
+    function initGrid() {
+      maxGlobalRMax = 10;
+      for (let i = 0; i < SPECIES_COUNT; i++) {
+        for (let j = 0; j < SPECIES_COUNT; j++) {
+          if (matrixRMax[i][j] > maxGlobalRMax) maxGlobalRMax = matrixRMax[i][j];
+        }
+      }
+      cellSize = maxGlobalRMax;
+      gridCols = Math.max(1, Math.ceil(width / cellSize));
+      gridRows = Math.max(1, Math.ceil(height / cellSize));
+      const totalCells = gridCols * gridRows;
+      grid = new Array(totalCells);
+      for (let i = 0; i < totalCells; i++) grid[i] = [];
+      document.getElementById('cells-val').textContent = totalCells;
+    }
+
+    function clearGrid() {
+      for (let i = 0; i < grid.length; i++) grid[i].length = 0;
+    }
+
+    function updateGrid() {
+      clearGrid();
+      for (let i = 0; i < numParticles; i++) {
+        let cx = Math.floor(px[i] / cellSize);
+        let cy = Math.floor(py[i] / cellSize);
+        if (cx < 0) cx = 0; else if (cx >= gridCols) cx = gridCols - 1;
+        if (cy < 0) cy = 0; else if (cy >= gridRows) cy = gridRows - 1;
+        grid[cy * gridCols + cx].push(i);
+      }
+    }
+
+    function applyMatrixPair(attract, rminSrc, rmaxSrc) {
+      const rmin = fillMatrix(rminSrc, 12);
+      const rmax = fillMatrix(rmaxSrc, 60);
+      for (let i = 0; i < SPECIES_COUNT; i++) {
+        for (let j = 0; j < SPECIES_COUNT; j++) {
+          matrixAttract[i][j] = attract[i][j];
+          matrixRMin[i][j] = rmin[i][j];
+          matrixRMax[i][j] = rmax[i][j];
+        }
+      }
+    }
+
+    function syncSliders() {
+      const pEl = document.getElementById('input-particles');
+      const fEl = document.getElementById('input-friction');
+      const foEl = document.getElementById('input-force');
+      pEl.value = numParticles;
+      fEl.value = friction;
+      foEl.value = forceScale;
+      document.getElementById('lbl-particles').textContent = numParticles;
+      document.getElementById('lbl-friction').textContent = friction.toFixed(2);
+      document.getElementById('lbl-force').textContent = forceScale.toFixed(1);
+    }
+
+    function setActivePresetCard(key) {
+      activePreset = key;
+      document.querySelectorAll('.preset-card').forEach(el => {
+        el.classList.toggle('active', el.dataset.key === key);
+      });
+    }
+
+    function loadPreset(key, relocate = true) {
+      const p = PRESETS[key];
+      if (!p) return;
+      applyMatrixPair(p.attract, p.rmin, p.rmax);
+      if (p.friction != null) friction = p.friction;
+      if (p.force != null) forceScale = p.force;
+      if (p.particles != null) numParticles = p.particles;
+      syncSliders();
+      initGrid();
+      renderTables();
+      setActivePresetCard(key);
+      if (relocate) initParticles();
+    }
+
+    function buildPresetGallery() {
+      const gallery = document.getElementById('preset-gallery');
+      gallery.innerHTML = '';
+      for (const [key, p] of Object.entries(PRESETS)) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'preset-card' + (key === activePreset ? ' active' : '');
+        btn.dataset.key = key;
+        const tags = (p.tags || []).map(t => `<span class="preset-tag">${t}</span>`).join('');
+        btn.innerHTML = `
+          <span class="preset-name">${p.name}</span>
+          <span class="preset-desc">${p.desc}</span>
+          <span class="preset-tags">${tags}</span>
+        `;
+        btn.addEventListener('click', () => loadPreset(key, true));
+        gallery.appendChild(btn);
+      }
+    }
+
+    function initParticles() {
+      for (let i = 0; i < numParticles; i++) {
+        px[i] = Math.random() * width;
+        py[i] = Math.random() * height;
+        vx[i] = (Math.random() - 0.5) * 2;
+        vy[i] = (Math.random() - 0.5) * 2;
+        types[i] = Math.floor(Math.random() * SPECIES_COUNT);
+      }
+      document.getElementById('count-val').textContent = numParticles;
+    }
+
+    function updatePhysics() {
+      if (isPaused) return;
+      updateGrid();
+      const dt = 0.4;
+
+      for (let i = 0; i < numParticles; i++) {
+        const typeI = types[i];
+        const xi = px[i];
+        const yi = py[i];
+        let fx = 0;
+        let fy = 0;
+        const cellX = Math.floor(xi / cellSize);
+        const cellY = Math.floor(yi / cellSize);
+
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            let cx = cellX + dx;
+            let cy = cellY + dy;
+            if (wrapBoundaries) {
+              cx = (cx + gridCols) % gridCols;
+              cy = (cy + gridRows) % gridRows;
+            } else if (cx < 0 || cx >= gridCols || cy < 0 || cy >= gridRows) {
+              continue;
+            }
+
+            const neighbors = grid[cy * gridCols + cx];
+            for (let k = 0; k < neighbors.length; k++) {
+              const j = neighbors[k];
+              if (i === j) continue;
+
+              let rx = px[j] - xi;
+              let ry = py[j] - yi;
+              if (wrapBoundaries) {
+                if (rx > width * 0.5) rx -= width;
+                else if (rx < -width * 0.5) rx += width;
+                if (ry > height * 0.5) ry -= height;
+                else if (ry < -height * 0.5) ry += height;
+              }
+
+              const distSq = rx * rx + ry * ry;
+              const typeJ = types[j];
+              const rMax = matrixRMax[typeI][typeJ];
+              if (distSq <= 0 || distSq >= rMax * rMax) continue;
+
+              const r = Math.sqrt(distSq);
+              const rMin = matrixRMin[typeI][typeJ];
+              let force = 0;
+              if (r < rMin) {
+                force = r / rMin - 1.0;
+              } else {
+                const attr = matrixAttract[typeI][typeJ];
+                const mid = (rMin + rMax) * 0.5;
+                if (r < mid) force = attr * ((r - rMin) / (mid - rMin));
+                else force = attr * (1.0 - (r - mid) / (rMax - mid));
+              }
+              fx += (rx / r) * force;
+              fy += (ry / r) * force;
+            }
+          }
+        }
+
+        vx[i] = (vx[i] + fx * forceScale * dt) * (1.0 - friction);
+        vy[i] = (vy[i] + fy * forceScale * dt) * (1.0 - friction);
+      }
+
+      for (let i = 0; i < numParticles; i++) {
+        px[i] += vx[i] * dt;
+        py[i] += vy[i] * dt;
+        if (wrapBoundaries) {
+          if (px[i] < 0) px[i] += width;
+          else if (px[i] >= width) px[i] -= width;
+          if (py[i] < 0) py[i] += height;
+          else if (py[i] >= height) py[i] -= height;
+        } else {
+          if (px[i] < 0) { px[i] = 0; vx[i] *= -1; }
+          else if (px[i] >= width) { px[i] = width - 1; vx[i] *= -1; }
+          if (py[i] < 0) { py[i] = 0; vy[i] *= -1; }
+          else if (py[i] >= height) { py[i] = height - 1; vy[i] *= -1; }
+        }
+      }
+    }
+
+    function render() {
+      ctx.fillStyle = '#050807';
+      ctx.fillRect(0, 0, width, height);
+      for (let i = 0; i < numParticles; i++) {
+        ctx.fillStyle = COLORS[types[i]];
+        ctx.beginPath();
+        ctx.arc(px[i], py[i], 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    let lastTime = performance.now();
+    let frameCount = 0;
+
+    function loop(currentTime) {
+      frameCount++;
+      if (currentTime - lastTime >= 1000) {
+        document.getElementById('fps-val').textContent = frameCount;
+        frameCount = 0;
+        lastTime = currentTime;
+      }
+      updatePhysics();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    function attractClass(val) {
+      if (val > 0.05) return 'attract-pos';
+      if (val < -0.05) return 'attract-neg';
+      return '';
+    }
+
+    function renderTables() {
+      const createTable = (matrix, step, min, max, typeName) => {
+        let html = '<table class="matrix-table"><thead><tr>';
+        html += '<th class="matrix-corner"><span>origen ↓</span><span>destino →</span></th>';
+        for (let j = 0; j < SPECIES_COUNT; j++) {
+          html += `<th data-species="${j}" style="--species-color:${COLORS[j]}" title="Destino: ${SPECIES_LABELS[j]}">
+            <div class="matrix-col-head">
+              <span class="matrix-swatch" style="background:${COLORS[j]}"></span>
+              <span>${SPECIES_LABELS[j]}</span>
+            </div>
+          </th>`;
+        }
+        html += '</tr></thead><tbody>';
+        for (let i = 0; i < SPECIES_COUNT; i++) {
+          html += `<tr><th data-species="${i}" style="--species-color:${COLORS[i]}" title="Origen: ${SPECIES_LABELS[i]}">
+            <div class="matrix-row-head">
+              <span class="matrix-swatch" style="background:${COLORS[i]}"></span>
+              <span>${SPECIES_LABELS[i]}</span>
+            </div>
+          </th>`;
+          for (let j = 0; j < SPECIES_COUNT; j++) {
+            const raw = matrix[i][j];
+            const val = step < 1 ? raw.toFixed(1) : String(Math.round(raw));
+            const cls = typeName === 'attract' ? attractClass(raw) : '';
+            const pair = `${SPECIES_LABELS[i]} → ${SPECIES_LABELS[j]}`;
+            html += `<td><input type="number" class="${cls}" step="${step}" min="${min}" max="${max}" value="${val}"
+              title="${pair}" aria-label="${pair}"
+              data-type="${typeName}" data-row="${i}" data-col="${j}"></td>`;
+          }
+          html += '</tr>';
+        }
+        html += '</tbody></table>';
+        return html;
+      };
+
+      document.getElementById('matrix-attract-holder').innerHTML =
+        createTable(matrixAttract, 0.1, -1, 1, 'attract');
+      document.getElementById('matrix-rmin-holder').innerHTML =
+        createTable(matrixRMin, 1, 2, 50, 'rmin');
+      document.getElementById('matrix-rmax-holder').innerHTML =
+        createTable(matrixRMax, 1, 20, 150, 'rmax');
+
+      document.querySelectorAll('.matrix-table input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const r = parseInt(e.target.dataset.row, 10);
+          const c = parseInt(e.target.dataset.col, 10);
+          const val = parseFloat(e.target.value);
+          const type = e.target.dataset.type;
+          if (type === 'attract') {
+            matrixAttract[r][c] = val;
+            e.target.className = attractClass(val);
+          }
+          if (type === 'rmin') matrixRMin[r][c] = val;
+          if (type === 'rmax') {
+            matrixRMax[r][c] = val;
+            initGrid();
+          }
+        });
+      });
+    }
+
+    document.getElementById('input-particles').addEventListener('input', (e) => {
+      numParticles = parseInt(e.target.value, 10);
+      document.getElementById('lbl-particles').textContent = numParticles;
+      initParticles();
+    });
+
+    document.getElementById('input-friction').addEventListener('input', (e) => {
+      friction = parseFloat(e.target.value);
+      document.getElementById('lbl-friction').textContent = friction.toFixed(2);
+    });
+
+    document.getElementById('input-force').addEventListener('input', (e) => {
+      forceScale = parseFloat(e.target.value);
+      document.getElementById('lbl-force').textContent = forceScale.toFixed(1);
+    });
+
+    const wrapBtn = document.getElementById('btn-wrap');
+    wrapBtn.addEventListener('click', () => {
+      wrapBoundaries = !wrapBoundaries;
+      wrapBtn.classList.toggle('on', wrapBoundaries);
+      wrapBtn.setAttribute('aria-pressed', String(wrapBoundaries));
+    });
+
+    document.getElementById('btn-random-rules').addEventListener('click', () => {
+      for (let i = 0; i < SPECIES_COUNT; i++) {
+        for (let j = 0; j < SPECIES_COUNT; j++) {
+          matrixAttract[i][j] = Math.random() * 2 - 1;
+          matrixRMin[i][j] = Math.floor(Math.random() * 15 + 5);
+          matrixRMax[i][j] = Math.floor(Math.random() * 50 + 40);
+        }
+      }
+      initGrid();
+      renderTables();
+      setActivePresetCard('');
+    });
+
+    document.getElementById('btn-reset-pos').addEventListener('click', () => initParticles());
+
+    document.getElementById('btn-pause').addEventListener('click', () => {
+      isPaused = !isPaused;
+      document.getElementById('btn-pause').textContent = isPaused ? 'Reanudar' : 'Pausar';
+      document.getElementById('paused-badge').classList.toggle('show', isPaused);
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      numParticles = 0;
+      document.getElementById('lbl-particles').textContent = 0;
+      document.getElementById('count-val').textContent = 0;
+      document.getElementById('input-particles').value = 200;
+    });
+
+    const tabBtns = [
+      document.getElementById('tab-btn-attract'),
+      document.getElementById('tab-btn-rmin'),
+      document.getElementById('tab-btn-rmax')
+    ];
+    const tabContents = [
+      document.getElementById('tab-content-attract'),
+      document.getElementById('tab-content-rmin'),
+      document.getElementById('tab-content-rmax')
+    ];
+
+    tabBtns.forEach((btn, idx) => {
+      btn.addEventListener('click', () => {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        tabContents.forEach(c => c.style.display = 'none');
+        btn.classList.add('active');
+        tabContents[idx].style.display = 'flex';
+      });
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+
+    buildPresetGallery();
+    resizeCanvas();
+    loadPreset('cells', true);
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
