@@ -3,143 +3,202 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Falling Sand + Verlet (Pelotas, Cajas & Constraints)</title>
+  <title>Falling Sand + Verlet Lab</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background-color: #121214;
-      color: #e0e0e0;
-      font-family: monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      gap: 12px;
+      background: #121214; color: #e0e0e0;
+      font-family: ui-monospace, Consolas, monospace;
+      height: 100vh; overflow: hidden;
+      display: grid;
+      grid-template-columns: 320px 1fr 300px;
+      grid-template-rows: auto 1fr;
     }
-
-    h1 {
-      font-size: 1.1rem;
-      color: #a0a0a0;
+    header {
+      grid-column: 1 / -1; padding: 10px 16px;
+      border-bottom: 1px solid #333; background: #1a1a20;
+      display: flex; align-items: center; justify-content: space-between;
     }
-
+    header h1 { font-size: 0.95rem; color: #c0c0d0; font-weight: normal; }
+    header .meta { font-size: 0.75rem; color: #888; }
+    .panel {
+      overflow-y: auto; padding: 12px; background: #1a1a20;
+      font-size: 0.72rem; line-height: 1.4; user-select: text;
+    }
+    #leftPanel { border-right: 1px solid #333; }
+    #rightPanel { border-left: 1px solid #333; user-select: none; }
+    .center {
+      display: flex; align-items: center; justify-content: center;
+      background: #0e0e10; min-width: 0;
+    }
     canvas {
-      border: 2px solid #333;
-      background: #000;
-      image-rendering: pixelated;
-      cursor: crosshair;
+      border: 2px solid #333; background: #000;
+      image-rendering: pixelated; cursor: crosshair;
+      max-width: 100%; max-height: calc(100vh - 60px);
     }
-
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      font-size: 0.85rem;
-      background: #1e1e24;
-      padding: 10px 16px;
-      border-radius: 6px;
-      justify-content: center;
-      align-items: center;
+    .panel h2 {
+      font-size: 0.8rem; color: #8af; margin: 14px 0 6px;
+      border-bottom: 1px solid #333; padding-bottom: 3px;
     }
-
-    .key {
-      background: #333;
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: #fff;
+    .panel h2:first-child { margin-top: 0; }
+    .panel p, .panel li { color: #b0b0c0; margin-bottom: 6px; }
+    .panel ul, .panel ol { padding-left: 16px; margin-bottom: 8px; }
+    .panel code { color: #e8c070; }
+    .swatch {
+      display: inline-block; width: 9px; height: 9px;
+      border-radius: 2px; vertical-align: middle; margin-right: 3px;
     }
-
+    #frameLog, #debugStats {
+      white-space: pre-wrap; background: #111116; border: 1px solid #333;
+      padding: 8px; border-radius: 4px; color: #d0d0e0;
+      max-height: 220px; overflow-y: auto; margin-top: 6px;
+    }
+    .warn { color: #f8a; }
+    .tool-row, .play-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
     button {
-      background: #3a3a4c;
-      color: #fff;
-      border: 1px solid #555;
-      padding: 5px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: inherit;
-      font-weight: bold;
+      background: #3a3a4c; color: #fff; border: 1px solid #555;
+      padding: 6px 10px; border-radius: 4px; cursor: pointer;
+      font-family: inherit; font-size: 0.72rem; font-weight: bold;
     }
-
-    button:hover {
-      background: #52526e;
-    }
-
-    button.active {
-      background: #6a6a9a;
-      border-color: #aaa;
-    }
-
-    #debugPanel {
-      display: none;
-      font-size: 0.75rem;
-      background: #1e1e24;
-      padding: 10px 14px;
-      border-radius: 6px;
-      max-width: 820px;
-      line-height: 1.45;
-      color: #b8b8c8;
-    }
-
-    #debugPanel.visible {
-      display: block;
-    }
-
-    #debugPanel .swatch {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-      vertical-align: middle;
-      margin-right: 4px;
-    }
-
-    #debugStats {
-      margin-top: 6px;
-      color: #e0e0e0;
-      white-space: pre-wrap;
-    }
+    button:hover { background: #52526e; }
+    button.active { background: #6a6a9a; border-color: #aaa; }
+    .knob { margin-bottom: 10px; }
+    .knob label { display: flex; justify-content: space-between; margin-bottom: 2px; color: #ccc; }
+    .knob .hint { color: #666; font-size: 0.65rem; margin-top: 2px; }
+    .knob input[type=range] { width: 100%; }
+    .key { background: #333; padding: 1px 5px; border-radius: 3px; color: #fff; }
+    .paused-banner { color: #f80; font-weight: bold; }
   </style>
 </head>
 <body>
-
-  <h1>Falling Sand & Verlet Physics (Pelotas, Cajas & Constraints)</h1>
-
-  <canvas id="canvas"></canvas>
-
-  <div class="controls">
-    <button id="btnSand" class="active">🏖️ Arena</button>
-    <button id="btnBall">⚽ Pelota</button>
-    <button id="btnBox">📦 Caja</button>
-    <button id="btnClear">🧹 Limpiar</button>
-    <button id="btnDebug">🐛 Debug</button>
-    <span>|</span>
-    <span><span class="key">Izq</span> Colocar / Pintar</span>
-    <span><span class="key">Der</span> Pared</span>
-    <span><span class="key">D</span> Debug</span>
-  </div>
-
-  <div id="debugPanel">
-    <div>
-      <span class="swatch" style="background:#ff4444"></span>celda penetrada
-      &nbsp;<span class="swatch" style="background:#44ff88"></span>sample borde vacío
-      &nbsp;<span class="swatch" style="background:#ffcc00"></span>normal (empuje)
-      &nbsp;<span class="swatch" style="background:#66aaff"></span>velocidad
-      &nbsp;<span class="swatch" style="background:#ff66ff"></span>punto impacto / splash
+  <header>
+    <h1>Falling Sand + Verlet Lab</h1>
+    <div class="meta">
+      <span id="runState">▶ corriendo</span>
+      &nbsp;|&nbsp; frame <span id="frameNum">0</span>
+      &nbsp;|&nbsp; <span class="key">Space</span> play/pause
+      &nbsp; <span class="key">N</span> step
+      &nbsp; <span class="key">D</span> debug
     </div>
-    <div id="debugStats">Debug off</div>
+  </header>
+
+  <aside class="panel" id="leftPanel">
+    <h2>Cómo funciona (1 frame)</h2>
+    <ol>
+      <li><b>Stamp</b> — cada círculo pinta <code>occupied</code> y empuja arena afuera.</li>
+      <li><b>Sand CA</b> — granos caen a celdas libres (no occupied, no pared).</li>
+      <li><b>Verlet</b> — <code>v = pos - oldPos</code>, luego <code>pos += v*airDrag + g</code>.</li>
+      <li><b>Body↔grilla</b> — celdas SAND/WALL dentro del radio → push por penetración.</li>
+      <li><b>Body↔body</b> — separa círculos + fricción tangente.</li>
+      <li><b>Constraints</b> — mantienen lados/diagonales de cajas.</li>
+      <li>Repite grilla/constraints (constraints re-meten en arena/borde).</li>
+      <li><b>Clamp bordes</b> — piso/pared + fricción tangente.</li>
+    </ol>
+
+    <h2>Verlet en una línea</h2>
+    <p>No hay <code>velocity</code> explícita: la velocidad es la diferencia entre posición actual y anterior. Cambiar <code>oldPos</code> = cambiar velocidad.</p>
+
+    <h2 class="warn">Fricción (importante)</h2>
+    <p><code>rbFriction = 1</code> → pega (mata deslizamiento).<br>
+       <code>rbFriction = 0</code> → hielo (no frena tangente).<br>
+       Si lo pusiste en 0 y “patina”, es el comportamiento correcto.</p>
+
+    <h2>Cajas</h2>
+    <p>4 círculos + 4 lados + 2 diagonales. Mismo <code>groupId</code> → no colisionan entre sí (solo constraints los mantienen).</p>
+
+    <h2>Leyenda debug</h2>
+    <p>
+      <span class="swatch" style="background:#ff4444"></span>celda penetrada
+      <span class="swatch" style="background:#44ff88"></span>sample borde
+      <span class="swatch" style="background:#ffcc00"></span>normal
+      <span class="swatch" style="background:#66aaff"></span>velocidad
+      <span class="swatch" style="background:#ff66ff"></span>impacto
+    </p>
+
+    <h2>Log del último frame</h2>
+    <div id="frameLog">—</div>
+
+    <h2>Hover body (debug)</h2>
+    <div id="debugStats">Activá Debug y pasá el mouse sobre un círculo.</div>
+  </aside>
+
+  <div class="center">
+    <canvas id="canvas"></canvas>
   </div>
+
+  <aside class="panel" id="rightPanel">
+    <h2>Playback</h2>
+    <div class="play-row">
+      <button id="btnPlay" class="active">▶ Play</button>
+      <button id="btnPause">⏸ Pause</button>
+      <button id="btnStep">⏭ Step (N)</button>
+    </div>
+
+    <h2>Herramientas</h2>
+    <div class="tool-row">
+      <button id="btnSand" class="active">Arena</button>
+      <button id="btnBall">Pelota</button>
+      <button id="btnBox">Caja</button>
+      <button id="btnDebug">Debug</button>
+      <button id="btnClear">Limpiar</button>
+    </div>
+    <p><span class="key">Izq</span> colocar/pintar · <span class="key">Der</span> pared · <span class="key">1/2/3</span> tool</p>
+
+    <h2>Knobs</h2>
+    <div id="knobs"></div>
+  </aside>
 
   <script>
-    // --- CONFIGURACIÓN DE LA GRILLA ---
     const WIDTH = 200;
     const HEIGHT = 150;
     const SCALE = 4;
+
+    const params = {
+      gravity: 0.25,
+      airDrag: 0.98,
+      rbFriction: 0.9,
+      sandRestitution: 0.45,
+      sandPush: 0.8,
+      wallPush: 1.0,
+      constraintIters: 2,
+      boxSize: 16,
+      brushRadius: 3
+    };
+
+    const knobsSpec = [
+      { key: 'gravity', label: 'Gravedad', min: 0, max: 1, step: 0.01, hint: 'suma en Y cada frame (Verlet)' },
+      { key: 'airDrag', label: 'Air drag', min: 0.8, max: 1, step: 0.005, hint: 'multiplica v cada frame (1=sin drag)' },
+      { key: 'rbFriction', label: 'Fricción contacto', min: 0, max: 1, step: 0.01, hint: '1=pega en piso/bodies, 0=hielo' },
+      { key: 'sandRestitution', label: 'Rebote vs grilla', min: 0, max: 1, step: 0.01, hint: 'rebote al chocar arena/pared' },
+      { key: 'sandPush', label: 'Push arena', min: 0, max: 1.2, step: 0.05, hint: 'fracción de penetración al salir de arena' },
+      { key: 'wallPush', label: 'Push pared', min: 0, max: 1.2, step: 0.05, hint: 'fracción de penetración vs WALL' },
+      { key: 'constraintIters', label: 'Constraint iters', min: 0, max: 8, step: 1, hint: 'rigidez de cajas (más = más rígido)' },
+      { key: 'boxSize', label: 'Tamaño caja', min: 8, max: 32, step: 1, hint: 'lado al spawnear caja' },
+      { key: 'brushRadius', label: 'Brush arena', min: 1, max: 8, step: 1, hint: 'radio pincel arena/pared' }
+    ];
+
+    const knobsEl = document.getElementById('knobs');
+    for (const k of knobsSpec) {
+      const div = document.createElement('div');
+      div.className = 'knob';
+      const label = document.createElement('label');
+      label.innerHTML = '<span>' + k.label + '</span><span id="val_' + k.key + '">' + params[k.key] + '</span>';
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = k.min; input.max = k.max; input.step = k.step; input.value = params[k.key];
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = k.hint;
+      div.appendChild(label);
+      div.appendChild(input);
+      div.appendChild(hint);
+      knobsEl.appendChild(div);
+      input.addEventListener('input', (e) => {
+        const v = k.step >= 1 ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+        params[k.key] = v;
+        document.getElementById('val_' + k.key).textContent = String(v);
+      });
+    }
 
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -147,85 +206,62 @@
     canvas.height = HEIGHT * SCALE;
 
     const grid = new Uint8Array(WIDTH * HEIGHT);
-    const occupied = new Uint8Array(WIDTH * HEIGHT); // footprint rigidbodies
+    const occupied = new Uint8Array(WIDTH * HEIGHT);
     const imgData = ctx.createImageData(WIDTH * SCALE, HEIGHT * SCALE);
     const buf32 = new Uint32Array(imgData.data.buffer);
 
-    const EMPTY = 0;
-    const SAND = 1;
-    const WALL = 2;
-
-    function cellFree(idx) {
-      return grid[idx] === EMPTY && !occupied[idx];
-    }
+    const EMPTY = 0, SAND = 1, WALL = 2;
+    function cellFree(idx) { return grid[idx] === EMPTY && !occupied[idx]; }
 
     const DENSITY = new Uint8Array(256);
-    DENSITY[EMPTY] = 0;
-    DENSITY[SAND] = 140;
-    DENSITY[WALL] = 255;
+    DENSITY[EMPTY] = 0; DENSITY[SAND] = 140; DENSITY[WALL] = 255;
 
     const COLOR_EMPTY = 0xFF000000;
     const COLOR_SAND = 0xFF40D0E6;
     const COLOR_WALL = 0xFF808080;
 
-    // --- ESTRUCTURA FÍSICA (VERLET) ---
-    const particles = [];   // Nodos de masa
-    const constraints = []; // Enlaces de distancia
-    const GRAVITY = 0.25;
-    const SAND_RESTITUTION = 0.45;
-    const RB_FRICTION = 0.1; // mata velocidad tangente en colisión body↔body (anti-slide)
-    const frictionAir = 0.9; // mata velocidad en el aire
+    const particles = [];
+    const constraints = [];
     let nextGroupId = 1;
 
+    let running = true;
+    let frame = 0;
+    const phaseLog = [];
+    function phase(msg) { phaseLog.push(msg); }
+
     function createParticle(x, y, radius, color = 0xFF5050E6, groupId = 0) {
-      const p = {
-        x, y,
-        oldX: x,
-        oldY: y,
-        radius,
-        color,
-        groupId
-      };
+      const p = { x, y, oldX: x, oldY: y, radius, color, groupId };
       particles.push(p);
       return p;
     }
-
     function createConstraint(p1, p2, distance) {
       const c = { p1, p2, distance };
       constraints.push(c);
       return c;
     }
-
     function createBox(cx, cy, size) {
-      size = size * 0.5
-      // Lado real entre centros de esquinas
+      size = size * 0.5;
       const side = size;
       const hs = side / 2;
-      // Solape 33% del diámetro: 2r - side = 0.33 * 2r → r = side / 1.34
       const r = side / (2 * (1 - 0.33));
       const boxColor = 0xFF40E640;
       const groupId = nextGroupId++;
-
       const p1 = createParticle(cx - hs, cy - hs, r, boxColor, groupId);
       const p2 = createParticle(cx + hs, cy - hs, r, boxColor, groupId);
       const p3 = createParticle(cx + hs, cy + hs, r, boxColor, groupId);
       const p4 = createParticle(cx - hs, cy + hs, r, boxColor, groupId);
-
       createConstraint(p1, p2, side);
       createConstraint(p2, p3, side);
       createConstraint(p3, p4, side);
       createConstraint(p4, p1, side);
-
       const diag = Math.sqrt(side * side + side * side);
       createConstraint(p1, p3, diag);
       createConstraint(p2, p4, diag);
     }
 
-    // Precalculado de Kernel
     const SAMPLES = 8;
     const COS_TABLE = new Float32Array(SAMPLES);
     const SIN_TABLE = new Float32Array(SAMPLES);
-
     for (let i = 0; i < SAMPLES; i++) {
       const angle = (i / SAMPLES) * Math.PI * 2;
       COS_TABLE[i] = Math.cos(angle);
@@ -325,18 +361,6 @@
       rbHits: 0
     };
 
-    const debugPanel = document.getElementById('debugPanel');
-    const debugStats = document.getElementById('debugStats');
-    const btnDebug = document.getElementById('btnDebug');
-
-    function setDebug(on) {
-      debug.enabled = on;
-      btnDebug.classList.toggle('active', on);
-      debugPanel.classList.toggle('visible', on);
-    }
-
-    btnDebug.onclick = () => setDebug(!debug.enabled);
-
     function clearDebugFrame() {
       debug.samples.length = 0;
       debug.contacts.length = 0;
@@ -422,7 +446,7 @@
 
       const wallRatio = wallHits / hitCount;
       const sandRatio = sandHits / hitCount;
-      const pushAmt = maxPen * (wallRatio * 1.0 + sandRatio * 0.8);
+      const pushAmt = maxPen * (wallRatio * params.wallPush + sandRatio * params.sandPush);
 
       const vx = body.x - body.oldX;
       const vy = body.y - body.oldY;
@@ -440,7 +464,7 @@
         const vTangX = vx - vNormalX;
         const vTangY = vy - vNormalY;
 
-        bounce = SAND_RESTITUTION * (0.35 + wallRatio * 0.65);
+        bounce = params.sandRestitution * (0.35 + wallRatio * 0.65);
         tangentFriction = Math.max(0.35, 1.0 - sandRatio * 0.55 - wallRatio * 0.15);
 
         const newVx = vTangX * tangentFriction - vNormalX * bounce;
@@ -544,7 +568,7 @@
             const vn = rvx * nx + rvy * ny;
             const tvx = rvx - vn * nx;
             const tvy = rvy - vn * ny;
-            const halfF = RB_FRICTION * 0.5;
+            const halfF = params.rbFriction * 0.5;
 
             p1.oldX += tvx * halfF;
             p1.oldY += tvy * halfF;
@@ -591,7 +615,7 @@
 
       let vx = p.x - p.oldX;
       let vy = p.y - p.oldY;
-      const slide = 1 - RB_FRICTION;
+      const slide = 1 - params.rbFriction;
 
       if (hitX) {
         // Normal horizontal → rebote en X, fricción mata deslizamiento en Y
@@ -611,6 +635,7 @@
 
     // --- FISICA Y CONSTRAINTS ---
     function updatePhysics() {
+      phase('4. verlet: v = pos-oldPos; pos += v*airDrag + gravity');
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         const vx = p.x - p.oldX;
@@ -619,56 +644,49 @@
         p.oldX = p.x;
         p.oldY = p.y;
 
-        p.x += vx * frictionAir;
-        p.y += vy * frictionAir + GRAVITY;
+        p.x += vx * params.airDrag;
+        p.y += vy * params.airDrag + params.gravity;
 
         clampToBounds(p);
       }
 
+      phase('4a. colision body ↔ grilla (penetracion)');
       resolveAllGridCollisions(true);
+      phase('4b. colision body ↔ body + friccion tangente');
       resolveParticleCollisions();
-      relaxConstraints(1);
+      phase('4c. constraints ×' + params.constraintIters);
+      relaxConstraints(params.constraintIters);
+      phase('4d. grilla otra vez (constraints re-meten)');
       resolveAllGridCollisions(false);
-      relaxConstraints(1);
+      relaxConstraints(params.constraintIters);
       resolveAllGridCollisions(false);
-
-      // Constraints pueden empujar contra el borde otra vez
+      phase('4e. clamp bordes + friccion piso/pared');
       for (let i = 0; i < particles.length; i++) clampToBounds(particles[i]);
     }
 
-    // --- RENDERIZADO ---
+
     function render() {
       buf32.fill(COLOR_EMPTY);
-
-      // Render Arena / Paredes
       for (let y = 0; y < HEIGHT; y++) {
         for (let x = 0; x < WIDTH; x++) {
           const cell = grid[y * WIDTH + x];
           if (cell === EMPTY) continue;
-
           const color = (cell === SAND) ? COLOR_SAND : COLOR_WALL;
-
           for (let sy = 0; sy < SCALE; sy++) {
             let py = (y * SCALE + sy) * (WIDTH * SCALE) + (x * SCALE);
-            for (let sx = 0; sx < SCALE; sx++) {
-              buf32[py + sx] = color;
-            }
+            for (let sx = 0; sx < SCALE; sx++) buf32[py + sx] = color;
           }
         }
       }
-
-      // Render Nodos de Partículas
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         const cx = Math.floor(p.x * SCALE);
         const cy = Math.floor(p.y * SCALE);
         const r = Math.max(1, Math.floor(p.radius * SCALE));
-
         for (let y = -r; y <= r; y++) {
           for (let x = -r; x <= r; x++) {
             if (x * x + y * y <= r * r) {
-              const px = cx + x;
-              const py = cy + y;
+              const px = cx + x, py = cy + y;
               if (px >= 0 && px < WIDTH * SCALE && py >= 0 && py < HEIGHT * SCALE) {
                 buf32[py * (WIDTH * SCALE) + px] = p.color;
               }
@@ -676,10 +694,7 @@
           }
         }
       }
-
       ctx.putImageData(imgData, 0, 0);
-
-      // Dibujar líneas de los constraints de las cajas encima del canvas
       ctx.strokeStyle = '#30C030';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -689,149 +704,132 @@
         ctx.lineTo(c.p2.x * SCALE, c.p2.y * SCALE);
       }
       ctx.stroke();
-
       if (debug.enabled) renderDebugOverlay();
+      else document.getElementById('debugStats').textContent = 'Debug off — activá Debug para ver contactos/hover.';
     }
 
     function drawArrow(x0, y0, x1, y1, color, width = 2) {
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.stroke();
-
+      ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
       const ang = Math.atan2(y1 - y0, x1 - x0);
       const head = 6;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x1 - head * Math.cos(ang - 0.4), y1 - head * Math.sin(ang - 0.4));
       ctx.lineTo(x1 - head * Math.cos(ang + 0.4), y1 - head * Math.sin(ang + 0.4));
-      ctx.closePath();
-      ctx.fill();
+      ctx.closePath(); ctx.fill();
     }
 
     function renderDebugOverlay() {
-      // Samples del kernel (8 puntos en el borde del círculo)
       for (let i = 0; i < debug.samples.length; i++) {
         const s = debug.samples[i];
         ctx.fillStyle = s.hit ? 'rgba(255,60,60,0.9)' : 'rgba(60,255,120,0.55)';
         ctx.fillRect(s.x * SCALE - 2, s.y * SCALE - 2, 4, 4);
       }
-
-      // Contactos body↔arena
       for (let i = 0; i < debug.contacts.length; i++) {
         const c = debug.contacts[i];
-        const px = c.cx * SCALE;
-        const py = c.cy * SCALE;
-
-        // Radio de muestreo
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(px, py, c.r * SCALE, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Normal (dirección de empuje fuera de la arena)
+        const px = c.cx * SCALE, py = c.cy * SCALE;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(px, py, c.r * SCALE, 0, Math.PI * 2); ctx.stroke();
         drawArrow(px, py, px + c.nx * 28, py + c.ny * 28, '#ffcc00', 2);
-
-        // Velocidad (escalada)
         drawArrow(px, py, px + c.vx * SCALE * 4, py + c.vy * SCALE * 4, '#66aaff', 1.5);
-
-        // Punto de impacto / splash
         ctx.fillStyle = '#ff66ff';
         ctx.beginPath();
         ctx.arc(c.impactX * SCALE + SCALE / 2, c.impactY * SCALE + SCALE / 2, 3 + c.splash, 0, Math.PI * 2);
         ctx.fill();
       }
-
-      // Partícula más cercana al mouse → stats
-      let nearest = null;
-      let nearestDist = Infinity;
+      let nearest = null, nearestDist = Infinity;
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
-        const dx = p.x - mouseX;
-        const dy = p.y - mouseY;
-        const d = dx * dx + dy * dy;
-        if (d < nearestDist) {
-          nearestDist = d;
-          nearest = p;
-        }
+        const d = (p.x - mouseX) * (p.x - mouseX) + (p.y - mouseY) * (p.y - mouseY);
+        if (d < nearestDist) { nearestDist = d; nearest = p; }
       }
-
       let contactNear = null;
       if (nearest) {
         for (let i = 0; i < debug.contacts.length; i++) {
-          if (debug.contacts[i].body === nearest) {
-            contactNear = debug.contacts[i];
-            break;
-          }
+          if (debug.contacts[i].body === nearest) { contactNear = debug.contacts[i]; break; }
         }
-
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
         ctx.beginPath();
         ctx.arc(nearest.x * SCALE, nearest.y * SCALE, nearest.radius * SCALE + 3, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.stroke(); ctx.setLineDash([]);
       }
-
       const lines = [
-        `particles=${particles.length}  constraints=${constraints.length}`,
-        `contacts body↔grilla=${debug.bodyHits}  hits body↔body=${debug.rbHits}`,
-        `resolve: celdas dentro del circulo → push = maxPen * (wall 1.0 / sand 0.8)`,
-        `orden: stamp occupied → sand CA → grid → rb → constraints → grid → constraints → grid`,
-        `arena no cae en occupied; stamp empuja granos fuera del footprint.`
+        'particles=' + particles.length + '  constraints=' + constraints.length,
+        'contacts grilla=' + debug.bodyHits + '  body↔body=' + debug.rbHits,
+        'rbFriction=' + params.rbFriction + ' (1=pega 0=hielo)  airDrag=' + params.airDrag
       ];
-
       if (nearest) {
         const vx = nearest.x - nearest.oldX;
         const vy = nearest.y - nearest.oldY;
         lines.push('');
-        lines.push(`hover body: r=${nearest.radius.toFixed(2)} group=${nearest.groupId} pos=(${nearest.x.toFixed(1)}, ${nearest.y.toFixed(1)}) v=(${vx.toFixed(2)}, ${vy.toFixed(2)})`);
+        lines.push('hover: r=' + nearest.radius.toFixed(2) + ' group=' + nearest.groupId);
+        lines.push('  pos=(' + nearest.x.toFixed(2) + ', ' + nearest.y.toFixed(2) + ')');
+        lines.push('  v=(' + vx.toFixed(3) + ', ' + vy.toFixed(3) + ')  |v|=' + Math.hypot(vx, vy).toFixed(3));
         if (contactNear) {
-          lines.push(
-            `  CONTACTO: pen=${contactNear.penetration.toFixed(3)} sand=${contactNear.sandHits} wall=${contactNear.wallHits} ` +
-            `n=(${contactNear.nx.toFixed(2)}, ${contactNear.ny.toFixed(2)}) ` +
-            `v·n=${contactNear.dot.toFixed(3)} bounce=${contactNear.bounce.toFixed(3)} ` +
-            `fric=${contactNear.friction.toFixed(2)} splash=${contactNear.splash}`
-          );
-          lines.push(
-            `  impact cell=(${contactNear.impactX}, ${contactNear.impactY})`
-          );
-        } else {
-          lines.push('  (sin contacto grilla este frame)');
-        }
+          lines.push('  pen=' + contactNear.penetration.toFixed(3) + ' sand=' + contactNear.sandHits + ' wall=' + contactNear.wallHits);
+          lines.push('  n=(' + contactNear.nx.toFixed(2) + ', ' + contactNear.ny.toFixed(2) + ') v·n=' + contactNear.dot.toFixed(3));
+          lines.push('  bounce=' + contactNear.bounce.toFixed(3) + ' fric=' + contactNear.friction.toFixed(2) + ' splash=' + contactNear.splash);
+        } else lines.push('  (sin contacto grilla este frame)');
       } else {
         lines.push('');
-        lines.push('pasa mouse cerca de un rigidbody para ver stats');
+        lines.push('mouse cerca de un circulo → stats');
       }
+      document.getElementById('debugStats').textContent = lines.join('\n');
+    }
 
-      debugStats.textContent = lines.join('\n');
+    function refreshFrameLog() {
+      document.getElementById('frameLog').textContent =
+        'frame ' + frame + '\n' + (phaseLog.length ? phaseLog.join('\n') : '(sin fases)');
+      document.getElementById('frameNum').textContent = frame;
+    }
+
+    function simStep() {
+      phaseLog.length = 0;
+      if (debug.enabled) clearDebugFrame();
+      phase('1. input (brush si mouse down)');
+      handleInput();
+      phase('2. stampBodies → occupied + empujar arena');
+      stampBodies();
+      phase('3. updateSand (CA, respeta occupied)');
+      updateSand();
+      updatePhysics();
+      phase('5. stampBodies final (footprint para prox. frame)');
+      stampBodies();
+      frame++;
+      refreshFrameLog();
+    }
+
+    function setRunning(on) {
+      running = on;
+      document.getElementById('btnPlay').classList.toggle('active', on);
+      document.getElementById('btnPause').classList.toggle('active', !on);
+      document.getElementById('runState').innerHTML = on
+        ? '▶ corriendo'
+        : '<span class="paused-banner">⏸ PAUSA — Step (N) avanza 1 frame</span>';
     }
 
     function loop() {
-      if (debug.enabled) clearDebugFrame();
-      handleInput();
-      stampBodies();
-      updateSand();
-      updatePhysics();
-      stampBodies();
+      if (running) simStep();
       render();
       requestAnimationFrame(loop);
     }
 
-    // --- CONTROLES E INPUTS ---
     let mouseX = 100, mouseY = 20;
     let isMouseDown = false;
     let mouseButton = 0;
-    let placeMode = 'sand'; // 'sand' | 'ball' | 'box'
+    let placeMode = 'sand';
 
     const btnSand = document.getElementById('btnSand');
     const btnBall = document.getElementById('btnBall');
     const btnBox = document.getElementById('btnBox');
+    const btnDebug = document.getElementById('btnDebug');
+
+    function setDebug(on) {
+      debug.enabled = on;
+      btnDebug.classList.toggle('active', on);
+    }
+    btnDebug.onclick = () => setDebug(!debug.enabled);
 
     function setPlaceMode(mode) {
       placeMode = mode;
@@ -839,79 +837,71 @@
       btnBall.classList.toggle('active', mode === 'ball');
       btnBox.classList.toggle('active', mode === 'box');
     }
-
     btnSand.onclick = () => setPlaceMode('sand');
     btnBall.onclick = () => setPlaceMode('ball');
     btnBox.onclick = () => setPlaceMode('box');
 
-    canvas.addEventListener('mousemove', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      mouseX = Math.floor((e.clientX - rect.left) / SCALE);
-      mouseY = Math.floor((e.clientY - rect.top) / SCALE);
-    });
-
-    canvas.addEventListener('mousedown', (e) => {
-      isMouseDown = true;
-      mouseButton = e.button;
-
-      if (e.button === 0) {
-        if (placeMode === 'ball') {
-          createParticle(mouseX, mouseY, Math.floor(Math.random() * 3) + 5);
-        } else if (placeMode === 'box') {
-          createBox(mouseX, mouseY, 16);
-        }
-      }
-    });
-
-    window.addEventListener('mouseup', () => isMouseDown = false);
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
-
+    document.getElementById('btnPlay').onclick = () => setRunning(true);
+    document.getElementById('btnPause').onclick = () => setRunning(false);
+    document.getElementById('btnStep').onclick = () => { setRunning(false); simStep(); render(); };
     document.getElementById('btnClear').onclick = () => {
-      grid.fill(EMPTY);
-      particles.length = 0;
-      constraints.length = 0;
+      grid.fill(EMPTY); occupied.fill(0);
+      particles.length = 0; constraints.length = 0;
+      frame = 0; phaseLog.length = 0; refreshFrameLog(); render();
     };
 
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = canvas.width / rect.width;
+      const sy = canvas.height / rect.height;
+      mouseX = Math.floor((e.clientX - rect.left) * sx / SCALE);
+      mouseY = Math.floor((e.clientY - rect.top) * sy / SCALE);
+      if (!running && debug.enabled) render();
+    });
+    canvas.addEventListener('mousedown', (e) => {
+      isMouseDown = true; mouseButton = e.button;
+      if (e.button === 0) {
+        if (placeMode === 'ball') createParticle(mouseX, mouseY, Math.floor(Math.random() * 3) + 5);
+        else if (placeMode === 'box') createBox(mouseX, mouseY, params.boxSize);
+      }
+      if (!running) render();
+    });
+    window.addEventListener('mouseup', () => { isMouseDown = false; });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
     window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') { e.preventDefault(); setRunning(!running); }
+      if (e.code === 'KeyN') { e.preventDefault(); setRunning(false); simStep(); render(); }
       if (e.code === 'Digit1') setPlaceMode('sand');
       if (e.code === 'Digit2') setPlaceMode('ball');
       if (e.code === 'Digit3') setPlaceMode('box');
       if (e.code === 'KeyD') setDebug(!debug.enabled);
-      if (e.code === 'Space') createParticle(mouseX, mouseY, Math.floor(Math.random() * 3) + 5);
-      if (e.code === 'KeyB') createBox(mouseX, mouseY, 16);
       if (e.code === 'KeyC') {
-        grid.fill(EMPTY);
-        particles.length = 0;
-        constraints.length = 0;
+        grid.fill(EMPTY); occupied.fill(0);
+        particles.length = 0; constraints.length = 0;
       }
     });
 
     function handleInput() {
       if (!isMouseDown) return;
-
-      // Click derecho = pared; izquierdo solo pinta arena en modo sand
       const paintingWall = mouseButton !== 0;
       if (!paintingWall && placeMode !== 'sand') return;
-
-      const brushRadius = 3;
+      const brushRadius = params.brushRadius;
       const type = paintingWall ? WALL : SAND;
-
       for (let dy = -brushRadius; dy <= brushRadius; dy++) {
         for (let dx = -brushRadius; dx <= brushRadius; dx++) {
           if (dx * dx + dy * dy <= brushRadius * brushRadius) {
-            const px = mouseX + dx;
-            const py = mouseY + dy;
-
+            const px = mouseX + dx, py = mouseY + dy;
             if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT) {
-              if (type === WALL || grid[py * WIDTH + px] === EMPTY) {
-                grid[py * WIDTH + px] = type;
-              }
+              if (type === WALL || grid[py * WIDTH + px] === EMPTY) grid[py * WIDTH + px] = type;
             }
           }
         }
       }
     }
 
+    refreshFrameLog();
+    setRunning(true);
     loop();
   </script>
 </body>
