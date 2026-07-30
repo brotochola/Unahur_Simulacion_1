@@ -243,11 +243,12 @@
     </ul>
 
     <h2>Cómo se hablan</h2>
-    <p><b>Cuerpo → arena:</b> AABB + <code>TestPoint</code> (y cáscara exterior). Arena adentro/bajo el body se
-      empuja afuera (dirección del centro + velocidad del body). Así el montículo se deforma.
+    <p><b>Cuerpo → arena:</b> stamp <code>TestPoint</code> → <code>occupied</code> (dilatado) bloquea caída.
+      Arena <b>adentro</b> del shape se expulsa siempre. Cáscara: excavación por energía (deforma).
     </p>
-    <p><b>Arena → cuerpo:</b> soporte abajo → separación suave + impulsos <b>hacia arriba en el punto</b>
-      (torque en pendiente). Velocidad tangencial se conserva (desliza). Arena arriba → solo peso.</p>
+    <p><b>Arena → cuerpo:</b> impulsos solo con <b>impacto/penetración</b> (arriba en el punto → torque).
+      Fricción estática + sleep cuando v/ω bajos (no giran solas). Tangente se frena según deslizamiento.
+      Arena <b>encima del COM</b> solo pesa — <b>nunca eyecta</b> el body hacia arriba.</p>
     <p class="warn">El AABB solo acota el recorrido. El test preciso es <code>TestPoint</code> (rotado y círculo).</p>
 
     <h2>Un cuadro</h2>
@@ -326,6 +327,7 @@
       b2Body_ApplyForceToCenter,
       b2Body_ApplyLinearImpulse,
       b2Body_GetAngularVelocity,
+      b2Body_SetAngularVelocity,
       b2Body_SetAwake,
       b2Shape_TestPoint,
       b2Shape_GetPolygon
@@ -337,22 +339,46 @@
 
     const FIXED_DT = 1 / 60;
 
+    const PARAMS_STORAGE_KEY = 'falling_sand_box2d_params_v3';
+
     const params = {
-      gravity: 40,
-      sandSep: 0.45,
-      sandContact: 10,
-      sandWeight: 1.5,
-      sandSlide: 0.75,
-      density: 1,
-      friction: 0.45,
+      gravity: 120,
+      sandSep: 0.1,
+      sandContact: 22,
+      sandSide: -21.4,
+      sandDig: 1.5,
+      sandWeight: 0,
+      sandSlide: 0.85,
+      density: 0.5,
+      friction: 0.35,
       restitution: 0,
-      linearDamping: 0.02,
-      angularDamping: 0.02,
-      subSteps: 4,
+      linearDamping: 0.05,
+      angularDamping: 0.05,
+      subSteps: 2,
       boxSize: 16,
       ballRadius: 6,
-      brushRadius: 3
+      brushRadius: 8
     };
+
+    function loadParamsFromStorage() {
+      try {
+        const raw = localStorage.getItem(PARAMS_STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!saved || typeof saved !== 'object') return;
+        for (const key of Object.keys(params)) {
+          if (typeof saved[key] === 'number' && Number.isFinite(saved[key])) {
+            params[key] = saved[key];
+          }
+        }
+      } catch (_) { /* ignore corrupt storage */ }
+    }
+
+    function saveParamsToStorage() {
+      try {
+        localStorage.setItem(PARAMS_STORAGE_KEY, JSON.stringify(params));
+      } catch (_) { /* quota / private mode */ }
+    }
 
     const knobsSpec = [
       {
@@ -361,19 +387,27 @@
       },
       {
         key: 'sandSep', label: 'Separación por abajo', min: 0.1, max: 2, step: 0.05,
-        tip: 'Qué tanto se empuja el body fuera de la arena abajo/costado. Bajo = se hunde un poco y excava arena.'
+        tip: 'Empuje fuera de arena abajo/costado. Bajo = más hundido (más excavación).'
       },
       {
         key: 'sandContact', label: 'Impulso en contacto', min: 0, max: 40, step: 0.5,
-        tip: 'Impulso hacia ARRIBA en cada celda de soporte (punto). Offset lateral ⇒ torque en pendiente.'
+        tip: 'Escala de impulso en impacto (arriba en el punto). En reposo casi no empuja (anti-giro eterno).'
+      },
+      {
+        key: 'sandSide', label: 'Impulso lateral', min: -40, max: 5, step: 0.2,
+        tip: 'Multiplicador lateral del impulso (ct.nx). Negativo = traba/tumba hacia la arena. Positivo = empuja afuera.'
+      },
+      {
+        key: 'sandDig', label: 'Excavación', min: 0, max: 3, step: 0.1,
+        tip: 'Cuánta arena saca el body. Escala con velocidad² (impacto = más deformación).'
       },
       {
         key: 'sandWeight', label: 'Peso arena arriba', min: 0, max: 20, step: 0.5,
-        tip: 'Fuerza hacia abajo por cada celda de arena encima del body. 0 = la arena arriba no aprieta.'
+        tip: 'Fuerza hacia abajo por celda de arena encima. 0 = no aprieta.'
       },
       {
         key: 'sandSlide', label: 'Deslizamiento en arena', min: 0, max: 1, step: 0.05,
-        tip: 'Velocidad tangencial al apoyar: 0 = frena, 1 = resbala por la pendiente.'
+        tip: '0 = mucha fricción (traba/tumba), 1 = resbala. En reposo hay sleep (ω→0).'
       },
       {
         key: 'density', label: 'Densidad', min: 0.2, max: 5, step: 0.1,
@@ -413,6 +447,14 @@
       }
     ];
 
+    loadParamsFromStorage();
+    for (const k of knobsSpec) {
+      let v = params[k.key];
+      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+      v = Math.min(k.max, Math.max(k.min, v));
+      params[k.key] = k.step >= 1 ? Math.round(v) : v;
+    }
+
     const knobsEl = document.getElementById('knobs');
     for (const k of knobsSpec) {
       const div = document.createElement('div');
@@ -436,6 +478,7 @@
         const v = k.step >= 1 ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
         params[k.key] = v;
         document.getElementById('val_' + k.key).textContent = String(v);
+        saveParamsToStorage();
         if (k.key === 'gravity') applyGravity();
         if (k.key === 'linearDamping' || k.key === 'angularDamping') applyDampingToAll();
       });
@@ -606,15 +649,15 @@
       let dy = (py + 0.5) - fromY;
       const speed = Math.hypot(velX, velY);
       if (speed > 0.5) {
-        dx = dx * 0.35 + velX;
-        dy = dy * 0.35 + velY;
+        dx = dx * 0.25 + velX;
+        dy = dy * 0.25 + velY;
       }
       const sx = dx === 0 ? (Math.random() < 0.5 ? -1 : 1) : (dx > 0 ? 1 : -1);
       const sy = dy === 0 ? 1 : (dy > 0 ? 1 : -1);
-      // Preferir costado / abajo-lado (excavar), arriba solo si hace falta
+      const far = speed > 12 ? 3 : 2;
       const candidates = [
-        [sx, 0], [sx, sy], [sx, -sy], [sx * 2, 0], [sx * 2, sy],
-        [0, sy], [-sx, 0], [-sx, sy], [0, -1], [sx, -1], [-sx, -1]
+        [sx, 0], [sx, sy], [sx, -sy], [sx * far, 0], [sx * far, sy],
+        [0, sy], [sx, sy * far], [-sx, 0], [-sx, sy], [0, -1], [sx, -1], [-sx, -1]
       ];
       for (let i = 0; i < candidates.length; i++) {
         const nx = px + candidates[i][0];
@@ -630,6 +673,49 @@
       return false;
     }
 
+    /** Expulsión forzada: busca hueco libre cerca (arena no puede quedar dentro del body). */
+    function forceEjectSand(px, py, fromX, fromY, velX, velY) {
+      if (tryPushSandOut(px, py, fromX, fromY, velX, velY)) return true;
+      for (let r = 1; r <= 16; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const nx = px + dx;
+            const ny = py + dy;
+            if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+            const tIdx = ny * WIDTH + nx;
+            if (grid[tIdx] === EMPTY && !occupied[tIdx]) {
+              grid[tIdx] = SAND;
+              grid[py * WIDTH + px] = EMPTY;
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    const occupiedDilate = new Uint8Array(WIDTH * HEIGHT);
+
+    /** Dilata occupied 1 celda: tapa huecos del TestPoint en shapes rotados. */
+    function dilateOccupied() {
+      occupiedDilate.fill(0);
+      for (let y = 0; y < HEIGHT; y++) {
+        for (let x = 0; x < WIDTH; x++) {
+          if (!occupied[y * WIDTH + x]) continue;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+              occupiedDilate[ny * WIDTH + nx] = 1;
+            }
+          }
+        }
+      }
+      occupied.set(occupiedDilate);
+    }
+
     /** Celda en el body o justo en la cáscara exterior (para excavación). */
     function sandNearBody(body, cx, cy, pos) {
       if (b2Shape_TestPoint(body.shapeId, new b2Vec2(cx, cy))) return true;
@@ -639,8 +725,24 @@
       if (len < 0.001) return false;
       dx /= len;
       dy /= len;
-      // 1 celda hacia el centro: si entra al shape, estamos en la superficie
       return b2Shape_TestPoint(body.shapeId, new b2Vec2(cx + dx, cy + dy));
+    }
+
+    /** Contacto de superficie: vecino hacia afuera no está dentro del shape. */
+    function isSandSurfaceCell(body, px, py, pos) {
+      const cx = px + 0.5;
+      const cy = py + 0.5;
+      let dx = cx - pos.x;
+      let dy = cy - pos.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.001) { dx = 0; dy = 1; }
+      else { dx /= len; dy /= len; }
+      const ox = cx + dx;
+      const oy = cy + dy;
+      if (!b2Shape_TestPoint(body.shapeId, new b2Vec2(ox, oy))) return true;
+      // También: celda con vacío arriba (cara superior del montículo bajo el body)
+      if (py > 0 && grid[(py - 1) * WIDTH + px] === EMPTY) return true;
+      return false;
     }
 
     function updateSand() {
@@ -712,7 +814,7 @@
       debug.forceMarks.length = 0;
     }
 
-    // --- Stamp con AABB + TestPoint + excavación ---
+    // --- Stamp: occupied sólido (anti-traspaso) + excavación ---
     function stampBodies() {
       occupied.fill(0);
       if (debug.enabled) {
@@ -720,10 +822,13 @@
         debug.sandPushed.length = 0;
       }
 
+      const dig = Math.max(0, params.sandDig);
+      const bodyAabbs = [];
+
+      // 1) Marcar interior TestPoint
       for (let i = 0; i < bodies.length; i++) {
         const body = bodies[i];
         const pos = b2Body_GetPosition(body.bodyId);
-        const vel = b2Body_GetLinearVelocity(body.bodyId);
         let aabb;
         try {
           aabb = getBodyAABB(body);
@@ -740,43 +845,69 @@
         const maxX = Math.min(WIDTH - 1, aabb.maxX + 1);
         const minY = Math.max(0, aabb.minY - 1);
         const maxY = Math.min(HEIGHT - 1, aabb.maxY + 2);
+        bodyAabbs.push({ body, pos, minX, maxX, minY, maxY });
 
         for (let py = minY; py <= maxY; py++) {
           for (let px = minX; px <= maxX; px++) {
+            if (!b2Shape_TestPoint(body.shapeId, new b2Vec2(px + 0.5, py + 0.5))) continue;
+            occupied[py * WIDTH + px] = 1;
+            if (debug.enabled) debug.stampCells.push({ x: px, y: py });
+          }
+        }
+      }
+
+      // 2) Dilatar: la arena no cae por huecos del raster TestPoint
+      dilateOccupied();
+
+      // 3) Expulsar TODA arena dentro del shape (no probabilístico)
+      for (let i = 0; i < bodyAabbs.length; i++) {
+        const { body, pos, minX, maxX, minY, maxY } = bodyAabbs[i];
+        const vel = b2Body_GetLinearVelocity(body.bodyId);
+        const omega = b2Body_GetAngularVelocity(body.bodyId);
+        const speed2 = vel.x * vel.x + vel.y * vel.y + omega * omega * 8;
+        const shellProb = Math.min(1, dig * (0.02 + speed2 * 0.006));
+
+        for (let py = minY; py <= maxY; py++) {
+          for (let px = minX; px <= maxX; px++) {
+            const idx = py * WIDTH + px;
+            if (grid[idx] !== SAND) continue;
             const cx = px + 0.5;
             const cy = py + 0.5;
             const inside = b2Shape_TestPoint(body.shapeId, new b2Vec2(cx, cy));
+
             if (inside) {
-              occupied[py * WIDTH + px] = 1;
-              if (debug.enabled) debug.stampCells.push({ x: px, y: py });
+              // Siempre sacar: no puede traspasar / quedarse adentro
+              const moved = forceEjectSand(px, py, pos.x, pos.y, vel.x, vel.y);
+              occupied[idx] = 1;
+              if (debug.enabled && moved) debug.sandPushed.push({ x: px, y: py });
+              continue;
             }
 
-            const idx = py * WIDTH + px;
-            if (grid[idx] !== SAND) continue;
-            if (!inside && !sandNearBody(body, cx, cy, pos)) continue;
-
-            // Adentro: siempre sacar. Cáscara: solo si el body empuja (impacto / desliz).
-            if (!inside && vel.y <= 0.25 && Math.abs(vel.x) <= 0.25) continue;
-
+            // Cáscara: excavación por energía (deforma montículo)
+            if (dig <= 0 || shellProb < 0.001) continue;
+            if (!sandNearBody(body, cx, cy, pos)) continue;
+            if (Math.random() > shellProb) continue;
             const moved = tryPushSandOut(px, py, pos.x, pos.y, vel.x, vel.y);
-            if (moved && inside) occupied[idx] = 1;
             if (debug.enabled && moved) debug.sandPushed.push({ x: px, y: py });
           }
         }
       }
     }
 
-    // --- Arena/pared grilla ↔ bodies ---
-    // Soporte: separación suave + impulsos HACIA ARRIBA en el punto (no hacia el COM:
-    // r∥F ⇒ torque 0). Offset en X ⇒ gira en pendiente. Tangente se conserva (desliza).
+    // --- Arena ↔ bodies: impacto + fricción + sleep ---
+    // Impulsos hacia ARRIBA en el punto (no hacia COM). En reposo: ω→0 (no giran solas).
     function resolveSandBodies() {
       if (debug.enabled) debug.forceMarks.length = 0;
+
+      const SLEEP_V = 2.2;
+      const SLEEP_W = 0.4;
 
       for (let i = 0; i < bodies.length; i++) {
         const body = bodies[i];
         const pos = b2Body_GetPosition(body.bodyId);
         const vel = b2Body_GetLinearVelocity(body.bodyId);
         const rot = b2Body_GetRotation(body.bodyId);
+        let omega = b2Body_GetAngularVelocity(body.bodyId);
         let aabb;
         try {
           aabb = getBodyAABB(body);
@@ -795,11 +926,15 @@
             const cy = py + 0.5;
             if (!b2Shape_TestPoint(body.shapeId, new b2Vec2(cx, cy))) continue;
 
-            // Y abajo: cy < pos.y ⇒ celda ARRIBA del centro
-            if (cy < pos.y - 0.2) {
+            // Encima del COM: solo peso. Nunca soporte (evita eyectar hacia arriba).
+            if (cy < pos.y) {
               aboveHits++;
               continue;
             }
+
+            // Preferir superficie (menos ruido de celdas internas)
+            const surface = cell === WALL || isSandSurfaceCell(body, px, py, pos);
+            if (!surface && cell === SAND) continue;
 
             let dx = pos.x - cx;
             let dy = pos.y - cy;
@@ -819,6 +954,33 @@
           }
         }
 
+        // Fallback: si no hubo superficie, usar cualquier overlap (hundido profundo)
+        if (supportHits === 0) {
+          for (let py = aabb.minY; py <= aabb.maxY; py++) {
+            for (let px = aabb.minX; px <= aabb.maxX; px++) {
+              const cell = grid[py * WIDTH + px];
+              if (cell !== SAND && cell !== WALL) continue;
+              const cx = px + 0.5;
+              const cy = py + 0.5;
+              if (cy < pos.y) continue; // encima del COM: no soporte
+              if (!b2Shape_TestPoint(body.shapeId, new b2Vec2(cx, cy))) continue;
+              let dx = pos.x - cx;
+              let dy = pos.y - cy;
+              let len = Math.hypot(dx, dy);
+              if (len < 0.001) { dx = 0; dy = -1; }
+              else { dx /= len; dy /= len; }
+              if (dy > 0) dy = 0;
+              if (dx === 0 && dy === 0) dy = -1;
+              const w = cell === WALL ? 3 : 1;
+              nx += dx * w;
+              ny += dy * w;
+              totalW += w;
+              supportHits++;
+              contacts.push({ cx, cy, nx: dx, ny: dy, w });
+            }
+          }
+        }
+
         let newX = pos.x;
         let newY = pos.y;
         let newVx = vel.x;
@@ -834,71 +996,93 @@
           else { nx /= nlen; ny /= nlen; }
 
           const extent = body.kind === 'ball' ? body.radius : body.half;
-          // Separación suave: dejar hundir un poco para excavación
-          const corr = Math.min(extent * 0.35, 0.18 * Math.sqrt(supportHits)) * params.sandSep;
+          const corr = Math.min(extent * 0.4, 0.22 * Math.sqrt(supportHits)) * params.sandSep;
           newX = pos.x + nx * corr;
           newY = pos.y + ny * corr;
+          // Con arena encima: no subir por separación de soporte
+          if (aboveHits > 0 && newY < pos.y) newY = pos.y;
           b2Body_SetTransform(body.bodyId, new b2Vec2(newX, newY), rot);
 
-          // Quitar solo componente hacia el soporte; conservar tangente (despega en rampa)
           const vn = vel.x * nx + vel.y * ny;
+          const impact = Math.max(0, -vn); // qué tan fuerte entra al soporte
           if (vn < 0) {
             newVx = vel.x - nx * vn;
             newVy = vel.y - ny * vn;
           }
+
           const slide = Math.max(0, Math.min(1, params.sandSlide));
           const tx = -ny;
           const ty = nx;
           let vt = newVx * tx + newVy * ty;
-          vt *= slide;
+
+          // Fricción cinética: más grip si deslizamiento bajo; impacto deja un poco de tumbo
+          const grip = 1 - slide;
+          const kinKeep = slide + (1 - slide) * Math.min(0.45, impact * 0.03);
+          vt *= kinKeep;
           newVx = tx * vt;
           newVy = ty * vt;
 
-          b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(newVx, newVy));
+          // Sleep / fricción estática: sin bombeo de torque en reposo
+          const speed = Math.hypot(newVx, newVy);
+          if (speed < SLEEP_V && Math.abs(omega) < SLEEP_W && impact < 3) {
+            newVx = 0;
+            newVy = 0;
+            omega = 0;
+            b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(0, 0));
+            b2Body_SetAngularVelocity(body.bodyId, 0);
+          } else {
+            // Amortiguación angular extra sobre arena (además del damping global)
+            omega *= Math.max(0.55, 1 - grip * 0.35);
+            b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(newVx, newVy));
+            b2Body_SetAngularVelocity(body.bodyId, omega);
 
-          // Impulso principal: ARRIBA en el punto (Y-down ⇒ iy < 0).
-          // Antes iba hacia el COM ⇒ r×F = 0 ⇒ nunca giraba.
-          const invW = 1 / Math.max(0.001, totalW);
-          const push = params.sandContact;
-          const mu = (1 - slide) * 0.85;
-          let omega = b2Body_GetAngularVelocity(body.bodyId);
+            // Impulsos solo con impacto/penetración (no cada frame en reposo)
+            const invW = 1 / Math.max(0.001, totalW);
+            const push = params.sandContact * (0.08 + impact * 0.12);
+            const mu = grip * (0.5 + Math.min(1.2, impact * 0.08));
 
-          if (push > 0) {
-            for (let c = 0; c < contacts.length; c++) {
-              const ct = contacts[c];
-              const wn = ct.w * invW;
-              // Arriba + un poco de lado (salida del montículo)
-              const ix = ct.nx * push * wn * 0.35;
-              const iy = -push * wn;
-              b2Body_ApplyLinearImpulse(
-                body.bodyId,
-                new b2Vec2(ix, iy),
-                new b2Vec2(ct.cx, ct.cy),
-                true
-              );
+            if (push > 0.01) {
+              for (let c = 0; c < contacts.length; c++) {
+                const ct = contacts[c];
+                const wn = ct.w * invW;
+                const ix = ct.nx * push * wn * params.sandSide;
+                const iy = -push * wn;
+                b2Body_ApplyLinearImpulse(
+                  body.bodyId,
+                  new b2Vec2(ix, iy),
+                  new b2Vec2(ct.cx, ct.cy),
+                  true
+                );
 
-              if (mu > 0.001) {
-                omega = b2Body_GetAngularVelocity(body.bodyId);
-                const rx = ct.cx - newX;
-                const ry = ct.cy - newY;
-                const vpx = newVx - omega * ry;
-                const vpy = newVy + omega * rx;
-                const vtx = vpx * tx + vpy * ty;
-                const jt = -vtx * mu * wn;
-                if (jt !== 0) {
-                  b2Body_ApplyLinearImpulse(
-                    body.bodyId,
-                    new b2Vec2(tx * jt, ty * jt),
-                    new b2Vec2(ct.cx, ct.cy),
-                    true
-                  );
+                if (mu > 0.001) {
+                  omega = b2Body_GetAngularVelocity(body.bodyId);
+                  const rx = ct.cx - newX;
+                  const ry = ct.cy - newY;
+                  const vpx = newVx - omega * ry;
+                  const vpy = newVy + omega * rx;
+                  const vtx = vpx * tx + vpy * ty;
+                  const jt = -vtx * mu * wn;
+                  if (jt !== 0) {
+                    b2Body_ApplyLinearImpulse(
+                      body.bodyId,
+                      new b2Vec2(tx * jt, ty * jt),
+                      new b2Vec2(ct.cx, ct.cy),
+                      true
+                    );
+                  }
                 }
               }
             }
-          }
 
-          // Anti-vuelo lineal; conservar ω (el torque viene del offset en X)
-          b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(newVx, newVy));
+            // Conservar v tangencial planeada; ω del impulso queda (tumbos)
+            b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(newVx, newVy));
+            // Si quedó casi quieto tras fricción, dormir
+            omega = b2Body_GetAngularVelocity(body.bodyId);
+            if (Math.hypot(newVx, newVy) < SLEEP_V * 0.6 && Math.abs(omega) < SLEEP_W) {
+              b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(0, 0));
+              b2Body_SetAngularVelocity(body.bodyId, 0);
+            }
+          }
 
           if (debug.enabled) {
             debug.forceMarks.push({
@@ -909,12 +1093,19 @@
           }
         }
 
-        if (aboveHits > 0 && params.sandWeight > 0) {
-          b2Body_ApplyForceToCenter(
-            body.bodyId,
-            new b2Vec2(0, aboveHits * params.sandWeight),
-            true
-          );
+        // Arena encima: solo peso abajo; matar cualquier vy hacia arriba
+        if (aboveHits > 0) {
+          if (params.sandWeight > 0) {
+            b2Body_ApplyForceToCenter(
+              body.bodyId,
+              new b2Vec2(0, aboveHits * params.sandWeight),
+              true
+            );
+          }
+          const vNow = b2Body_GetLinearVelocity(body.bodyId);
+          if (vNow.y < 0) {
+            b2Body_SetLinearVelocity(body.bodyId, new b2Vec2(vNow.x, 0));
+          }
         }
 
         if (supportHits > 0 || aboveHits > 0) {
@@ -1271,6 +1462,8 @@
           if (dx * dx + dy * dy > brushRadius * brushRadius) continue;
           const px = mouseX + dx, py = mouseY + dy;
           if (px < 0 || px >= WIDTH || py < 0 || py >= HEIGHT) continue;
+          // No pintar arena dentro de un body (occupied del stamp)
+          if (type === SAND && occupied[py * WIDTH + px]) continue;
           if (type === WALL || grid[py * WIDTH + px] === EMPTY) {
             grid[py * WIDTH + px] = type;
           }
