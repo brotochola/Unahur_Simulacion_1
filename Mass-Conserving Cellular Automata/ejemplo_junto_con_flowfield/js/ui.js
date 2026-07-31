@@ -129,6 +129,12 @@ function setupUI() {
         buildProcessChunkList();
         markRenderFullDirty();
     };
+    document.getElementById('chkFlowAvgWaterToAir').onchange = (e) => {
+        flags.flowAvgWaterToAir = e.target.checked;
+    };
+    document.getElementById('chkFlowAvgAirToWater').onchange = (e) => {
+        flags.flowAvgAirToWater = e.target.checked;
+    };
 
     document.getElementById('selectRenderer').onchange = (e) => {
         setRendererBackend(e.target.value);
@@ -169,6 +175,8 @@ function setupUI() {
     bindKnob('knobMinFlow', 'valMinFlow', v => { cfg.minFlow = v; }, v => v.toFixed(4));
     bindKnob('knobFlowSnapSq', 'valFlowSnapSq', v => { cfg.flowSnapSq = v; }, v => v.toFixed(4));
     bindKnob('knobFlowMaxMag', 'valFlowMaxMag', v => { cfg.flowMaxMag = v; });
+    bindKnob('knobFlowAvgEvery', 'valFlowAvgEvery', v => { cfg.flowAvgEvery = v | 0; }, v => String(v | 0));
+    bindKnob('knobFlowAvgBlend', 'valFlowAvgBlend', v => { cfg.flowAvgBlend = v; });
     bindKnob('knobSubsteps', 'valSubsteps', v => { cfg.substeps = v; }, v => `${v}x`);
     bindKnob('knobBrush', 'valBrush', v => { cfg.brushRadius = v; }, v => `${v}px`);
     bindKnob('knobBrushAmount', 'valBrushAmount', v => { cfg.brushAmount = v; });

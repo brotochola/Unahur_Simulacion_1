@@ -57,7 +57,7 @@
                 <b>Gravedad:</b> Falling sand aparte: abajo → diag abajo → laterales. Rate = cfgGravity. Independiente del flowfield.
             </div>
             <div class="info-box">
-                <b>Flowfield:</b> V = lerp(V, suma(dir · J_real), alpha). Influencia y lerp con knobs. Snap si |V|² &lt; umbral.
+                <b>Flowfield:</b> V = lerp(V, suma(dir · J_real), alpha). Influencia y lerp con knobs. Snap si |V|² &lt; umbral. Opcional: promedio espacial Moore-8 cada N substeps (blend + frontera agua↔aire).
             </div>
             <div class="info-box">
                 <b>Chunks:</b> Activo si masa visible o flujo vivo; duerme tras 3 substeps quietos. Procesa activos + anillo 3×3.
@@ -100,18 +100,18 @@
                 <div class="control-header"><span>Backend</span></div>
                 <select id="selectRenderer" class="render-select"
                     title="GPU: textura WebGL2 dirty. CPU: ImageData dirty (pixel buffer).">
-                    <option value="webgl" selected>GPU (WebGL2 dirty)</option>
-                    <option value="imagedata">CPU (ImageData dirty)</option>
+                    <option value="webgl">GPU (WebGL2 dirty)</option>
+                    <option value="imagedata" selected>CPU (ImageData dirty)</option>
                 </select>
             </div>
             <div class="control-item">
                 <div class="control-header"><span>Modo de render</span></div>
                 <select id="selectRenderMode" class="render-select" title="Como colorear el agua">
-                    <option value="mass" selected>Masa (azul)</option>
+                    <option value="mass">Masa (azul)</option>
                     <option value="water">Agua (espuma)</option>
                     <option value="waterNb">Agua (vecinos)</option>
                     <option value="velocity">Velocidad</option>
-                    <option value="pressure">Exceso / Presion</option>
+                    <option value="pressure" selected>Exceso / Presion</option>
                     <option value="compress">Overfill (N - reposo)</option>
                 </select>
             </div>
@@ -125,8 +125,8 @@
                     title="Masa absoluta que pinta rojo pleno. El max del slider sigue la celda mas llena.">
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Espuma por velocidad:</span><span class="control-val" id="valFoamVelScale">8.00</span></div>
-                <input type="range" id="knobFoamVelScale" min="0.5" max="40" step="0.5" value="8"
+                <div class="control-header"><span>Espuma por velocidad:</span><span class="control-val" id="valFoamVelScale">0.00</span></div>
+                <input type="range" id="knobFoamVelScale" min="0" max="40" step="0.5" value="0"
                     title="Sensibilidad de espuma blanca por |V| en modo Agua.">
             </div>
             <div class="control-item">
@@ -148,17 +148,17 @@
             <div class="panel-header">Debug</div>
             <div style="display:flex; flex-direction:column; gap:6px;">
                 <label class="checkbox-row"><input type="checkbox" id="chkFlowfield" checked> Flowfield (lineas)</label>
-                <label class="checkbox-row"><input type="checkbox" id="chkGrid" checked> Grilla celular</label>
-                <label class="checkbox-row"><input type="checkbox" id="chkChunks" checked> Chunks activos</label>
+                <label class="checkbox-row"><input type="checkbox" id="chkGrid"> Grilla celular</label>
+                <label class="checkbox-row"><input type="checkbox" id="chkChunks"> Chunks activos</label>
                 <label class="checkbox-row"><input type="checkbox" id="chkTemporalSmooth"> Suavizado temporal (lerp)</label>
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Alpha suavizado temporal:</span><span class="control-val" id="valDisplayLerp">0.30</span></div>
-                <input type="range" id="knobDisplayLerp" min="0.01" max="1.0" step="0.01" value="0.30">
+                <div class="control-header"><span>Alpha suavizado temporal:</span><span class="control-val" id="valDisplayLerp">0.90</span></div>
+                <input type="range" id="knobDisplayLerp" min="0.01" max="1.0" step="0.01" value="0.90">
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Escala debug flowfield:</span><span class="control-val" id="valFlowDebugScale">3.00</span></div>
-                <input type="range" id="knobFlowDebugScale" min="0.25" max="12" step="0.25" value="3">
+                <div class="control-header"><span>Escala debug flowfield:</span><span class="control-val" id="valFlowDebugScale">0.25</span></div>
+                <input type="range" id="knobFlowDebugScale" min="0.25" max="12" step="0.25" value="0.25">
             </div>
             <div class="control-item">
                 <div class="control-header"><span>Step flechas flowfield:</span><span class="control-val" id="valArrowStep">1</span></div>
@@ -176,8 +176,8 @@
                     title="N_reposo. Bajo este valor la celda no pierde masa por difusion/flowfield.">
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Difusion Fick (D):</span><span class="control-val" id="valDiffusion">0.15</span></div>
-                <input type="range" id="knobDiffusion" min="0.01" max="0.25" step="0.01" value="0.15"
+                <div class="control-header"><span>Difusion Fick (D):</span><span class="control-val" id="valDiffusion">0.21</span></div>
+                <input type="range" id="knobDiffusion" min="0.01" max="0.25" step="0.01" value="0.21"
                     title="Coeficiente D de Fick. Jacobi escala si sumJ > exceso.">
             </div>
             <div class="control-item">
@@ -186,12 +186,12 @@
                     title="Particulas max hacia abajo/lados por substep.">
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Inercia Flowfield (Lerp):</span><span class="control-val" id="valLerp">0.15</span></div>
-                <input type="range" id="knobLerp" min="0.01" max="1.0" step="0.01" value="0.15">
+                <div class="control-header"><span>Inercia Flowfield (Lerp):</span><span class="control-val" id="valLerp">0.50</span></div>
+                <input type="range" id="knobLerp" min="0.01" max="1.0" step="0.01" value="0.50">
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Influencia de Flowfield:</span><span class="control-val" id="valFlowInfluence">0.40</span></div>
-                <input type="range" id="knobFlowInfluence" min="0.0" max="1.0" step="0.05" value="0.40">
+                <div class="control-header"><span>Influencia de Flowfield:</span><span class="control-val" id="valFlowInfluence">0.50</span></div>
+                <input type="range" id="knobFlowInfluence" min="0.0" max="1.0" step="0.05" value="0.50">
             </div>
             <div class="control-item">
                 <div class="control-header"><span>Masa / transfer min:</span><span class="control-val" id="valMinFlow">0.0020</span></div>
@@ -202,24 +202,38 @@
                 <input type="range" id="knobFlowSnapSq" min="0" max="0.25" step="0.0001" value="0.0001">
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Flow max |V|:</span><span class="control-val" id="valFlowMaxMag">3.00</span></div>
-                <input type="range" id="knobFlowMaxMag" min="0.25" max="20" step="0.25" value="3"
+                <div class="control-header"><span>Flow max |V|:</span><span class="control-val" id="valFlowMaxMag">70.00</span></div>
+                <input type="range" id="knobFlowMaxMag" min="0.25" max="70" step="0.25" value="70"
                     title="Tope de magnitud del flowfield. Clamp post-lerp (sqrt solo si se pasa).">
+            </div>
+            <div class="control-item">
+                <div class="control-header"><span>Promedio flow cada N substeps:</span><span class="control-val" id="valFlowAvgEvery">1</span></div>
+                <input type="range" id="knobFlowAvgEvery" min="0" max="20" step="1" value="1"
+                    title="0=apagado. N=promedio espacial Moore-8 cada N substeps.">
+            </div>
+            <div class="control-item">
+                <div class="control-header"><span>Blend promedio vecinos:</span><span class="control-val" id="valFlowAvgBlend">0.06</span></div>
+                <input type="range" id="knobFlowAvgBlend" min="0" max="1" step="0.01" value="0.06"
+                    title="0=retiene V. 1=reemplaza por promedio de vecinos.">
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+                <label class="checkbox-row"><input type="checkbox" id="chkFlowAvgWaterToAir"> Promedio agua → aire</label>
+                <label class="checkbox-row"><input type="checkbox" id="chkFlowAvgAirToWater"> Promedio aire → agua</label>
             </div>
             <div class="control-item">
                 <div class="control-header"><span>Tamano del Pincel:</span><span class="control-val" id="valBrush">4px</span></div>
                 <input type="range" id="knobBrush" min="1" max="12" step="1" value="4">
             </div>
             <div class="control-item">
-                <div class="control-header"><span>Particulas por pincel:</span><span class="control-val" id="valBrushAmount">1.00</span></div>
-                <input type="range" id="knobBrushAmount" min="0.1" max="10" step="0.1" value="1.0"
+                <div class="control-header"><span>Particulas por pincel:</span><span class="control-val" id="valBrushAmount">10.00</span></div>
+                <input type="range" id="knobBrushAmount" min="0.1" max="10" step="0.1" value="10"
                     title="Cantidad de particulas que suma el pincel de agua por celda cada frame.">
             </div>
 
             <div class="panel-header">Performance</div>
             <div class="control-item">
-                <div class="control-header"><span>Substeps por Frame:</span><span class="control-val" id="valSubsteps">4x</span></div>
-                <input type="range" id="knobSubsteps" min="1" max="16" step="1" value="4">
+                <div class="control-header"><span>Substeps por Frame:</span><span class="control-val" id="valSubsteps">5x</span></div>
+                <input type="range" id="knobSubsteps" min="1" max="16" step="1" value="5">
             </div>
             <div class="control-item">
                 <div class="control-header"><span>Tamano de chunk</span></div>

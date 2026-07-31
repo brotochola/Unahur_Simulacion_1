@@ -9,7 +9,8 @@
  *  5) swap
  *  6) gravedad in-place sobre massRead
  *  7) lerp flowfield desde flujos reales acumulados
- *  8) cleanup + commitChunkActivity
+ *  8) promedio espacial flowfield (opcional, cada N substeps)
+ *  9) cleanup + commitChunkActivity
  */
 "use strict";
 
@@ -18,12 +19,98 @@ let transferAccX = new Float32Array(0);
 let transferAccY = new Float32Array(0);
 let transferHad = new Uint8Array(0);
 
+/** Scratch Jacobi para promedio espacial del flowfield */
+let avgFlowX = new Float32Array(0);
+let avgFlowY = new Float32Array(0);
+let avgFlowTouched = new Uint8Array(0);
+
 function ensurePhysicsScratch() {
   if (transferAccX.length !== TOTAL_CELLS) {
     transferAccX = new Float32Array(TOTAL_CELLS);
     transferAccY = new Float32Array(TOTAL_CELLS);
     transferHad = new Uint8Array(TOTAL_CELLS);
+    avgFlowX = new Float32Array(TOTAL_CELLS);
+    avgFlowY = new Float32Array(TOTAL_CELLS);
+    avgFlowTouched = new Uint8Array(TOTAL_CELLS);
   }
+}
+
+/**
+ * Promedio espacial Moore-8 del flowfield (Jacobi).
+ * V' = lerp(V, avgVecinos, blend). Solo cada cfg.flowAvgEvery substeps.
+ */
+function averageFlowfield() {
+  const every = cfg.flowAvgEvery | 0;
+  const blend = cfg.flowAvgBlend;
+  if (every <= 0 || blend <= 0) return;
+  if (runtime.totalSubstepsExecuted % every !== 0) return;
+
+  const gs = GRID_SIZE;
+  const waterToAir = flags.flowAvgWaterToAir;
+  const airToWater = flags.flowAvgAirToWater;
+
+  avgFlowTouched.fill(0);
+
+  forEachProcessCell((x, y, idx) => {
+    const typ = typeGrid[idx];
+    let isWater = typ === WATER && !isDeadMass(massRead[idx]);
+    let isAir = typ === AIR;
+    if (!isWater && !(isAir && waterToAir)) return;
+
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
+    let hasWaterNb = false;
+
+    for (let i = 0; i < 8; i++) {
+      const nx = x + DX[i];
+      const ny = y + DY[i];
+      if (nx < 0 || ny < 0 || nx >= gs || ny >= gs) continue;
+      const nIdx = nx + ny * gs;
+      const nTyp = typeGrid[nIdx];
+      if (nTyp === SOLID) continue;
+
+      if (isWater) {
+        if (nTyp === WATER) {
+          sumX += flowX[nIdx];
+          sumY += flowY[nIdx];
+          count++;
+        } else if (nTyp === AIR && airToWater) {
+          sumX += flowX[nIdx];
+          sumY += flowY[nIdx];
+          count++;
+        }
+      } else {
+        // AIR target: mismos AIR siempre; WATER solo si waterToAir (ya gated)
+        if (nTyp === AIR) {
+          sumX += flowX[nIdx];
+          sumY += flowY[nIdx];
+          count++;
+        } else if (nTyp === WATER) {
+          sumX += flowX[nIdx];
+          sumY += flowY[nIdx];
+          count++;
+          hasWaterNb = true;
+        }
+      }
+    }
+
+    if (count === 0) return;
+    if (isAir && !hasWaterNb) return;
+
+    const inv = 1 / count;
+    const ax = sumX * inv;
+    const ay = sumY * inv;
+    avgFlowX[idx] = flowX[idx] + (ax - flowX[idx]) * blend;
+    avgFlowY[idx] = flowY[idx] + (ay - flowY[idx]) * blend;
+    avgFlowTouched[idx] = 1;
+  });
+
+  forEachProcessCell((x, y, idx) => {
+    if (!avgFlowTouched[idx]) return;
+    flowX[idx] = avgFlowX[idx];
+    flowY[idx] = avgFlowY[idx];
+  });
 }
 
 /**
@@ -188,7 +275,10 @@ function updatePhysicsSubstep() {
     flowY[idx] = vy;
   });
 
-  // --- 7) Cleanup masa muerta + activity sleep ---
+  // --- 7) Promedio espacial flowfield (opcional) ---
+  averageFlowfield();
+
+  // --- 8) Cleanup masa muerta + activity sleep ---
   forEachProcessCell((x, y, idx) => {
     if (typeGrid[idx] !== WATER) return;
     if (isDeadMass(massRead[idx])) {

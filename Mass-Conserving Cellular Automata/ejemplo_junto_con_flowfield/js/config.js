@@ -33,26 +33,28 @@ const outflows = new Float32Array(8);
 /** Parámetros físicos / UI (mutables) */
 const cfg = {
     restCapacity: 1.0,   // N_reposo por celda
-    diffusion: 0.15,     // D de Fick
+    diffusion: 0.21,     // D de Fick
     gravity: 0.50,       // partículas max falling-sand / substep
-    lerp: 0.15,          // alpha inercia flowfield
-    flowInfluence: 0.40, // peso de V en J de Fick
+    lerp: 0.50,          // alpha inercia flowfield
+    flowInfluence: 0.50, // peso de V en J de Fick
     minFlow: 0.002,      // umbral masa muerta / transfer mínimo
     flowSnapSq: 0.0001,  // si |V|^2 < esto → V = 0
-    flowMaxMag: 3.0,     // tope |V| del flowfield (clamp post-lerp)
-    substeps: 4,
+    flowMaxMag: 70.0,    // tope |V| del flowfield (clamp post-lerp)
+    substeps: 5,
     brushRadius: 4,
-    brushAmount: 1.0,    // partículas que suma el pincel de agua por celda/frame
-    displayLerp: 0.30,
-    flowDebugScale: 3.0,
+    brushAmount: 10.0,   // partículas que suma el pincel de agua por celda/frame
+    displayLerp: 0.90,
+    flowDebugScale: 0.25,
     velColorScale: 4.0,
     pressureRedAt: 1.0,  // masa absoluta que satura a rojo (auto = max celda)
-    foamVelScale: 8.0,   // sensibilidad espuma por |V| en modo agua
+    foamVelScale: 0.0,   // sensibilidad espuma por |V| en modo agua
     nbMassRef: 1.0,      // waterNb: escala masa→oscuridad (mass/(rest*ref))
     nbFoamThresh: 1.0,   // waterNb: intensidad espuma por contacto AIR
     nbVelWhite: 1.0,     // waterNb: mag² media (9 celdas) que satura a espuma
     arrowStep: 1,
     gridStep: 1,
+    flowAvgEvery: 1,     // 0=off; N=promedio espacial cada N substeps
+    flowAvgBlend: 0.06,  // alpha hacia promedio vecinos (0=retiene, 1=full avg)
 };
 
 /** Flags de runtime */
@@ -60,12 +62,14 @@ const flags = {
     useChunkCulling: true,
     useTemporalSmooth: false,
     showFlowfield: true,
-    showGrid: true,
-    showChunks: true,
+    showGrid: false,
+    showChunks: false,
     isPaused: true,
-    renderMode: 'mass', // mass | velocity | pressure | compress | water | waterNb
+    renderMode: 'pressure', // mass | velocity | pressure | compress | water | waterNb
     /** 'webgl' | 'imagedata' — ambos con dirty chunks */
-    rendererBackend: 'webgl',
+    rendererBackend: 'imagedata',
+    flowAvgWaterToAir: false, // promedio sangra agua → aire
+    flowAvgAirToWater: false, // promedio incluye aire en celdas agua
 };
 
 /** Estado de reproducción / debug */
