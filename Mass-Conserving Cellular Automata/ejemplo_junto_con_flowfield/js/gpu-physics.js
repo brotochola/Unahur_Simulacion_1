@@ -1,21 +1,34 @@
 /**
  * gpu-physics.js — Física en WebGL2 (fragment ping-pong).
- * Orden substep: Fick gather → gravedad approx → flowfield (+ avg opcional).
+ * Orden substep: Fick (outflows→gather) → gravedad approx → flowfield (+ avg).
  *
  * State RGBA32F: R=mass G=type B=flowX A=flowY
  * Transfer RGBA32F: R=accX G=accY B=had A=0
+ * Outflow A/B: o0..o3 / o4..o7 escalados
  *
+ * Chunks: mismo culling que CPU (processChunkList + wake/hysteresis).
  * ponytail: gravedad ≠ falling-sand bit-exact (sin barrido bottom-up);
- * upgrade: más passes / WebGPU atomics.
+ * upgrade: WebGPU atomics.
  */
 'use strict';
 
 let gpuPhysReady = false;
-let gpuProgFick = null;
+let gpuProgFickOut = null;
+let gpuProgFickGather = null;
 let gpuProgGrav = null;
 let gpuProgFlow = null;
 let gpuProgAvg = null;
+let gpuProgWake = null;
 let gpuTransferTex = null;
+let gpuOutflowA = null;
+let gpuOutflowB = null;
+let gpuBlitReadFbo = null;
+let gpuBlitDrawFbo = null;
+let gpuWakeTex = null;
+let gpuWakeFbo = null;
+let gpuWakeScratch = null;
+let gpuWakeW = 0;
+let gpuWakeH = 0;
 
 const VS_SIM = `#version 300 es
 in vec2 aPos;
@@ -57,17 +70,21 @@ bool inInner(ivec2 p, int gs) {
 }
 `;
 
-const FS_FICK_CLEAN = FS_COMMON + `
+const FS_FICK_OUT = FS_COMMON + `
 uniform float uD;
 uniform float uFlowInf;
 
-layout(location = 0) out vec4 outState;
-layout(location = 1) out vec4 outTransfer;
+layout(location = 0) out vec4 outA;
+layout(location = 1) out vec4 outB;
 
-void cellOutflows(ivec2 p, int gs, out float o0, out float o1, out float o2, out float o3,
-                  out float o4, out float o5, out float o6, out float o7, out float sumOut) {
-    o0 = o1 = o2 = o3 = o4 = o5 = o6 = o7 = 0.0;
-    sumOut = 0.0;
+void main() {
+    int gs = uGridSize;
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    outA = vec4(0.0);
+    outB = vec4(0.0);
+
+    if (p.x <= 0 || p.y <= 0 || p.x >= gs - 1 || p.y >= gs - 1) return;
+
     vec4 c = texelFetch(uState, p, 0);
     if (!isWater(c.g)) return;
     float mass = c.r;
@@ -75,6 +92,10 @@ void cellOutflows(ivec2 p, int gs, out float o0, out float o1, out float o2, out
     float Ci = mass - uRest;
     if (Ci <= uTFloor && uFlowInf <= 0.0) return;
     vec2 f = vec2(c.b, c.a);
+
+    float o0 = 0.0, o1 = 0.0, o2 = 0.0, o3 = 0.0;
+    float o4 = 0.0, o5 = 0.0, o6 = 0.0, o7 = 0.0;
+    float sumOut = 0.0;
 
     for (int i = 0; i < 8; i++) {
         ivec2 np = p + dirOf(i);
@@ -102,22 +123,27 @@ void cellOutflows(ivec2 p, int gs, out float o0, out float o1, out float o2, out
     if (sumOut <= 0.0) return;
     float exceso = mass - uRest;
     float scale = sumOut > exceso ? exceso / sumOut : 1.0;
-    o0 *= scale; o1 *= scale; o2 *= scale; o3 *= scale;
-    o4 *= scale; o5 *= scale; o6 *= scale; o7 *= scale;
-    sumOut *= scale;
+    outA = vec4(o0, o1, o2, o3) * scale;
+    outB = vec4(o4, o5, o6, o7) * scale;
 }
+`;
 
-float outflowDir(ivec2 p, int dir, int gs) {
-    float o0, o1, o2, o3, o4, o5, o6, o7, s;
-    cellOutflows(p, gs, o0, o1, o2, o3, o4, o5, o6, o7, s);
-    if (dir == 0) return o0;
-    if (dir == 1) return o1;
-    if (dir == 2) return o2;
-    if (dir == 3) return o3;
-    if (dir == 4) return o4;
-    if (dir == 5) return o5;
-    if (dir == 6) return o6;
-    return o7;
+const FS_FICK_GATHER = FS_COMMON + `
+uniform sampler2D uOutA;
+uniform sampler2D uOutB;
+
+layout(location = 0) out vec4 outState;
+layout(location = 1) out vec4 outTransfer;
+
+float outComp(vec4 a, vec4 b, int dir) {
+    if (dir == 0) return a.r;
+    if (dir == 1) return a.g;
+    if (dir == 2) return a.b;
+    if (dir == 3) return a.a;
+    if (dir == 4) return b.r;
+    if (dir == 5) return b.g;
+    if (dir == 6) return b.b;
+    return b.a;
 }
 
 void main() {
@@ -131,25 +157,30 @@ void main() {
         return;
     }
 
-    float o0, o1, o2, o3, o4, o5, o6, o7, sumOut;
-    cellOutflows(p, gs, o0, o1, o2, o3, o4, o5, o6, o7, sumOut);
+    vec4 oa = texelFetch(uOutA, p, 0);
+    vec4 ob = texelFetch(uOutB, p, 0);
+    float o0 = oa.r, o1 = oa.g, o2 = oa.b, o3 = oa.a;
+    float o4 = ob.r, o5 = ob.g, o6 = ob.b, o7 = ob.a;
+    float sumOut = o0 + o1 + o2 + o3 + o4 + o5 + o6 + o7;
 
     float accX = 0.0, accY = 0.0, had = 0.0;
-    if (o0 > uTFloor) { accX += 0.0 * o0; accY += 1.0 * o0; had = 1.0; }
+    if (o0 > uTFloor) { accY += 1.0 * o0; had = 1.0; }
     if (o1 > uTFloor) { accX += 0.70710678118 * o1; accY += 0.70710678118 * o1; had = 1.0; }
-    if (o2 > uTFloor) { accX += 1.0 * o2; accY += 0.0 * o2; had = 1.0; }
+    if (o2 > uTFloor) { accX += 1.0 * o2; had = 1.0; }
     if (o3 > uTFloor) { accX += 0.70710678118 * o3; accY += -0.70710678118 * o3; had = 1.0; }
-    if (o4 > uTFloor) { accX += 0.0 * o4; accY += -1.0 * o4; had = 1.0; }
+    if (o4 > uTFloor) { accY += -1.0 * o4; had = 1.0; }
     if (o5 > uTFloor) { accX += -0.70710678118 * o5; accY += -0.70710678118 * o5; had = 1.0; }
-    if (o6 > uTFloor) { accX += -1.0 * o6; accY += 0.0 * o6; had = 1.0; }
+    if (o6 > uTFloor) { accX += -1.0 * o6; had = 1.0; }
     if (o7 > uTFloor) { accX += -0.70710678118 * o7; accY += 0.70710678118 * o7; had = 1.0; }
 
     float sumIn = 0.0;
     for (int i = 0; i < 8; i++) {
         ivec2 np = p + dirOf(i);
         if (!inInner(np, gs)) continue;
-        // from np to p: opposite of i
-        sumIn += outflowDir(np, (i + 4) % 8, gs);
+        int opp = (i + 4) % 8;
+        vec4 na = texelFetch(uOutA, np, 0);
+        vec4 nb = texelFetch(uOutB, np, 0);
+        sumIn += outComp(na, nb, opp);
     }
 
     float newMass = max(0.0, c.r - sumOut + sumIn);
@@ -178,7 +209,6 @@ bool canEnter(ivec2 np, int gs) {
     return !isSolid(n.g);
 }
 
-// Returns direction index of chosen move, or -1. Priority: down, diags, laterals.
 int chooseDir(ivec2 p, int gs, float mass) {
     if (mass <= uTFloor) return -1;
     bool flip = hash21(p, uStep) > 0.5;
@@ -217,8 +247,6 @@ void main() {
     }
 
     float arrive = 0.0;
-    // sources that might choose us: up(4), upL(3), upR(5), left(2), right(6) in their dir space
-    // neighbor at p - dirOf(d) chooses direction d to land on p
     for (int d = 0; d < 8; d++) {
         if (d != 0 && d != 1 && d != 7 && d != 2 && d != 6) continue;
         ivec2 src = p - dirOf(d);
@@ -348,6 +376,36 @@ void main() {
 }
 `;
 
+const FS_WAKE = FS_COMMON + `
+uniform int uChunkSize;
+uniform float uSleepMass;
+uniform float uSleepFlowSq;
+
+layout(location = 0) out vec4 outWake;
+
+void main() {
+    ivec2 cxy = ivec2(gl_FragCoord.xy);
+    int x0 = cxy.x * uChunkSize;
+    int y0 = cxy.y * uChunkSize;
+    int gs = uGridSize;
+    float wake = 0.0;
+    for (int dy = 0; dy < 32; dy++) {
+        if (dy >= uChunkSize) break;
+        for (int dx = 0; dx < 32; dx++) {
+            if (dx >= uChunkSize) break;
+            ivec2 p = ivec2(x0 + dx, y0 + dy);
+            if (!inInner(p, gs)) continue;
+            vec4 c = texelFetch(uState, p, 0);
+            if (!isWater(c.g)) continue;
+            if (c.r > uSleepMass) { wake = 1.0; break; }
+            if ((c.b * c.b + c.a * c.a) > uSleepFlowSq) { wake = 1.0; break; }
+        }
+        if (wake > 0.5) break;
+    }
+    outWake = vec4(wake, 0.0, 0.0, 1.0);
+}
+`;
+
 function linkProgram(vsSrc, fsSrc) {
     const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc);
     const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc);
@@ -363,34 +421,118 @@ function linkProgram(vsSrc, fsSrc) {
     return prog;
 }
 
-function ensureGpuTransferTargets() {
-    if (!gl) return;
-    if (gpuTransferTex) gl.deleteTexture(gpuTransferTex);
-    gpuTransferTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, gpuTransferTex);
+function cacheUniforms(prog, names) {
+    prog._u = {};
+    for (let i = 0; i < names.length; i++) {
+        const n = names[i];
+        prog._u[n] = gl.getUniformLocation(prog, n);
+    }
+}
+
+function u(prog, name) {
+    return prog._u[name];
+}
+
+function createRgba32fTex(w, h) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, GRID_SIZE, GRID_SIZE, 0, gl.RGBA, gl.FLOAT, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+    return tex;
+}
+
+function ensureBlitFbos() {
+    if (!gpuBlitReadFbo) {
+        gpuBlitReadFbo = gl.createFramebuffer();
+        gpuBlitDrawFbo = gl.createFramebuffer();
+    }
+}
+
+function blitTexture(src, dst, w, h) {
+    ensureBlitFbos();
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gpuBlitReadFbo);
+    gl.framebufferTexture2D(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, src, 0);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, gpuBlitDrawFbo);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst, 0);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+}
+
+function clearTexture(tex, w, h) {
+    ensureBlitFbos();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gpuBlitDrawFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.viewport(0, 0, w, h);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+}
+
+function ensureGpuTransferTargets() {
+    if (!gl) return;
+    if (gpuTransferTex) gl.deleteTexture(gpuTransferTex);
+    gpuTransferTex = createRgba32fTex(GRID_SIZE, GRID_SIZE);
+}
+
+function ensureGpuOutflowTargets() {
+    if (!gl) return;
+    if (gpuOutflowA) gl.deleteTexture(gpuOutflowA);
+    if (gpuOutflowB) gl.deleteTexture(gpuOutflowB);
+    gpuOutflowA = createRgba32fTex(GRID_SIZE, GRID_SIZE);
+    gpuOutflowB = createRgba32fTex(GRID_SIZE, GRID_SIZE);
+}
+
+function ensureGpuWakeTarget() {
+    if (!gl || chunksW <= 0 || chunksH <= 0) return;
+    if (gpuWakeTex && gpuWakeW === chunksW && gpuWakeH === chunksH) return;
+    if (gpuWakeTex) gl.deleteTexture(gpuWakeTex);
+    if (gpuWakeFbo) gl.deleteFramebuffer(gpuWakeFbo);
+    gpuWakeW = chunksW;
+    gpuWakeH = chunksH;
+    gpuWakeTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, gpuWakeTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gpuWakeW, gpuWakeH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gpuWakeFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gpuWakeFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gpuWakeTex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gpuWakeScratch = new Uint8Array(gpuWakeW * gpuWakeH * 4);
 }
 
 function initGpuPhysics() {
     gpuPhysReady = false;
     if (!gl || !webglAvailable) return;
 
-    gpuProgFick = linkProgram(VS_SIM, FS_FICK_CLEAN);
+    gpuProgFickOut = linkProgram(VS_SIM, FS_FICK_OUT);
+    gpuProgFickGather = linkProgram(VS_SIM, FS_FICK_GATHER);
     gpuProgGrav = linkProgram(VS_SIM, FS_GRAV);
     gpuProgFlow = linkProgram(VS_SIM, FS_FLOW);
     gpuProgAvg = linkProgram(VS_SIM, FS_AVG);
-    if (!gpuProgFick || !gpuProgGrav || !gpuProgFlow || !gpuProgAvg) {
+    gpuProgWake = linkProgram(VS_SIM, FS_WAKE);
+    if (!gpuProgFickOut || !gpuProgFickGather || !gpuProgGrav || !gpuProgFlow || !gpuProgAvg || !gpuProgWake) {
         console.warn('gpu-physics: compile failed — sim CPU');
         return;
     }
 
-    ensureGpuTransferTargets();
+    cacheUniforms(gpuProgFickOut, ['uState', 'uGridSize', 'uRest', 'uTFloor', 'uD', 'uFlowInf']);
+    cacheUniforms(gpuProgFickGather, ['uState', 'uGridSize', 'uRest', 'uTFloor', 'uOutA', 'uOutB']);
+    cacheUniforms(gpuProgGrav, ['uState', 'uGridSize', 'uRest', 'uTFloor', 'uGrav', 'uStep', 'uTransferIn']);
+    cacheUniforms(gpuProgFlow, ['uState', 'uGridSize', 'uRest', 'uTFloor', 'uTransfer', 'uAlpha', 'uSnapSq', 'uMaxMag']);
+    cacheUniforms(gpuProgAvg, ['uState', 'uGridSize', 'uRest', 'uTFloor', 'uBlend', 'uWaterToAir', 'uAirToWater']);
+    cacheUniforms(gpuProgWake, ['uState', 'uGridSize', 'uRest', 'uTFloor', 'uChunkSize', 'uSleepMass', 'uSleepFlowSq']);
 
-    // Bind fullscreen quad attrib for sim programs
+    ensureGpuTransferTargets();
+    ensureGpuOutflowTargets();
+    ensureBlitFbos();
+    ensureGpuWakeTarget();
+
     const bindQuad = (prog) => {
         gl.useProgram(prog);
         const aPos = gl.getAttribLocation(prog, 'aPos');
@@ -398,10 +540,12 @@ function initGpuPhysics() {
         gl.enableVertexAttribArray(aPos);
         gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
     };
-    bindQuad(gpuProgFick);
+    bindQuad(gpuProgFickOut);
+    bindQuad(gpuProgFickGather);
     bindQuad(gpuProgGrav);
     bindQuad(gpuProgFlow);
     bindQuad(gpuProgAvg);
+    bindQuad(gpuProgWake);
 
     gpuPhysReady = true;
 }
@@ -409,6 +553,8 @@ function initGpuPhysics() {
 function resizeGpuPhysics() {
     if (!gpuPhysReady) return;
     ensureGpuTransferTargets();
+    ensureGpuOutflowTargets();
+    ensureGpuWakeTarget();
     if (gpuPassGravity._trB) {
         gl.bindTexture(gl.TEXTURE_2D, gpuPassGravity._trB);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, GRID_SIZE, GRID_SIZE, 0, gl.RGBA, gl.FLOAT, null);
@@ -421,9 +567,23 @@ function isGpuSim() {
     return flags.simBackend === 'gpu' && gpuPhysReady && webglAvailable && stateTex;
 }
 
+function useChunkedDraw() {
+    return flags.useChunkCulling && processChunkCount > 0 && processChunkCount < chunksTotal;
+}
+
 function drawSimPass() {
     gl.viewport(0, 0, GRID_SIZE, GRID_SIZE);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (!useChunkedDraw()) {
+        gl.disable(gl.SCISSOR_TEST);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        return;
+    }
+    gl.enable(gl.SCISSOR_TEST);
+    forEachProcessChunk((_ci, x0, y0, x1, y1) => {
+        gl.scissor(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    });
+    gl.disable(gl.SCISSOR_TEST);
 }
 
 function bindSimProgram(prog) {
@@ -435,24 +595,67 @@ function bindSimProgram(prog) {
 }
 
 function setCommonUniforms(prog) {
-    gl.uniform1i(gl.getUniformLocation(prog, 'uGridSize'), GRID_SIZE);
-    gl.uniform1f(gl.getUniformLocation(prog, 'uRest'), cfg.restCapacity);
-    gl.uniform1f(gl.getUniformLocation(prog, 'uTFloor'), transferFloor());
+    gl.uniform1i(u(prog, 'uGridSize'), GRID_SIZE);
+    gl.uniform1f(u(prog, 'uRest'), cfg.restCapacity);
+    gl.uniform1f(u(prog, 'uTFloor'), transferFloor());
 }
 
-/** Fick: read stateIdx → write 1-stateIdx + transferTex (MRT) */
-function gpuPassFick() {
-    const read = stateIdx;
-    const write = 1 - stateIdx;
+function blitState(read, write) {
+    // Detach MRT extras from write FBO before blit
+    gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[write]);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    blitTexture(stateTex[read], stateTex[write], GRID_SIZE, GRID_SIZE);
+}
 
-    bindSimProgram(gpuProgFick);
-    setCommonUniforms(gpuProgFick);
-    gl.uniform1f(gl.getUniformLocation(gpuProgFick, 'uD'), cfg.diffusion);
-    gl.uniform1f(gl.getUniformLocation(gpuProgFick, 'uFlowInf'), cfg.flowInfluence);
+/** Fick pass A: outflows → outflowA/B */
+function gpuPassFickOut() {
+    const read = stateIdx;
+
+    bindSimProgram(gpuProgFickOut);
+    setCommonUniforms(gpuProgFickOut);
+    gl.uniform1f(u(gpuProgFickOut, 'uD'), cfg.diffusion);
+    gl.uniform1f(u(gpuProgFickOut, 'uFlowInf'), cfg.flowInfluence);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, stateTex[read]);
-    gl.uniform1i(gl.getUniformLocation(gpuProgFick, 'uState'), 0);
+    gl.uniform1i(u(gpuProgFickOut, 'uState'), 0);
+
+    if (useChunkedDraw()) {
+        clearTexture(gpuOutflowA, GRID_SIZE, GRID_SIZE);
+        clearTexture(gpuOutflowB, GRID_SIZE, GRID_SIZE);
+    }
+
+    ensureBlitFbos();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gpuBlitDrawFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gpuOutflowA, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, gpuOutflowB, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    drawSimPass();
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+}
+
+/** Fick pass B: gather mass + transfer */
+function gpuPassFickGather() {
+    const read = stateIdx;
+    const write = 1 - stateIdx;
+
+    if (useChunkedDraw()) blitState(read, write);
+    clearTexture(gpuTransferTex, GRID_SIZE, GRID_SIZE);
+
+    bindSimProgram(gpuProgFickGather);
+    setCommonUniforms(gpuProgFickGather);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, stateTex[read]);
+    gl.uniform1i(u(gpuProgFickGather, 'uState'), 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, gpuOutflowA);
+    gl.uniform1i(u(gpuProgFickGather, 'uOutA'), 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, gpuOutflowB);
+    gl.uniform1i(u(gpuProgFickGather, 'uOutB'), 2);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[write]);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[write], 0);
@@ -465,15 +668,14 @@ function gpuPassFick() {
     stateIdx = write;
 }
 
+function gpuPassFick() {
+    gpuPassFickOut();
+    gpuPassFickGather();
+}
+
 function ensureGravTransferB() {
     if (gpuPassGravity._trB) return;
-    gpuPassGravity._trB = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, gpuPassGravity._trB);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, GRID_SIZE, GRID_SIZE, 0, gl.RGBA, gl.FLOAT, null);
+    gpuPassGravity._trB = createRgba32fTex(GRID_SIZE, GRID_SIZE);
 }
 
 function gpuPassGravity() {
@@ -482,17 +684,22 @@ function gpuPassGravity() {
     const write = 1 - stateIdx;
     ensureGravTransferB();
 
+    if (useChunkedDraw()) {
+        blitState(read, write);
+        blitTexture(gpuTransferTex, gpuPassGravity._trB, GRID_SIZE, GRID_SIZE);
+    }
+
     bindSimProgram(gpuProgGrav);
     setCommonUniforms(gpuProgGrav);
-    gl.uniform1f(gl.getUniformLocation(gpuProgGrav, 'uGrav'), cfg.gravity);
-    gl.uniform1i(gl.getUniformLocation(gpuProgGrav, 'uStep'), runtime.totalSubstepsExecuted | 0);
+    gl.uniform1f(u(gpuProgGrav, 'uGrav'), cfg.gravity);
+    gl.uniform1i(u(gpuProgGrav, 'uStep'), runtime.totalSubstepsExecuted | 0);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, stateTex[read]);
-    gl.uniform1i(gl.getUniformLocation(gpuProgGrav, 'uState'), 0);
+    gl.uniform1i(u(gpuProgGrav, 'uState'), 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, gpuTransferTex);
-    gl.uniform1i(gl.getUniformLocation(gpuProgGrav, 'uTransferIn'), 1);
+    gl.uniform1i(u(gpuProgGrav, 'uTransferIn'), 1);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[write]);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[write], 0);
@@ -502,7 +709,6 @@ function gpuPassGravity() {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
 
-    // swap transfer tex pointers
     const tmp = gpuTransferTex;
     gpuTransferTex = gpuPassGravity._trB;
     gpuPassGravity._trB = tmp;
@@ -514,18 +720,20 @@ function gpuPassFlowfield() {
     const read = stateIdx;
     const write = 1 - stateIdx;
 
+    if (useChunkedDraw()) blitState(read, write);
+
     bindSimProgram(gpuProgFlow);
     setCommonUniforms(gpuProgFlow);
-    gl.uniform1f(gl.getUniformLocation(gpuProgFlow, 'uAlpha'), cfg.lerp);
-    gl.uniform1f(gl.getUniformLocation(gpuProgFlow, 'uSnapSq'), cfg.flowSnapSq);
-    gl.uniform1f(gl.getUniformLocation(gpuProgFlow, 'uMaxMag'), cfg.flowMaxMag);
+    gl.uniform1f(u(gpuProgFlow, 'uAlpha'), cfg.lerp);
+    gl.uniform1f(u(gpuProgFlow, 'uSnapSq'), cfg.flowSnapSq);
+    gl.uniform1f(u(gpuProgFlow, 'uMaxMag'), cfg.flowMaxMag);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, stateTex[read]);
-    gl.uniform1i(gl.getUniformLocation(gpuProgFlow, 'uState'), 0);
+    gl.uniform1i(u(gpuProgFlow, 'uState'), 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, gpuTransferTex);
-    gl.uniform1i(gl.getUniformLocation(gpuProgFlow, 'uTransfer'), 1);
+    gl.uniform1i(u(gpuProgFlow, 'uTransfer'), 1);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[write]);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[write], 0);
@@ -542,15 +750,17 @@ function gpuPassFlowAvg() {
     const read = stateIdx;
     const write = 1 - stateIdx;
 
+    if (useChunkedDraw()) blitState(read, write);
+
     bindSimProgram(gpuProgAvg);
     setCommonUniforms(gpuProgAvg);
-    gl.uniform1f(gl.getUniformLocation(gpuProgAvg, 'uBlend'), blend);
-    gl.uniform1i(gl.getUniformLocation(gpuProgAvg, 'uWaterToAir'), flags.flowAvgWaterToAir ? 1 : 0);
-    gl.uniform1i(gl.getUniformLocation(gpuProgAvg, 'uAirToWater'), flags.flowAvgAirToWater ? 1 : 0);
+    gl.uniform1f(u(gpuProgAvg, 'uBlend'), blend);
+    gl.uniform1i(u(gpuProgAvg, 'uWaterToAir'), flags.flowAvgWaterToAir ? 1 : 0);
+    gl.uniform1i(u(gpuProgAvg, 'uAirToWater'), flags.flowAvgAirToWater ? 1 : 0);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, stateTex[read]);
-    gl.uniform1i(gl.getUniformLocation(gpuProgAvg, 'uState'), 0);
+    gl.uniform1i(u(gpuProgAvg, 'uState'), 0);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[write]);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[write], 0);
@@ -558,11 +768,48 @@ function gpuPassFlowAvg() {
     stateIdx = write;
 }
 
+function gpuPassWakeCommit() {
+    ensureGpuWakeTarget();
+    if (!gpuWakeFbo) return;
+
+    bindSimProgram(gpuProgWake);
+    setCommonUniforms(gpuProgWake);
+    gl.uniform1i(u(gpuProgWake, 'uChunkSize'), CHUNK);
+    gl.uniform1f(u(gpuProgWake, 'uSleepMass'), chunkSleepMass());
+    gl.uniform1f(u(gpuProgWake, 'uSleepFlowSq'), chunkSleepFlowSq());
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, stateTex[stateIdx]);
+    gl.uniform1i(u(gpuProgWake, 'uState'), 0);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gpuWakeFbo);
+    gl.viewport(0, 0, gpuWakeW, gpuWakeH);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    gl.readPixels(0, 0, gpuWakeW, gpuWakeH, gl.RGBA, gl.UNSIGNED_BYTE, gpuWakeScratch);
+
+    chunkActiveScratch.fill(0);
+    const n = chunksTotal;
+    const src = gpuWakeScratch;
+    for (let i = 0; i < n; i++) {
+        if (src[i * 4] > 0) chunkActiveScratch[i] = 1;
+    }
+    commitChunkActivity(true);
+}
+
 function updatePhysicsSubstepGpu() {
     runtime.totalSubstepsExecuted++;
+    buildProcessChunkList();
+    if (processChunkCount === 0) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return;
+    }
+    chunkActiveScratch.fill(0);
     gpuPassFick();
     gpuPassGravity();
     gpuPassFlowfield();
     gpuPassFlowAvg();
+    gpuPassWakeCommit();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }

@@ -55,6 +55,8 @@
       }
     }
     massWrite.set(massRead);
+    rebuildChunkFlagsFromWater();
+    buildProcessChunkList();
     uploadCpuStateToGpu();
     const m0 = totalMassGpu();
     for (let i = 0; i < 20; i++) updatePhysicsSubstepGpu();
@@ -63,6 +65,8 @@
     if (err > 0.05) return fail('fick mass err=' + err + ' m0=' + m0 + ' m1=' + m1);
 
     cfg.gravity = 0.5;
+    rebuildChunkFlagsFromWater();
+    buildProcessChunkList();
     uploadCpuStateToGpu();
     const g0 = totalMassGpu();
     for (let i = 0; i < 30; i++) updatePhysicsSubstepGpu();

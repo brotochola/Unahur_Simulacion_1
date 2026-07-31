@@ -29,11 +29,6 @@ function loop() {
     document.getElementById('totalStepsDisplay').textContent =
         `Step: ${runtime.totalSubstepsExecuted}`;
 
-    if (isGpuSim()) {
-        const el = document.getElementById('chunkDisplay');
-        if (el) el.textContent = 'Chunks: GPU';
-    }
-
     if ((massDisplayCounter++ % 15) === 0) {
         const mass = isGpuSim() ? totalMassGpu() : totalMass();
         document.getElementById('massDisplay').textContent =
