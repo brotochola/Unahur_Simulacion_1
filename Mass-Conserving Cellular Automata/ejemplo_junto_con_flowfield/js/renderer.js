@@ -1,7 +1,7 @@
 /**
- * renderer.js — Dual backend con dirty chunks:
+ * renderer.js — Dual backend:
  *  - imagedata: Canvas2D + Uint32 pixelBuffer + putImageData por runs
- *  - webgl: WebGL2 RGBA32F + texSubImage2D por runs
+ *  - webgl: state textures RGBA32F (sim/render GPU) + colorize fullscreen
  * Overlay debug siempre en Canvas2D aparte.
  */
 'use strict';
@@ -22,7 +22,12 @@ let cellPx = 1;
 /** Estado WebGL (canvas GPU dedicado) */
 let gl = null;
 let glProgram = null;
-let glTex = null;
+let glQuadBuffer = null;
+/** Ping-pong state: R=mass G=type B=flowX A=flowY */
+let stateTex = null;
+let stateFbo = null;
+let stateIdx = 0;
+let gpuStateResident = false;
 let uMode = null;
 let uRest = null;
 let uVelScale = null;
@@ -33,6 +38,12 @@ let uNbFoamThresh = null;
 let uNbVelWhite = null;
 let uTexel = null;
 let webglAvailable = false;
+/** GPU timer query (async, frame-1) */
+let glTimerExt = null;
+let glTimerQuery = null;
+let glTimerWaiting = false;
+let _readPixelScratch = new Float32Array(4);
+let _readMassScratch = null;
 
 /** ImageData (canvas CPU dedicado) */
 let simCtx2d = null;
@@ -356,8 +367,46 @@ function initCpuRenderer() {
     cpuReady = true;
 }
 
+function createStateTexture() {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, GRID_SIZE, GRID_SIZE, 0, gl.RGBA, gl.FLOAT, null);
+    return tex;
+}
+
+function resizeStateTextures() {
+    if (!gl || !stateTex) return;
+    gl.getExtension('EXT_color_buffer_float');
+    for (let i = 0; i < 2; i++) {
+        gl.bindTexture(gl.TEXTURE_2D, stateTex[i]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, GRID_SIZE, GRID_SIZE, 0, gl.RGBA, gl.FLOAT, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[i]);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[i], 0);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        if (status !== gl.FRAMEBUFFER_COMPLETE) {
+            console.warn('FBO state incompleto', status);
+            webglAvailable = false;
+            return;
+        }
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const err = gl.getError();
+    if (err !== gl.NO_ERROR) {
+        console.warn('RGBA32F no soportado — desactivo WebGL', err);
+        webglAvailable = false;
+        return;
+    }
+    webglAvailable = true;
+    stateIdx = 0;
+    gpuStateResident = false;
+}
+
 function initGpuRenderer() {
-    gl = simCanvasGpu.getContext('webgl2', { alpha: false, antialias: false, preserveDrawingBuffer: false });
+    gl = simCanvasGpu.getContext('webgl2', { alpha: false, antialias: false, preserveDrawingBuffer: true });
     if (!gl) {
         console.warn('WebGL2 no disponible — solo ImageData');
         webglAvailable = false;
@@ -383,8 +432,8 @@ function initGpuRenderer() {
 
     gl.useProgram(glProgram);
 
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    glQuadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, glQuadBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
         -1, -1, 1, -1, -1, 1,
         -1, 1, 1, -1, 1, 1,
@@ -393,13 +442,10 @@ function initGpuRenderer() {
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
-    glTex = gl.createTexture();
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, glTex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    stateTex = [createStateTexture(), createStateTexture()];
+    stateFbo = [gl.createFramebuffer(), gl.createFramebuffer()];
+    resizeStateTextures();
+    if (!webglAvailable) return;
 
     gl.uniform1i(gl.getUniformLocation(glProgram, 'uTex'), 0);
     uMode = gl.getUniformLocation(glProgram, 'uMode');
@@ -412,15 +458,19 @@ function initGpuRenderer() {
     uNbVelWhite = gl.getUniformLocation(glProgram, 'uNbVelWhite');
     uTexel = gl.getUniformLocation(glProgram, 'uTexel');
 
-    resizeGlTexture();
-    if (!webglAvailable) return;
+    glTimerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    if (glTimerExt) glTimerQuery = gl.createQuery();
 }
 
 function initRenderer() {
     initCpuRenderer();
     initGpuRenderer();
+    if (typeof initGpuPhysics === 'function') initGpuPhysics();
     if (!webglAvailable && flags.rendererBackend === 'webgl') {
         flags.rendererBackend = 'imagedata';
+    }
+    if (!webglAvailable || (typeof gpuPhysReady !== 'undefined' && !gpuPhysReady)) {
+        if (flags.simBackend === 'gpu') flags.simBackend = 'cpu';
     }
     const sel = document.getElementById('selectRenderer');
     if (sel) {
@@ -435,22 +485,123 @@ function initRenderer() {
             flags.rendererBackend = 'imagedata';
         }
     }
+    const selSim = document.getElementById('selectSimBackend');
+    if (selSim) {
+        selSim.value = flags.simBackend;
+        if (!webglAvailable || !gpuPhysReady) {
+            const opt = selSim.querySelector('option[value="gpu"]');
+            if (opt) {
+                opt.disabled = true;
+                opt.textContent = 'GPU (no disponible)';
+            }
+            selSim.value = 'cpu';
+            flags.simBackend = 'cpu';
+        }
+    }
     applyRendererVisibility();
+    markRenderFullDirty();
+    uploadCpuStateToGpu();
+}
+
+/** Empaqueta CPU SoA → uploadRGBA y sube a stateTex[stateIdx]. */
+function uploadCpuStateToGpu() {
+    if (!webglAvailable || !gl || !stateTex) return;
+    packUploadTexture();
+    gl.bindTexture(gl.TEXTURE_2D, stateTex[stateIdx]);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, GRID_SIZE, GRID_SIZE, gl.RGBA, gl.FLOAT, uploadRGBA);
+    gpuStateResident = true;
     markRenderFullDirty();
 }
 
-function resizeGlTexture() {
-    if (!gl || !glTex) return;
-    gl.bindTexture(gl.TEXTURE_2D, glTex);
-    gl.getExtension('EXT_color_buffer_float');
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, GRID_SIZE, GRID_SIZE, 0, gl.RGBA, gl.FLOAT, null);
-    const err = gl.getError();
-    if (err !== gl.NO_ERROR) {
-        console.warn('RGBA32F no soportado — desactivo WebGL', err);
-        webglAvailable = false;
+/** Sube rectángulo [x0..x1]×[y0..y1] desde CPU arrays a state actual. */
+function uploadCpuRectToGpu(x0, y0, x1, y1) {
+    if (!webglAvailable || !gl || !stateTex) return;
+    const sizeOut = _packSizeOut;
+    packRectRGBA(x0, y0, x1, y1, dirtyChunkRGBA, sizeOut);
+    gl.bindTexture(gl.TEXTURE_2D, stateTex[stateIdx]);
+    gl.texSubImage2D(
+        gl.TEXTURE_2D, 0,
+        sizeOut[2], sizeOut[3],
+        sizeOut[0], sizeOut[1],
+        gl.RGBA, gl.FLOAT, dirtyChunkRGBA
+    );
+    gpuStateResident = true;
+}
+
+/** Descarga state GPU → CPU SoA (inspector overlays / switch a CPU sim). */
+function downloadGpuStateToCpu() {
+    if (!webglAvailable || !gl || !stateTex) return;
+    const n = TOTAL_CELLS * 4;
+    if (!_readMassScratch || _readMassScratch.length !== n) {
+        _readMassScratch = new Float32Array(n);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[stateIdx]);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[stateIdx], 0);
+    gl.readPixels(0, 0, GRID_SIZE, GRID_SIZE, gl.RGBA, gl.FLOAT, _readMassScratch);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    const src = _readMassScratch;
+    let maxMass = 0;
+    for (let i = 0, o = 0; i < TOTAL_CELLS; i++, o += 4) {
+        const mass = src[o];
+        const typ = src[o + 1] | 0;
+        massRead[i] = mass;
+        typeGrid[i] = typ;
+        flowX[i] = src[o + 2];
+        flowY[i] = src[o + 3];
+        if (typ === WATER && mass > maxMass) maxMass = mass;
+    }
+    massWrite.set(massRead);
+    runtime.maxCellMass = maxMass;
+    syncPressureRedAtFromMax(maxMass);
+}
+
+function readGpuCell(x, y, out) {
+    if (!webglAvailable || !gl || !stateTex) return false;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[stateIdx]);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[stateIdx], 0);
+    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.FLOAT, _readPixelScratch);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    out[0] = _readPixelScratch[0];
+    out[1] = _readPixelScratch[1];
+    out[2] = _readPixelScratch[2];
+    out[3] = _readPixelScratch[3];
+    return true;
+}
+
+function totalMassGpu() {
+    if (!webglAvailable || !gl || !stateTex) return totalMass();
+    const n = TOTAL_CELLS * 4;
+    if (!_readMassScratch || _readMassScratch.length !== n) {
+        _readMassScratch = new Float32Array(n);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[stateIdx]);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[stateIdx], 0);
+    gl.readPixels(0, 0, GRID_SIZE, GRID_SIZE, gl.RGBA, gl.FLOAT, _readMassScratch);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    let sum = 0;
+    let maxMass = 0;
+    const src = _readMassScratch;
+    for (let i = 0, o = 0; i < TOTAL_CELLS; i++, o += 4) {
+        const mass = src[o];
+        sum += mass;
+        if ((src[o + 1] | 0) === WATER && mass > maxMass) maxMass = mass;
+    }
+    runtime.maxCellMass = maxMass;
+    syncPressureRedAtFromMax(maxMass);
+    return sum;
+}
+
+function pollGpuTimer() {
+    if (!glTimerExt || !glTimerQuery || !glTimerWaiting) return;
+    if (!gl.getQueryParameter(glTimerQuery, gl.QUERY_RESULT_AVAILABLE)) return;
+    if (gl.getParameter(glTimerExt.GPU_DISJOINT_EXT)) {
+        glTimerWaiting = false;
         return;
     }
-    webglAvailable = true;
+    const ns = gl.getQueryParameter(glTimerQuery, gl.QUERY_RESULT);
+    glTimerWaiting = false;
+    if (typeof perfRecordGpuMs === 'function') perfRecordGpuMs(ns / 1e6);
 }
 
 function modeToInt(mode) {
@@ -588,8 +739,10 @@ function onGridResized() {
         pixelBuffer = new Uint32Array(imgData.data.buffer);
     }
     if (webglAvailable && gl) {
-        resizeGlTexture();
+        resizeStateTextures();
+        if (typeof resizeGpuPhysics === 'function') resizeGpuPhysics();
         gl.viewport(0, 0, GRID_SIZE, GRID_SIZE);
+        gpuStateResident = false;
     }
     displayW = 0;
     resizeDebugCanvas();
@@ -769,31 +922,44 @@ function renderImageData(full) {
     });
 }
 
-function renderWebGL(full) {
-    if (!webglAvailable || !gl) return;
-    gl.useProgram(glProgram);
-    gl.viewport(0, 0, GRID_SIZE, GRID_SIZE);
-    gl.bindTexture(gl.TEXTURE_2D, glTex);
+function renderWebGL(_full) {
+    if (!webglAvailable || !gl || !stateTex) return;
+    pollGpuTimer();
 
-    if (full) {
-        packUploadTexture();
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, GRID_SIZE, GRID_SIZE, gl.RGBA, gl.FLOAT, uploadRGBA);
-    } else {
-        const maxMass = maxMassFromChunkList(renderDirtyList, renderDirtyCount);
-        runtime.maxCellMass = maxMass;
-        syncPressureRedAtFromMax(maxMass);
-        const sizeOut = _packSizeOut;
-        forEachDirtyMergedRun((x0, y0, x1, y1) => {
-            packRectRGBA(x0, y0, x1, y1, dirtyChunkRGBA, sizeOut);
-            gl.texSubImage2D(
-                gl.TEXTURE_2D, 0,
-                sizeOut[2], sizeOut[3],
-                sizeOut[0], sizeOut[1],
-                gl.RGBA, gl.FLOAT, dirtyChunkRGBA
-            );
-        });
+    // CPU sim: subir state antes de colorize. GPU sim: state ya residente.
+    if (!isGpuSim()) {
+        if (_full || !gpuStateResident) uploadCpuStateToGpu();
+        else {
+            const maxMass = maxMassFromChunkList(renderDirtyList, renderDirtyCount);
+            runtime.maxCellMass = maxMass;
+            syncPressureRedAtFromMax(maxMass);
+            const sizeOut = _packSizeOut;
+            forEachDirtyMergedRun((x0, y0, x1, y1) => {
+                packRectRGBA(x0, y0, x1, y1, dirtyChunkRGBA, sizeOut);
+                gl.bindTexture(gl.TEXTURE_2D, stateTex[stateIdx]);
+                gl.texSubImage2D(
+                    gl.TEXTURE_2D, 0,
+                    sizeOut[2], sizeOut[3],
+                    sizeOut[0], sizeOut[1],
+                    gl.RGBA, gl.FLOAT, dirtyChunkRGBA
+                );
+            });
+            gpuStateResident = true;
+        }
     }
 
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.useProgram(glProgram);
+    gl.viewport(0, 0, GRID_SIZE, GRID_SIZE);
+
+    const aPos = gl.getAttribLocation(glProgram, 'aPos');
+    gl.bindBuffer(gl.ARRAY_BUFFER, glQuadBuffer);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, stateTex[stateIdx]);
+    gl.uniform1i(gl.getUniformLocation(glProgram, 'uTex'), 0);
     gl.uniform1i(uMode, modeToInt(flags.renderMode));
     gl.uniform1f(uRest, cfg.restCapacity);
     gl.uniform1f(uVelScale, cfg.velColorScale);
@@ -803,7 +969,18 @@ function renderWebGL(full) {
     gl.uniform1f(uNbFoamThresh, cfg.nbFoamThresh);
     gl.uniform1f(uNbVelWhite, cfg.nbVelWhite);
     gl.uniform1f(uTexel, 1.0 / GRID_SIZE);
+
+    const useTimer = glTimerExt && glTimerQuery && !glTimerWaiting;
+    if (useTimer) {
+        gl.beginQuery(glTimerExt.TIME_ELAPSED_EXT, glTimerQuery);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (useTimer) {
+        gl.endQuery(glTimerExt.TIME_ELAPSED_EXT);
+        glTimerWaiting = true;
+    } else if (!glTimerExt && typeof perfMarkGpuUnavailable === 'function') {
+        perfMarkGpuUnavailable();
+    }
 }
 
 function renderOverlays() {
@@ -927,11 +1104,19 @@ function updateDisplaySmooth(full) {
 function render() {
     buildRenderDirtyList();
     const full = useFullRenderUpload();
-    updateDisplaySmooth(full);
+    // Temporal smooth solo path CPU (GPU sim no mantiene display* buffers)
+    if (!isGpuSim()) updateDisplaySmooth(full);
     if (isWebGLBackend()) renderWebGL(full);
-    else renderImageData(full);
+    else {
+        if (isGpuSim()) downloadGpuStateToCpu();
+        renderImageData(true);
+    }
     commitRenderDirtyPrev();
     renderFullDirty = false;
+    // Overlays flechas/chunks necesitan SoA CPU
+    if (isGpuSim() && (flags.showFlowfield || flags.showChunks)) {
+        downloadGpuStateToCpu();
+    }
     renderOverlays();
     updateInspectorUI();
 }

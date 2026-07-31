@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>gpu-smoke</title></head>
+<body>
+<canvas id="simCanvasCpu" width="64" height="64"></canvas>
+<canvas id="simCanvasGpu" width="64" height="64"></canvas>
+<canvas id="debugCanvas" width="64" height="64"></canvas>
+<canvas id="vectorCanvas" width="140" height="40"></canvas>
+<div id="canvasStack"></div>
+<div id="fpsDisplay"></div><div id="simDisplay"></div><div id="renderDisplay"></div>
+<div id="frameDisplay"></div><div id="gpuDisplay"></div>
+<div id="stepDisplay"></div><div id="totalStepsDisplay"></div>
+<div id="worldDisplay"></div><div id="chunkDisplay"></div><div id="massDisplay"></div>
+<div id="inspPos"></div><div id="inspType"></div><div id="inspMass"></div>
+<div id="inspPressure"></div><div id="inspVec"></div><div id="inspMag"></div>
+<select id="selectRenderer"><option value="webgl">webgl</option><option value="imagedata">imagedata</option></select>
+<select id="selectSimBackend"><option value="gpu">gpu</option><option value="cpu">cpu</option></select>
+<pre id="out">running…</pre>
+<script src="config.js"></script>
+<script src="grids.js"></script>
+<script src="chunks.js"></script>
+<script src="physics.js"></script>
+<script src="renderer.js"></script>
+<script src="gpu-physics.js"></script>
+<script src="perf.js"></script>
+<script>
+(function () {
+  const out = document.getElementById('out');
+  function fail(msg) {
+    out.textContent = 'FAIL: ' + msg;
+    document.title = 'FAIL: ' + msg;
+  }
+  try {
+    flags.isPaused = true;
+    flags.simBackend = 'gpu';
+    flags.rendererBackend = 'webgl';
+    allocateGrids(64);
+    allocChunkBuffers();
+    initRenderer();
+    onGridResized();
+    initGrid();
+    if (!webglAvailable) return fail('webgl unavailable');
+    if (!gpuPhysReady) return fail('gpu physics not ready');
+    cfg.gravity = 0;
+    cfg.diffusion = 0.15;
+    cfg.restCapacity = 1.0;
+    cfg.minFlow = 0.001;
+    cfg.flowInfluence = 0;
+    cfg.flowAvgEvery = 0;
+    const gs = GRID_SIZE;
+    for (let y = 20; y < 30; y++) {
+      for (let x = 20; x < 40; x++) {
+        const idx = x + y * gs;
+        typeGrid[idx] = WATER;
+        massRead[idx] = 1.0;
+      }
+    }
+    massWrite.set(massRead);
+    uploadCpuStateToGpu();
+    const m0 = totalMassGpu();
+    for (let i = 0; i < 20; i++) updatePhysicsSubstepGpu();
+    const m1 = totalMassGpu();
+    const err = Math.abs(m1 - m0);
+    if (err > 0.05) return fail('fick mass err=' + err + ' m0=' + m0 + ' m1=' + m1);
+
+    cfg.gravity = 0.5;
+    uploadCpuStateToGpu();
+    const g0 = totalMassGpu();
+    for (let i = 0; i < 30; i++) updatePhysicsSubstepGpu();
+    const g1 = totalMassGpu();
+    const gerr = Math.abs(g1 - g0);
+    if (gerr > 0.5) return fail('grav mass err=' + gerr + ' g0=' + g0 + ' g1=' + g1);
+
+    const msg = 'PASS fick_err=' + err.toFixed(6) + ' grav_err=' + gerr.toFixed(6) + ' m=' + m0.toFixed(1);
+    out.textContent = msg;
+    document.title = msg;
+  } catch (e) {
+    fail(e && e.stack ? e.stack : String(e));
+  }
+})();
+</script>
+</body></html>

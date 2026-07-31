@@ -3,17 +3,29 @@
  */
 'use strict';
 
+const _inspCell = new Float32Array(4);
+
 function updateInspectorUI() {
     const mouseX = runtime.mouseX;
     const mouseY = runtime.mouseY;
     if (mouseX < 0 || mouseX >= GRID_SIZE || mouseY < 0 || mouseY >= GRID_SIZE) return;
 
-    const idx = mouseX + mouseY * GRID_SIZE;
-    const typeStr = typeGrid[idx] === SOLID ? 'PARED' : (typeGrid[idx] === WATER ? 'AGUA' : 'AIRE');
-    const m = massRead[idx];
-    const p = (typeGrid[idx] === WATER) ? Math.max(0, m - cfg.restCapacity) : 0;
-    const vx = flowX[idx];
-    const vy = flowY[idx];
+    let m, typ, vx, vy;
+    if (isGpuSim() && readGpuCell(mouseX, mouseY, _inspCell)) {
+        m = _inspCell[0];
+        typ = _inspCell[1] | 0;
+        vx = _inspCell[2];
+        vy = _inspCell[3];
+    } else {
+        const idx = mouseX + mouseY * GRID_SIZE;
+        m = massRead[idx];
+        typ = typeGrid[idx];
+        vx = flowX[idx];
+        vy = flowY[idx];
+    }
+
+    const typeStr = typ === SOLID ? 'PARED' : (typ === WATER ? 'AGUA' : 'AIRE');
+    const p = (typ === WATER) ? Math.max(0, m - cfg.restCapacity) : 0;
     const mag = Math.sqrt(vx * vx + vy * vy);
 
     document.getElementById('inspPos').textContent = `X: ${mouseX} | Y: ${mouseY}`;
@@ -74,6 +86,7 @@ function loadUTubePreset() {
     rebuildChunkFlagsFromWater();
     buildProcessChunkList();
     markRenderFullDirty();
+    uploadCpuStateToGpu();
 }
 
 function reallocateGrid(newSize) {
@@ -86,8 +99,32 @@ function reallocateGrid(newSize) {
     chunkActiveScratch.fill(0);
     buildProcessChunkList();
     markRenderFullDirty();
+    uploadCpuStateToGpu();
     document.getElementById('worldDisplay').textContent = `${GRID_SIZE}x${GRID_SIZE}`;
     document.getElementById('inputWorldSize').value = String(GRID_SIZE);
+}
+
+function setSimBackend(backend) {
+    if (backend === 'gpu' && (!webglAvailable || !gpuPhysReady)) {
+        backend = 'cpu';
+        const sel = document.getElementById('selectSimBackend');
+        if (sel) sel.value = 'cpu';
+    }
+    if (backend === 'cpu' && flags.simBackend === 'gpu') {
+        downloadGpuStateToCpu();
+        rebuildChunkFlagsFromWater();
+        buildProcessChunkList();
+    }
+    flags.simBackend = backend === 'gpu' ? 'gpu' : 'cpu';
+    if (flags.simBackend === 'gpu') {
+        uploadCpuStateToGpu();
+        if (flags.rendererBackend !== 'webgl' && webglAvailable) {
+            setRendererBackend('webgl');
+            const selR = document.getElementById('selectRenderer');
+            if (selR) selR.value = 'webgl';
+        }
+    }
+    markRenderFullDirty();
 }
 
 function setupUI() {
@@ -102,14 +139,14 @@ function setupUI() {
         flags.isPaused = true;
         btnPlay.textContent = 'Reanudar';
         btnPlay.classList.add('active');
-        for (let s = 0; s < cfg.substeps; s++) updatePhysicsSubstep();
+        for (let s = 0; s < cfg.substeps; s++) runPhysicsSubstep();
     };
 
     document.getElementById('btnStepSubstep').onclick = () => {
         flags.isPaused = true;
         btnPlay.textContent = 'Reanudar';
         btnPlay.classList.add('active');
-        updatePhysicsSubstep();
+        runPhysicsSubstep();
     };
 
     document.getElementById('chkFlowfield').onchange = (e) => { flags.showFlowfield = e.target.checked; };
@@ -117,6 +154,12 @@ function setupUI() {
     document.getElementById('chkChunks').onchange = (e) => { flags.showChunks = e.target.checked; };
     document.getElementById('chkTemporalSmooth').onchange = (e) => {
         flags.useTemporalSmooth = e.target.checked;
+        if (flags.useTemporalSmooth && isGpuSim()) {
+            // Smooth temporal solo path CPU
+            e.target.checked = false;
+            flags.useTemporalSmooth = false;
+            return;
+        }
         if (flags.useTemporalSmooth) {
             displayMassGrid.set(massRead);
             displayFlowX.set(flowX);
@@ -138,6 +181,9 @@ function setupUI() {
 
     document.getElementById('selectRenderer').onchange = (e) => {
         setRendererBackend(e.target.value);
+    };
+    document.getElementById('selectSimBackend').onchange = (e) => {
+        setSimBackend(e.target.value);
     };
     document.getElementById('selectRenderMode').onchange = (e) => {
         flags.renderMode = e.target.value;
@@ -208,6 +254,7 @@ function setupUI() {
         chunkActiveScratch.fill(0);
         buildProcessChunkList();
         markRenderFullDirty();
+        uploadCpuStateToGpu();
     };
     document.getElementById('btnPreset').onclick = () => loadUTubePreset();
 

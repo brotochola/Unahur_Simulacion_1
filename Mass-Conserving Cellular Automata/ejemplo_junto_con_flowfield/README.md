@@ -65,40 +65,38 @@ Mueve hasta `cfg.gravity` partículas por substep. Independiente del flowfield.
 index.html
 css/styles.css
 js/
-  config.js      — tipos AIR/SOLID/WATER, knobs, vecindad
-  grids.js       — SoA typed arrays + ping/pong
-  chunks.js      — spatial hash, sleep, anillo 3×3
-  physics.js     — Fick → gravedad → flowfield
-  renderer.js    — dual backend dirty (WebGL2 / ImageData) + overlays
-  input.js       — mouse / pincel
-  ui.js          — knobs, preset U, inspector
-  main.js        — loop rAF
-  smoke-check.js — tests headless (Node)
+  config.js       — tipos AIR/SOLID/WATER, knobs, vecindad
+  grids.js        — SoA typed arrays + ping/pong (CPU / seed GPU)
+  chunks.js       — spatial hash (path CPU)
+  physics.js      — Fick → gravedad → flowfield (referencia CPU)
+  gpu-physics.js  — mismos pasos en WebGL2 fragment ping-pong
+  renderer.js     — state textures + colorize WebGL2 / ImageData
+  perf.js         — FPS + sim/render/frame/gpu ms
+  input.js        — mouse / pincel → CPU + upload GPU
+  ui.js           — knobs, preset U, inspector
+  main.js         — loop rAF
+  smoke-check.js  — tests headless CPU (Node)
 ```
 
-### Datos (SoA, sin GC en el hot loop)
+### Path GPU (default)
+
+Estado en texturas `RGBA32F` (R=mass, G=type, B=flowX, A=flowY), ping-pong + FBO.
+
+Por substep: **Fick gather** → **gravedad approx** → **flowfield** (+ avg opcional) → **colorize** fullscreen.
+
+- CPU solo: brush, presets, knobs, inspector (`readPixels` 1×1), masa total periódica.
+- Gravedad GPU ≠ falling-sand bit-exact (sin barrido bottom-up); ver comentario `ponytail:` en `gpu-physics.js`.
+- Chunk sleep apagado en path GPU (full-grid pass).
+
+### Path CPU (referencia)
 
 | Buffer | Uso |
 |--------|-----|
 | `typeGrid` | AIR / SOLID / WATER |
 | `massPing` / `massPong` | doble buffer Jacobi |
-| `massRead` / `massWrite` | refs que se swappean |
 | `flowX`, `flowY` | vector flowfield |
-| `pressureGrid` | exceso cacheado |
 
-Índice: `idx = x + y * GRID_SIZE`.
-
-### Chunks
-
-Port del sistema de `4.html`: un chunk duerme si no hay masa/flujo visible; tras 3 substeps quietos se apaga. Se procesan chunks vivos + anillo 3×3.
-
-### Render
-
-- Backend seleccionable (panel Render):
-  - **GPU (WebGL2 dirty):** textura `RGBA32F` + `texSubImage2D` por runs horizontales de chunks.
-  - **CPU (ImageData dirty):** `Uint32` pixel buffer + `putImageData` por los mismos runs.
-- Overlay 2D: grilla, chunks, flechas del flowfield.
-- Sin WebGL2 → solo ImageData.
+Chunks: sleep + anillo 3×3. Render ImageData o upload bridge a state texture.
 
 ## Controles importantes
 
@@ -122,7 +120,9 @@ Port del sistema de `4.html`: un chunk duerme si no hay masa/flujo visible; tras
 node js/smoke-check.js
 ```
 
-Verifica: conservación de masa (Fick, g=0), celda bajo reposo no pierde, difusión a vecinos, chunks vivos, swap ping-pong.
+Verifica path CPU: conservación de masa (Fick, g=0), celda bajo reposo no pierde, difusión a vecinos, chunks vivos, swap ping-pong.
+
+GPU (Chrome con WebGL2), servir la carpeta y abrir `js/gpu-smoke.html` — conservación Fick + gravedad approx.
 
 ## Qué no es
 

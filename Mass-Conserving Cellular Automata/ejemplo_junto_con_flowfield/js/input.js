@@ -17,6 +17,9 @@ function handleMouseInput() {
     const mouseY = runtime.mouseY;
     if (mouseX < 0 || mouseX >= GRID_SIZE || mouseY < 0 || mouseY >= GRID_SIZE) return;
 
+    // GPU authoritative: bajar state antes de pintar (CPU arrays pueden estar stale)
+    if (isGpuSim()) downloadGpuStateToCpu();
+
     const r = cfg.brushRadius;
     const r2 = r * r;
     const tool = runtime.currentTool;
@@ -52,6 +55,15 @@ function handleMouseInput() {
     if (tool === SOLID || tool === AIR) markRenderFullDirty();
     rebuildChunkFlagsFromWater();
     buildProcessChunkList();
+
+    // Sync brush → GPU state (rect bounding del pincel)
+    if (webglAvailable && stateTex) {
+        const x0 = Math.max(0, mouseX - r);
+        const y0 = Math.max(0, mouseY - r);
+        const x1 = Math.min(GRID_SIZE - 1, mouseX + r);
+        const y1 = Math.min(GRID_SIZE - 1, mouseY + r);
+        uploadCpuRectToGpu(x0, y0, x1, y1);
+    }
 }
 
 function setTool(tool, btn) {
