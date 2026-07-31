@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Heap vs alternativas — insert / delete / query</title>
+<style>
+  :root{
+    --bg:#0b0f0e;
+    --panel:#111614;
+    --panel2:#0e1412;
+    --line:#22302a;
+    --ink:#d8e6de;
+    --dim:#7c9186;
+    --naive:#e0724a;
+    --heap:#4ac9a0;
+    --sorted:#5a8fd6;
+    --unsorted:#e0c34a;
+    --bad:#e05a5a;
+    --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);padding:32px 24px 72px;}
+  .wrap{max-width:1040px;margin:0 auto;}
+  .eyebrow{color:var(--heap);font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 6px;}
+  h1{font-size:22px;margin:0 0 6px;font-weight:600;letter-spacing:-.01em;}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 22px;line-height:1.65;max-width:760px;}
+  .sub b{color:var(--ink);font-weight:600;}
+
+  .legend{display:flex;gap:18px;margin-bottom:22px;flex-wrap:wrap;}
+  .legend span{font-size:11.5px;color:var(--dim);display:flex;align-items:center;gap:7px;}
+  .dot{width:9px;height:9px;border-radius:2px;display:inline-block;}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin-bottom:20px;}
+  .panel h3{margin:0 0 12px;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.09em;font-weight:600;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;}
+  label{display:block;font-size:11px;color:var(--dim);margin-bottom:6px;}
+  select{
+    width:100%;font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);
+    color:var(--ink);padding:9px 10px;font-size:13px;border-radius:4px;
+  }
+  .scenario-desc{font-size:11.5px;color:var(--dim);margin-top:10px;line-height:1.6;min-height:32px;}
+
+  .checks{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;}
+  .check{display:flex;align-items:center;gap:7px;font-size:12.5px;}
+  .check input{accent-color:var(--heap);}
+
+  .runbar{display:flex;align-items:center;gap:14px;margin-top:16px;}
+  button{
+    font-family:var(--mono);background:var(--heap);color:#06110c;font-weight:700;
+    border:none;padding:11px 22px;font-size:13px;border-radius:4px;cursor:pointer;letter-spacing:.02em;
+  }
+  button:disabled{opacity:.45;cursor:default;}
+  button:hover:not(:disabled){filter:brightness(1.08);}
+  .status{font-size:12px;color:var(--dim);}
+  .warn{font-size:11.5px;color:var(--naive);margin-top:10px;line-height:1.5;display:none;}
+  .warn.show{display:block;}
+
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;}
+  th,td{padding:8px 9px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;}
+  th:first-child,td:first-child{text-align:left;color:var(--ink);font-weight:600;}
+  thead th{color:var(--dim);font-weight:500;text-transform:uppercase;font-size:9.5px;letter-spacing:.07em;}
+  .best{color:var(--heap);font-weight:700;}
+  .ok{color:var(--heap);}
+  .fail{color:var(--bad);font-weight:700;}
+
+  .bars{margin-top:14px;display:flex;flex-direction:column;gap:6px;}
+  .barline{display:flex;align-items:center;gap:9px;}
+  .barlabel{width:110px;font-size:11px;color:var(--dim);text-align:right;flex-shrink:0;}
+  .bar{height:15px;border-radius:2px;min-width:2px;transition:width .5s ease;}
+  .barval{font-size:11px;color:var(--dim);white-space:nowrap;}
+
+  .op-breakdown{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:16px;}
+  .op-card{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:12px 14px;}
+  .op-card h4{margin:0 0 8px;font-size:11px;color:var(--ink);}
+  .op-row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);padding:3px 0;}
+  .op-row b{color:var(--ink);}
+
+  details{margin-top:18px;}
+  summary{cursor:pointer;font-size:12px;color:var(--dim);user-select:none;}
+  summary:hover{color:var(--ink);}
+  .log{margin-top:10px;font-size:11px;color:var(--dim);line-height:1.7;max-height:260px;overflow:auto;
+    background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;}
+
+  .note{margin-top:26px;padding:16px 18px;background:var(--panel);border:1px solid var(--line);
+    border-radius:6px;font-size:12.5px;color:var(--dim);line-height:1.7;}
+  .note b{color:var(--ink);}
+  code{color:var(--heap);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">// benchmark v2</p>
+  <h1>Heap vs alternativas: insert, delete, query</h1>
+  <p class="sub">Cuatro estructuras compiten en cuatro escenarios de uso: <b>Min-heap</b> (array binario), <b>Array ordenado</b> (insert con búsqueda binaria), <b>Array sin ordenar</b> (push simple, todo lo demás es scan lineal) y <b>Resort ingenuo</b> (llamar <code>sort()</code> cada vez que hace falta el mínimo). Mismo set de operaciones para las cuatro — comparación justa.</p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--heap)"></i>Min-heap</span>
+    <span><i class="dot" style="background:var(--sorted)"></i>Array ordenado</span>
+    <span><i class="dot" style="background:var(--unsorted)"></i>Array sin ordenar</span>
+    <span><i class="dot" style="background:var(--naive)"></i>Resort ingenuo (sort() c/vez)</span>
+  </div>
+
+  <div class="panel">
+    <h3>Configuración</h3>
+    <div class="grid">
+      <div>
+        <label>Escenario</label>
+        <select id="scenario">
+          <option value="drain">Build + Drain (heapsort-like)</option>
+          <option value="pq" selected>Cola de prioridad (insert/extract 50/50)</option>
+          <option value="read">Read-heavy (solo queries del mínimo)</option>
+          <option value="mixed">Mix aleatorio (insert 40% / extract 30% / peek 30%)</option>
+        </select>
+      </div>
+      <div>
+        <label id="sizeLabel">Tamaño inicial</label>
+        <select id="size">
+          <option value="100">100</option>
+          <option value="1000" selected>1.000</option>
+          <option value="5000">5.000</option>
+          <option value="10000">10.000</option>
+          <option value="20000">20.000</option>
+        </select>
+      </div>
+      <div>
+        <label id="opsLabel">Operaciones extra</label>
+        <select id="ops">
+          <option value="100">100</option>
+          <option value="1000" selected>1.000</option>
+          <option value="5000">5.000</option>
+          <option value="10000">10.000</option>
+        </select>
+      </div>
+      <div>
+        <label>Corridas (promedio)</label>
+        <select id="trials">
+          <option value="1">1</option>
+          <option value="3" selected>3</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+    </div>
+    <div class="scenario-desc" id="scenarioDesc"></div>
+
+    <div class="checks">
+      <label class="check"><input type="checkbox" checked disabled> Min-heap (siempre)</label>
+      <label class="check"><input type="checkbox" id="chkSorted" checked> Array ordenado</label>
+      <label class="check"><input type="checkbox" id="chkUnsorted" checked> Array sin ordenar</label>
+      <label class="check"><input type="checkbox" id="chkNaive" checked> Resort ingenuo</label>
+    </div>
+    <div class="warn" id="warnBox">⚠ Con tamaños/operaciones grandes, "array sin ordenar" y "resort ingenuo" son O(n) y O(n log n) por operación — puede tardar varios segundos. Desmarcalas si querés resultados rápidos.</div>
+
+    <div class="runbar">
+      <button id="runBtn">Correr benchmark</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <div id="results"></div>
+
+  <div class="note">
+    <b>Cómo leer esto:</b> "Build+Drain" muestra el caso de libro de texto (heapsort). "Cola de prioridad" es el caso real más común — algo va insertando y extrayendo el mínimo constantemente (schedulers, Dijkstra). "Read-heavy" aísla el beneficio de <code>peek</code> en O(1): insertás una vez y consultás mil veces. "Mix aleatorio" simula un sistema real donde no sabés qué operación viene. El chequeo de <b>correctitud</b> compara la secuencia de mínimos devueltos por cada estructura contra el array sin ordenar (ground truth por fuerza bruta) — si alguna estructura tiene un bug de implementación, se ve acá.
+  </div>
+</div>
+
+<script>
+// ---------------- Structures ----------------
+
+class MinHeap {
+  constructor(){ this.a = []; }
+  insert(v){
+    const a = this.a;
+    a.push(v);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i-1) >> 1;
+      if (a[p] <= a[i]) break;
+      [a[p], a[i]] = [a[i], a[p]];
+      i = p;
+    }
+  }
+  peek(){ return this.a.length ? this.a[0] : undefined; }
+  extractMin(){
+    const a = this.a;
+    if (!a.length) return undefined;
+    const top = a[0];
+    const last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      const n = a.length;
+      while (true) {
+        let l = 2*i+1, r = 2*i+2, s = i;
+        if (l < n && a[l] < a[s]) s = l;
+        if (r < n && a[r] < a[s]) s = r;
+        if (s === i) break;
+        [a[i], a[s]] = [a[s], a[i]];
+        i = s;
+      }
+    }
+    return top;
+  }
+}
+
+class SortedArrayDS {
+  constructor(){ this.a = []; }
+  _bsearch(v){
+    let lo=0, hi=this.a.length;
+    while (lo<hi){ const mid=(lo+hi)>>1; if (this.a[mid]<v) lo=mid+1; else hi=mid; }
+    return lo;
+  }
+  insert(v){ this.a.splice(this._bsearch(v), 0, v); }
+  peek(){ return this.a.length ? this.a[0] : undefined; }
+  extractMin(){ return this.a.length ? this.a.shift() : undefined; }
+}
+
+class UnsortedArrayDS {
+  constructor(){ this.a = []; }
+  insert(v){ this.a.push(v); }
+  peek(){
+    const a = this.a;
+    if (!a.length) return undefined;
+    let m = a[0];
+    for (let i=1;i<a.length;i++) if (a[i]<m) m=a[i];
+    return m;
+  }
+  extractMin(){
+    const a = this.a;
+    if (!a.length) return undefined;
+    let mi = 0;
+    for (let i=1;i<a.length;i++) if (a[i]<a[mi]) mi=i;
+    const v = a[mi];
+    a.splice(mi,1);
+    return v;
+  }
+}
+
+class NaiveResortDS {
+  constructor(){ this.a = []; }
+  insert(v){ this.a.push(v); }
+  peek(){
+    if (!this.a.length) return undefined;
+    this.a.sort((x,y)=>x-y);
+    return this.a[0];
+  }
+  extractMin(){
+    if (!this.a.length) return undefined;
+    this.a.sort((x,y)=>x-y);
+    return this.a.shift();
+  }
+}
+
+// ---------------- Op generation ----------------
+
+function randVal(){ return Math.floor(Math.random()*1_000_000); }
+
+function genOps(scenario, size, ops){
+  const seq = [];
+  if (scenario === 'drain') {
+    for (let i=0;i<size;i++) seq.push({type:'insert', v: randVal()});
+    for (let i=0;i<size;i++) seq.push({type:'extractMin'});
+  } else if (scenario === 'pq') {
+    for (let i=0;i<size;i++) seq.push({type:'insert', v: randVal()});
+    for (let i=0;i<ops;i++){
+      if (Math.random() < 0.5) seq.push({type:'insert', v: randVal()});
+      else seq.push({type:'extractMin'});
+    }
+  } else if (scenario === 'read') {
+    for (let i=0;i<size;i++) seq.push({type:'insert', v: randVal()});
+    for (let i=0;i<ops;i++) seq.push({type:'peek'});
+  } else if (scenario === 'mixed') {
+    for (let i=0;i<size;i++) seq.push({type:'insert', v: randVal()});
+    for (let i=0;i<ops;i++){
+      const r = Math.random();
+      if (r < 0.4) seq.push({type:'insert', v: randVal()});
+      else if (r < 0.7) seq.push({type:'extractMin'});
+      else seq.push({type:'peek'});
+    }
+  }
+  return seq;
+}
+
+const SCENARIO_DESC = {
+  drain: 'Inserta "Tamaño inicial" elementos, después extrae el mínimo esa misma cantidad de veces (vacía la estructura por completo). Es el patrón clásico de heapsort.',
+  pq: 'Inserta "Tamaño inicial" elementos, luego ejecuta "Operaciones extra" operaciones donde cada una es 50% insert / 50% extractMin. Simula una cola de prioridad activa (scheduler, simulación de eventos).',
+  read: 'Inserta "Tamaño inicial" elementos una sola vez, luego hace "Operaciones extra" consultas del mínimo sin modificar la estructura. Aísla el beneficio de peek O(1).',
+  mixed: 'Inserta "Tamaño inicial" elementos, luego "Operaciones extra" operaciones aleatorias: 40% insert, 30% extractMin, 30% peek. El caso más parecido a un sistema real.'
+};
+
+function updateScenarioDesc(){
+  const s = document.getElementById('scenario').value;
+  document.getElementById('scenarioDesc').textContent = SCENARIO_DESC[s];
+  const opsRow = document.getElementById('opsLabel').closest('div');
+  if (s === 'drain') {
+    opsRow.style.opacity = 0.4;
+    document.getElementById('ops').disabled = true;
+    document.getElementById('sizeLabel').textContent = 'Tamaño (insert + drain)';
+  } else {
+    opsRow.style.opacity = 1;
+    document.getElementById('ops').disabled = false;
+    document.getElementById('sizeLabel').textContent = 'Tamaño inicial';
+  }
+}
+
+function checkWarn(){
+  const size = parseInt(document.getElementById('size').value,10);
+  const ops = parseInt(document.getElementById('ops').value,10);
+  const big = (size + ops) > 8000;
+  document.getElementById('warnBox').classList.toggle('show', big && (document.getElementById('chkUnsorted').checked || document.getElementById('chkNaive').checked));
+}
+
+document.getElementById('scenario').addEventListener('change', ()=>{updateScenarioDesc(); checkWarn();});
+document.getElementById('size').addEventListener('change', checkWarn);
+document.getElementById('ops').addEventListener('change', checkWarn);
+document.getElementById('chkUnsorted').addEventListener('change', checkWarn);
+document.getElementById('chkNaive').addEventListener('change', checkWarn);
+updateScenarioDesc(); checkWarn();
+
+// ---------------- Run ----------------
+
+function timeCall(fn){
+  const t0 = performance.now();
+  const r = fn();
+  const t1 = performance.now();
+  return { ms: t1-t0, r };
+}
+
+function runOnStructure(makeDS, seq){
+  const ds = makeDS();
+  const byType = { insert:{ms:0,count:0}, extractMin:{ms:0,count:0}, peek:{ms:0,count:0} };
+  const outputs = [];
+  for (const op of seq){
+    if (op.type === 'insert'){
+      const {ms} = timeCall(()=>ds.insert(op.v));
+      byType.insert.ms += ms; byType.insert.count++;
+    } else if (op.type === 'extractMin'){
+      const {ms, r} = timeCall(()=>ds.extractMin());
+      byType.extractMin.ms += ms; byType.extractMin.count++;
+      outputs.push(r);
+    } else {
+      const {ms, r} = timeCall(()=>ds.peek());
+      byType.peek.ms += ms; byType.peek.count++;
+      outputs.push(r);
+    }
+  }
+  const totalMs = byType.insert.ms + byType.extractMin.ms + byType.peek.ms;
+  return { totalMs, byType, outputs };
+}
+
+const STRUCTS = [
+  { key:'heap', label:'Min-heap', color:'var(--heap)', make:()=>new MinHeap(), chk:null },
+  { key:'sorted', label:'Array ordenado', color:'var(--sorted)', make:()=>new SortedArrayDS(), chk:'chkSorted' },
+  { key:'unsorted', label:'Array sin ordenar', color:'var(--unsorted)', make:()=>new UnsortedArrayDS(), chk:'chkUnsorted' },
+  { key:'naive', label:'Resort ingenuo', color:'var(--naive)', make:()=>new NaiveResortDS(), chk:'chkNaive' },
+];
+
+async function runBenchmark(){
+  const runBtn = document.getElementById('runBtn');
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+  runBtn.disabled = true;
+  resultsEl.innerHTML = '';
+
+  const scenario = document.getElementById('scenario').value;
+  const size = parseInt(document.getElementById('size').value,10);
+  const ops = parseInt(document.getElementById('ops').value,10);
+  const trials = parseInt(document.getElementById('trials').value,10);
+
+  const active = STRUCTS.filter(s => !s.chk || document.getElementById(s.chk).checked);
+
+  const accum = {};
+  active.forEach(s => accum[s.key] = { totalMs:0, byType:{insert:{ms:0,count:0},extractMin:{ms:0,count:0},peek:{ms:0,count:0}} });
+  let mismatches = [];
+  const trialLogs = [];
+
+  for (let t=0; t<trials; t++){
+    statusEl.textContent = `Corrida ${t+1}/${trials}...`;
+    await new Promise(r=>setTimeout(r,10));
+
+    const seq = genOps(scenario, size, ops);
+    const trialResults = {};
+
+    for (const s of active){
+      await new Promise(r=>setTimeout(r,0));
+      const res = runOnStructure(s.make, seq);
+      trialResults[s.key] = res;
+      accum[s.key].totalMs += res.totalMs;
+      for (const k of ['insert','extractMin','peek']){
+        accum[s.key].byType[k].ms += res.byType[k].ms;
+        accum[s.key].byType[k].count = res.byType[k].count;
+      }
+    }
+
+    // correctness check vs unsorted (or vs heap if unsorted not active)
+    const refKey = trialResults.unsorted ? 'unsorted' : (trialResults.heap ? 'heap' : Object.keys(trialResults)[0]);
+    if (refKey){
+      const ref = trialResults[refKey].outputs;
+      for (const s of active){
+        if (s.key === refKey) continue;
+        const out = trialResults[s.key].outputs;
+        let ok = out.length === ref.length;
+        if (ok) for (let i=0;i<ref.length;i++) if (out[i] !== ref[i]) { ok=false; break; }
+        if (!ok) mismatches.push(`trial ${t+1}: ${s.label} difiere de ${STRUCTS.find(x=>x.key===refKey).label}`);
+      }
+    }
+
+    trialLogs.push({ trial:t+1, opsCount: seq.length, results: trialResults });
+  }
+
+  // average
+  active.forEach(s => {
+    accum[s.key].totalMs /= trials;
+    for (const k of ['insert','extractMin','peek']) accum[s.key].byType[k].ms /= trials;
+  });
+
+  statusEl.textContent = `Listo — ${trials} corrida(s), ${genOps(scenario,size,ops).length.toLocaleString('es')} operaciones por corrida.`;
+  renderResults(active, accum, mismatches, trialLogs, scenario);
+  runBtn.disabled = false;
+}
+
+function fmt(ms){ return ms < 0.01 ? '<0.01' : ms.toFixed(2); }
+
+function renderResults(active, accum, mismatches, trialLogs, scenario){
+  const el = document.getElementById('results');
+  el.innerHTML = '';
+
+  // --- summary table ---
+  const totals = active.map(s => ({s, total: accum[s.key].totalMs}));
+  const minTotal = Math.min(...totals.map(x=>x.total));
+
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead><tr>
+      <th>Estructura</th><th>Total (ms)</th><th>Ops/seg</th>
+      <th>Insert (ms)</th><th>Extract (ms)</th><th>Peek (ms)</th>
+      <th>Correctitud</th>
+    </tr></thead>
+    <tbody>
+      ${active.map(s=>{
+        const a = accum[s.key];
+        const opsCount = a.byType.insert.count + a.byType.extractMin.count + a.byType.peek.count;
+        const opsPerSec = a.totalMs>0 ? Math.round(opsCount/(a.totalMs/1000)).toLocaleString('es') : '—';
+        const isBest = a.totalMs === minTotal;
+        const bad = mismatches.some(m => m.includes(s.label));
+        return `<tr>
+          <td>${s.label}</td>
+          <td class="${isBest?'best':''}">${fmt(a.totalMs)}${isBest?' ★':''}</td>
+          <td>${opsPerSec}</td>
+          <td>${a.byType.insert.count ? fmt(a.byType.insert.ms) : '—'}</td>
+          <td>${a.byType.extractMin.count ? fmt(a.byType.extractMin.ms) : '—'}</td>
+          <td>${a.byType.peek.count ? fmt(a.byType.peek.ms) : '—'}</td>
+          <td class="${bad?'fail':'ok'}">${bad?'✗ difiere':'✓ ok'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  `;
+  el.appendChild(table);
+
+  // --- total time bars ---
+  const maxTotal = Math.max(...totals.map(x=>x.total), 0.001);
+  const barsWrap = document.createElement('div');
+  barsWrap.className = 'bars';
+  barsWrap.innerHTML = totals.map(({s,total})=>{
+    const pct = Math.max((total/maxTotal)*100, 1);
+    return `<div class="barline">
+      <span class="barlabel">${s.label}</span>
+      <div class="bar" style="width:${pct}%;background:${s.color}"></div>
+      <span class="barval">${fmt(total)}ms</span>
+    </div>`;
+  }).join('');
+  el.appendChild(barsWrap);
+
+  // --- per-op breakdown cards ---
+  const opGrid = document.createElement('div');
+  opGrid.className = 'op-breakdown';
+  opGrid.innerHTML = active.map(s=>{
+    const a = accum[s.key];
+    const rows = ['insert','extractMin','peek'].map(k=>{
+      if (!a.byType[k].count) return '';
+      const avg = a.byType[k].ms / a.byType[k].count;
+      const label = k==='insert'?'Insert':k==='extractMin'?'Extract-min':'Peek';
+      return `<div class="op-row"><span>${label} (${a.byType[k].count.toLocaleString('es')}x)</span><b>${fmt(a.byType[k].ms)}ms · ${(avg*1000).toFixed(3)}µs/op</b></div>`;
+    }).join('');
+    return `<div class="op-card"><h4 style="color:${s.color}">${s.label}</h4>${rows}</div>`;
+  }).join('');
+  el.appendChild(opGrid);
+
+  // --- correctness note ---
+  if (mismatches.length){
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-top:14px;color:var(--bad);font-size:12px;';
+    div.innerHTML = `⚠ Inconsistencias detectadas:<br>${mismatches.slice(0,10).join('<br>')}`;
+    el.appendChild(div);
+  }
+
+  // --- detailed log ---
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = `Ver detalle por corrida (${trialLogs.length} trial${trialLogs.length>1?'s':''})`;
+  const log = document.createElement('div');
+  log.className = 'log';
+  log.innerHTML = trialLogs.map(tl => {
+    const lines = active.map(s=>{
+      const r = tl.results[s.key];
+      return `&nbsp;&nbsp;${s.label}: total ${fmt(r.totalMs)}ms — insert ${fmt(r.byType.insert.ms)}ms (${r.byType.insert.count}) / extract ${fmt(r.byType.extractMin.ms)}ms (${r.byType.extractMin.count}) / peek ${fmt(r.byType.peek.ms)}ms (${r.byType.peek.count})`;
+    }).join('<br>');
+    return `<b>Trial ${tl.trial}</b> — ${tl.opsCount.toLocaleString('es')} operaciones<br>${lines}<br><br>`;
+  }).join('');
+  details.appendChild(summary);
+  details.appendChild(log);
+  el.appendChild(details);
+}
+
+document.getElementById('runBtn').addEventListener('click', runBenchmark);
+</script>
+</body>
+</html>

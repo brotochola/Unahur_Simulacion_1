@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid CA - Particle Based Model</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background-color: #0b0b10;
+            color: #d0d0e0;
+            font-family: system-ui, -apple-system, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 10px;
+            user-select: none;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 880px;
+            margin-bottom: 8px;
+        }
+        h1 { margin: 0; font-size: 1.1rem; color: #4fc3f7; }
+        .stats { display: flex; gap: 10px; font-weight: bold; font-size: 0.85rem; }
+        .stat-badge {
+            background: #181824;
+            color: #00ffcc;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #2e2e42;
+        }
+        .main-layout { display: flex; gap: 12px; width: 880px; }
+        canvas {
+            border: 2px solid #2e2e42;
+            border-radius: 6px;
+            image-rendering: pixelated;
+            width: 560px;
+            height: 560px;
+            cursor: crosshair;
+            background: #000;
+        }
+        .panel {
+            flex: 1;
+            background: #14141e;
+            border: 1px solid #2a2a3e;
+            border-radius: 6px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 0.8rem;
+        }
+        .section-title {
+            color: #8888aa;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #2a2a3e;
+            padding-bottom: 4px;
+            margin-top: 4px;
+        }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        button, select {
+            background: #1e1e2d;
+            color: #ccc;
+            border: 1px solid #363650;
+            padding: 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        button:hover, select:hover { background: #28283e; color: #fff; }
+        button.active { border-color: #4fc3f7; background: #12283d; color: #4fc3f7; font-weight: bold; }
+        button.action { border-color: #ffb74d; color: #ffb74d; grid-column: span 2; }
+        
+        .knob-control { display: flex; flex-direction: column; gap: 2px; }
+        .knob-header { display: flex; justify-content: space-between; color: #aaa; }
+        .knob-value { color: #4fc3f7; font-weight: bold; }
+        input[type=range] { width: 100%; accent-color: #4fc3f7; cursor: pointer; }
+
+        .pressure-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 6px;
+            background: #181824;
+            border-radius: 4px;
+            border: 1px solid #2e2e42;
+        }
+        .legend-bar {
+            height: 10px;
+            border-radius: 2px;
+            background: linear-gradient(to right, #1e88e5 0%, #00e676 33%, #ffeb3b 66%, #ff3d00 100%);
+        }
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.68rem;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Fluid CA - Particle Physics & Dynamic Pressure</h1>
+        <div class="stats">
+            <div class="stat-badge" id="fpsDisplay">FPS: 0</div>
+            <div class="stat-badge" id="tpsDisplay">Substeps: 4x</div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <canvas id="simCanvas" width="200" height="200"></canvas>
+
+        <div class="panel">
+            <div class="section-title">Herramientas & Mundo</div>
+            <div class="btn-group">
+                <button id="btnWater" class="active">💧 Agua</button>
+                <button id="btnSolid">🧱 Pared</button>
+                <button id="btnErase">🧹 Borrar</button>
+                <button id="btnClear">❌ Limpiar</button>
+                <button id="btnPreset" class="action">🧪 Cargar Vaso en "U"</button>
+            </div>
+
+            <div class="knob-control">
+                <div class="knob-header">
+                    <span>Tamaño del Mundo (Grid):</span>
+                </div>
+                <select id="selectWorldSize">
+                    <option value="100">100 x 100 px</option>
+                    <option value="150">150 x 150 px</option>
+                    <option value="200" selected>200 x 200 px</option>
+                    <option value="250">250 x 250 px</option>
+                </select>
+            </div>
+
+            <div class="section-title">Visualización de Presión</div>
+            <div class="pressure-legend">
+                <div class="legend-bar"></div>
+                <div class="legend-labels">
+                    <span>1.0x Reposo</span>
+                    <span>1.2x</span>
+                    <span>1.5x</span>
+                    <span>2.0x+ (Alta Presión)</span>
+                </div>
+            </div>
+
+            <div class="section-title">Controles de Partículas</div>
+
+            <div class="knob-control">
+                <div class="knob-header">
+                    <span>Partículas en Reposo / Celda:</span>
+                    <span class="knob-value" id="valRestCapacity">1.00</span>
+                </div>
+                <input type="range" id="knobRestCapacity" min="0.1" max="5.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="knob-control">
+                <div class="knob-header">
+                    <span>Gravedad (Partículas cayendo/step):</span>
+                    <span class="knob-value" id="valGravity">1.00</span>
+                </div>
+                <input type="range" id="knobGravity" min="0.05" max="3.0" step="0.05" value="1.0">
+            </div>
+
+            <div class="knob-control">
+                <div class="knob-header">
+                    <span>Factor Transferencia por Presión:</span>
+                    <span class="knob-value" id="valPressureFactor">0.50</span>
+                </div>
+                <input type="range" id="knobPressureFactor" min="0.05" max="1.0" step="0.05" value="0.50">
+            </div>
+
+            <div class="knob-control">
+                <div class="knob-header">
+                    <span>Sub-pasos (Substeps):</span>
+                    <span class="knob-value" id="valSubsteps">4x</span>
+                </div>
+                <input type="range" id="knobSubsteps" min="1" max="16" step="1" value="4">
+            </div>
+
+            <div class="knob-control">
+                <div class="knob-header">
+                    <span>Viscosidad / Mínimo Flujo:</span>
+                    <span class="knob-value" id="valViscosity">0.001</span>
+                </div>
+                <input type="range" id="knobViscosity" min="0.0001" max="0.01" step="0.0005" value="0.001">
+            </div>
+
+            <div class="knob-control">
+                <div class="knob-header">
+                    <span>Tamaño del Pincel:</span>
+                    <span class="knob-value" id="valBrush">4px</span>
+                </div>
+                <input type="range" id="knobBrush" min="1" max="15" step="1" value="4">
+            </div>
+        </div>
+    </div>
+
+<script>
+    let GRID_SIZE = 200;
+    let TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
+
+    const AIR = 0;
+    const SOLID = 1;
+    const WATER = 2;
+
+    let typeGrid = new Uint8Array(TOTAL_CELLS);
+    let particleGrid = new Float32Array(TOTAL_CELLS); // Partículas infinitas por celda
+
+    // --- PARÁMETROS DE FÍSICA ---
+    let cfgRestCapacity = 1.0;     // Cantidad de partículas en reposo por celda
+    let cfgGravity = 1.0;          // Partículas pasadas hacia abajo por substep
+    let cfgPressureFactor = 0.50;  // Factor de aceleración de flujo por diferencia de partículas (ΔP)
+    let cfgSubsteps = 4;
+    let cfgMinFlow = 0.001;
+    let cfgBrushRadius = 4;
+
+    // --- COLOR LOOKUP TABLE (LUT) ---
+    const LUT_SIZE = 500;
+    const colorLUT = new Uint32Array(LUT_SIZE);
+
+    function buildColorLUT() {
+        for (let i = 0; i < LUT_SIZE; i++) {
+            // Indice relativo al nivel de reposo (0.0 a 3.0x de capacidad)
+            let ratio = i / 100.0; 
+
+            if (ratio <= 0) {
+                colorLUT[i] = 0xFF000000;
+            } else if (ratio <= 1.0) {
+                // Agua en equilibrio / superficie (Azul)
+                let b = Math.floor(180 + ratio * 75);
+                let g = Math.floor(80 + ratio * 100);
+                colorLUT[i] = 0xFF000000 | (b << 16) | (g << 8) | 0x1E;
+            } else {
+                // Sobrepresión: Más partículas por celda de las de reposo
+                let p = Math.min(1.0, (ratio - 1.0) / 1.5); 
+                let r = 0, g = 0, b = 0;
+
+                if (p < 0.33) {
+                    let t = p / 0.33;
+                    r = 0;
+                    g = Math.floor(230 + t * 25);
+                    b = Math.floor(229 * (1 - t));
+                } else if (p < 0.66) {
+                    let t = (p - 0.33) / 0.33;
+                    r = Math.floor(255 * t);
+                    g = 235;
+                    b = 0;
+                } else {
+                    let t = (p - 0.66) / 0.34;
+                    r = 255;
+                    g = Math.floor(235 * (1 - t));
+                    b = 0;
+                }
+                colorLUT[i] = 0xFF000000 | (b << 16) | (g << 8) | r;
+            }
+        }
+    }
+
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    let imgData = ctx.createImageData(GRID_SIZE, GRID_SIZE);
+    let pixelBuffer = new Uint32Array(imgData.data.buffer);
+
+    const COLOR_SOLID = 0xFF555566;
+    const COLOR_AIR   = 0xFF000000;
+
+    let currentTool = WATER;
+    let isMouseDown = false;
+    let mouseX = 0, mouseY = 0;
+    let lastFpsTime = performance.now();
+    let frameCount = 0;
+
+    function reallocateGrid(newSize) {
+        GRID_SIZE = newSize;
+        TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
+        canvas.width = GRID_SIZE;
+        canvas.height = GRID_SIZE;
+        typeGrid = new Uint8Array(TOTAL_CELLS);
+        particleGrid = new Float32Array(TOTAL_CELLS);
+        imgData = ctx.createImageData(GRID_SIZE, GRID_SIZE);
+        pixelBuffer = new Uint32Array(imgData.data.buffer);
+        initGrid();
+    }
+
+    function initGrid() {
+        typeGrid.fill(AIR);
+        particleGrid.fill(0);
+
+        for (let i = 0; i < GRID_SIZE; i++) {
+            typeGrid[i] = SOLID;
+            typeGrid[i + (GRID_SIZE - 1) * GRID_SIZE] = SOLID;
+            typeGrid[i * GRID_SIZE] = SOLID;
+            typeGrid[(GRID_SIZE - 1) + i * GRID_SIZE] = SOLID;
+        }
+    }
+
+    // --- KERNEL BASADO PURAMENTE EN CONTEO DE PARTÍCULAS ---
+    function updatePhysicsStep() {
+
+        // 1. GRAVEDAD: Transfiere hasta `cfgGravity` partículas hacia abajo
+        for (let y = GRID_SIZE - 2; y >= 1; y--) {
+            for (let x = 1; x < GRID_SIZE - 1; x++) {
+                const idx = x + y * GRID_SIZE;
+                if (typeGrid[idx] !== WATER) continue;
+                let particles = particleGrid[idx];
+                if (particles < cfgMinFlow) continue;
+
+                const down = idx + GRID_SIZE;
+                if (typeGrid[down] !== SOLID) {
+                    // La cantidad transferring por peso está delimitada por la gravedad configurada
+                    let flow = Math.min(particles, cfgGravity);
+
+                    particleGrid[down] += flow;
+                    typeGrid[down] = WATER;
+                    particles -= flow;
+                }
+                particleGrid[idx] = particles;
+            }
+        }
+
+        // 2. PRESIÓN LATERAL Y DIFUSIÓN (Mayor ΔP -> Más rápido transfiere partículas)
+        for (let y = GRID_SIZE - 2; y >= 1; y--) {
+            for (let x = 1; x < GRID_SIZE - 1; x++) {
+                const idx = x + y * GRID_SIZE;
+                if (typeGrid[idx] !== WATER) continue;
+                let particles = particleGrid[idx];
+                if (particles < cfgMinFlow) continue;
+
+                const dirs = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+                for (let dx of dirs) {
+                    const side = (x + dx) + y * GRID_SIZE;
+                    if (typeGrid[side] !== SOLID) {
+                        let diff = particles - particleGrid[side]; // Gradiente de presión
+                        if (diff > cfgMinFlow) {
+                            // Flujo proporcional a la diferencia de partículas y al factor de presión
+                            let flow = (diff * 0.5) * cfgPressureFactor;
+                            flow = Math.min(particles, flow);
+
+                            particleGrid[side] += flow;
+                            typeGrid[side] = WATER;
+                            particles -= flow;
+                        }
+                    }
+                    if (particles < cfgMinFlow) break;
+                }
+                particleGrid[idx] = particles;
+            }
+        }
+
+        // 3. ALIVIO DE SOBREPRESIÓN ASCENDENTE (Empuje hidrostático en vasos comunicantes)
+        for (let y = 1; y <= GRID_SIZE - 2; y++) {
+            for (let x = 1; x < GRID_SIZE - 1; x++) {
+                const idx = x + y * GRID_SIZE;
+                if (typeGrid[idx] !== WATER) continue;
+                let particles = particleGrid[idx];
+
+                // Si la celda supera la capacidad de reposo, alivia partículas hacia arriba si hay gradiente
+                if (particles > cfgRestCapacity) {
+                    const up = idx - GRID_SIZE;
+                    if (typeGrid[up] !== SOLID) {
+                        let diff = particles - particleGrid[up];
+                        if (diff > cfgMinFlow) {
+                            let flow = (diff * 0.5) * cfgPressureFactor;
+                            particleGrid[up] += flow;
+                            typeGrid[up] = WATER;
+                            particles -= flow;
+                        }
+                    }
+                }
+                particleGrid[idx] = particles;
+            }
+        }
+
+        // 4. LIMPIEZA DE CELDAS VACÍAS
+        for (let i = 0; i < TOTAL_CELLS; i++) {
+            if (typeGrid[i] === WATER && particleGrid[i] < cfgMinFlow) {
+                typeGrid[i] = AIR;
+                particleGrid[i] = 0;
+            }
+        }
+    }
+
+    // --- RENDERIZADO (Relativo a las partículas en reposo) ---
+    function renderBytes() {
+        for (let i = 0; i < TOTAL_CELLS; i++) {
+            const type = typeGrid[i];
+
+            if (type === SOLID) {
+                pixelBuffer[i] = COLOR_SOLID;
+            } else if (type === WATER) {
+                // Mapea la relación (Partículas_Actuales / Partículas_Reposo) a la escala de color
+                let ratio = particleGrid[i] / cfgRestCapacity;
+                let lutIdx = Math.min(LUT_SIZE - 1, Math.floor(ratio * 100));
+                pixelBuffer[i] = colorLUT[lutIdx];
+            } else {
+                pixelBuffer[i] = COLOR_AIR;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    function loop() {
+        const now = performance.now();
+        frameCount++;
+        if (now - lastFpsTime >= 500) {
+            const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+            document.getElementById('fpsDisplay').textContent = `FPS: ${fps}`;
+            frameCount = 0;
+            lastFpsTime = now;
+        }
+
+        handleMouseInput();
+
+        for (let i = 0; i < cfgSubsteps; i++) {
+            updatePhysicsStep();
+        }
+
+        renderBytes();
+        requestAnimationFrame(loop);
+    }
+
+    function bindKnobs() {
+        const bind = (id, targetId, fn) => {
+            const slider = document.getElementById(id);
+            const val = document.getElementById(targetId);
+            slider.addEventListener('input', (e) => {
+                const v = parseFloat(e.target.value);
+                fn(v);
+                val.textContent = (id === 'knobSubsteps') ? `${v}x` : (id === 'knobBrush' ? `${v}px` : v.toFixed(2));
+            });
+        };
+
+        bind('knobRestCapacity', 'valRestCapacity', v => cfgRestCapacity = v);
+        bind('knobGravity', 'valGravity', v => cfgGravity = v);
+        bind('knobPressureFactor', 'valPressureFactor', v => cfgPressureFactor = v);
+        bind('knobSubsteps', 'valSubsteps', v => {
+            cfgSubsteps = v;
+            document.getElementById('tpsDisplay').textContent = `Substeps: ${v}x`;
+        });
+        bind('knobViscosity', 'valViscosity', v => cfgMinFlow = v);
+        bind('knobBrush', 'valBrush', v => cfgBrushRadius = v);
+
+        document.getElementById('selectWorldSize').addEventListener('change', (e) => {
+            reallocateGrid(parseInt(e.target.value));
+        });
+    }
+
+    function handleMouseInput() {
+        if (!isMouseDown) return;
+
+        const radius = cfgBrushRadius;
+        for (let dy = -radius; dy <= radius; dy++) {
+            for (let dx = -radius; dx <= radius; dx++) {
+                if (dx*dx + dy*dy > radius*radius) continue;
+                let px = mouseX + dx;
+                let py = mouseY + dy;
+
+                if (px > 0 && px < GRID_SIZE - 1 && py > 0 && py < GRID_SIZE - 1) {
+                    let idx = px + py * GRID_SIZE;
+                    if (currentTool === WATER) {
+                        typeGrid[idx] = WATER;
+                        particleGrid[idx] = cfgRestCapacity; // Inyecta la cantidad de reposo configurada
+                    } else if (currentTool === SOLID) {
+                        typeGrid[idx] = SOLID;
+                        particleGrid[idx] = 0;
+                    } else if (currentTool === AIR) {
+                        typeGrid[idx] = AIR;
+                        particleGrid[idx] = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    function updateMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = Math.floor((e.clientX - rect.left) * (GRID_SIZE / rect.width));
+        mouseY = Math.floor((e.clientY - rect.top) * (GRID_SIZE / rect.height));
+    }
+
+    canvas.addEventListener('mousedown', (e) => { isMouseDown = true; updateMousePos(e); });
+    canvas.addEventListener('mousemove', (e) => { updateMousePos(e); });
+    window.addEventListener('mouseup', () => isMouseDown = false);
+
+    document.getElementById('btnWater').onclick = (e) => setTool(WATER, e.target);
+    document.getElementById('btnSolid').onclick = (e) => setTool(SOLID, e.target);
+    document.getElementById('btnErase').onclick = (e) => setTool(AIR, e.target);
+    document.getElementById('btnClear').onclick = () => initGrid();
+    document.getElementById('btnPreset').onclick = () => loadUTubePreset();
+
+    function setTool(tool, btn) {
+        currentTool = tool;
+        document.querySelectorAll('.btn-group button').forEach(b => {
+            if (!b.classList.contains('action')) b.classList.remove('active');
+        });
+        btn.classList.add('active');
+    }
+
+    function loadUTubePreset() {
+        initGrid();
+        const leftX = Math.floor(GRID_SIZE * 0.2);
+        const rightX = Math.floor(GRID_SIZE * 0.8);
+        const bottomY = Math.floor(GRID_SIZE * 0.85);
+        const topY = Math.floor(GRID_SIZE * 0.2);
+        const wall = Math.floor(GRID_SIZE * 0.03);
+        const width = Math.floor(GRID_SIZE * 0.18);
+
+        for (let y = topY; y <= bottomY; y++) {
+            for (let t = 0; t < wall; t++) {
+                typeGrid[(leftX - t) + y * GRID_SIZE] = SOLID;
+                typeGrid[(leftX + width + t) + y * GRID_SIZE] = SOLID;
+                typeGrid[(rightX - width - t) + y * GRID_SIZE] = SOLID;
+                typeGrid[(rightX + t) + y * GRID_SIZE] = SOLID;
+            }
+        }
+        for (let x = leftX - wall; x <= rightX + wall; x++) {
+            for (let t = 0; t < wall; t++) {
+                typeGrid[x + (bottomY + t) * GRID_SIZE] = SOLID;
+            }
+        }
+        for (let y = topY + 20; y < bottomY; y++) {
+            for (let x = leftX + 1; x < leftX + width; x++) {
+                let idx = x + y * GRID_SIZE;
+                typeGrid[idx] = WATER;
+                particleGrid[idx] = cfgRestCapacity;
+            }
+        }
+    }
+
+    buildColorLUT();
+    initGrid();
+    bindKnobs();
+    loop();
+</script>
+
+</body>
+</html>

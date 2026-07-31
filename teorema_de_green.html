@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teorema de Green en Videojuegos</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #4CAF50;
+            margin-bottom: 5px;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 1100px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .panel {
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .canvas-panel {
+            flex: 1;
+            min-width: 500px;
+            text-align: center;
+        }
+
+        .info-panel {
+            flex: 1;
+            min-width: 350px;
+            max-width: 450px;
+        }
+
+        canvas {
+            background-color: #111;
+            border: 2px solid #444;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+
+        .btn {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background-color: #45a049;
+        }
+
+        .btn-clear {
+            background-color: #f44336;
+        }
+
+        .btn-clear:hover {
+            background-color: #da190b;
+        }
+
+        .stat-box {
+            background-color: #1f1f1f;
+            border-left: 4px solid #00bcd4;
+            padding: 10px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .formula {
+            background-color: #333;
+            padding: 10px;
+            font-family: monospace;
+            border-radius: 4px;
+            overflow-x: auto;
+            color: #ffcb6b;
+        }
+
+        ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Teorema de Green Interactivo</h1>
+    <p style="max-width: 600px; text-align: center; color: #aaa;">
+        Descubre cómo los motores de videojuegos usan la versión discreta del Teorema de Green para calcular áreas y
+        físicas usando únicamente las esquinas (vértices) de una figura.
+    </p>
+
+    <div class="container">
+        <!-- Panel del Lienzo Interactivo -->
+        <div class="panel canvas-panel">
+            <canvas id="gameCanvas" width="500" height="400"></canvas>
+            <div>
+                <button class="btn" id="btnCerrar">Cerrar Polígono</button>
+                <button class="btn btn-clear" id="btnLimpiar">Limpiar Todo</button>
+            </div>
+            <p style="font-size: 0.9rem; color: #888;">
+                💡 <strong>Instrucciones:</strong> Haz clics en el recuadro negro para dibujar puntos. Presiona "Cerrar
+                Polígono" para calcular el área final.
+            </p>
+        </div>
+
+        <!-- Panel de Información Matemáticas/Código -->
+        <div class="panel info-panel">
+            <h2>Datos en Tiempo Real</h2>
+
+            <div class="stat-box">
+                <div>Vértices totales:</div>
+                <div class="stat-value" id="valVertices">0</div>
+            </div>
+
+            <div class="stat-box" style="border-left-color: #4CAF50;">
+                <div>Área calculada:</div>
+                <div class="stat-value" id="valArea">0 píxeles²</div>
+            </div>
+
+            <div class="stat-box" style="border-left-color: #e91e63;">
+                <div>Sentido del dibujo:</div>
+                <div class="stat-value" id="valSentido">-</div>
+            </div>
+
+            <h3>¿Cómo funciona el código?</h3>
+            <p>Al recorrer los bordes en orden, el signo del cálculo nos dice el sentido del dibujo:</p>
+            <div class="formula">
+                Área = ∑ (x_i * y_{i+1} - x_{i+1} * y_i) / 2
+            </div>
+            <ol>
+                <li>Si el resultado es <strong>positivo</strong>, dibujaste en sentido antihorario.</li>
+                <li>Si es <strong>negativo</strong>, fue en sentido horario (el motor gráfico usa esto para saber si la
+                    Hitbox mira al frente).</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const btnCerrar = document.getElementById('btnCerrar');
+        const btnLimpiar = document.getElementById('btnLimpiar');
+
+        const valVertices = document.getElementById('valVertices');
+        const valArea = document.getElementById('valArea');
+        const valSentido = document.getElementById('valSentido');
+
+        let puntos = [];
+        let poligonoCerrado = false;
+
+        // Captura los clics del usuario para añadir vértices
+        canvas.addEventListener('click', (e) => {
+            if (poligonoCerrado) return; // No añadir más puntos si ya se cerró
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.round(e.clientX - rect.left);
+            const y = Math.round(e.clientY - rect.top);
+
+            puntos.push({ x, y });
+            actualizarUI();
+            dibujar();
+        });
+
+        // Aplica la fórmula discreta del Teorema de Green (Shoelace formula)
+        function calcularGreen() {
+            if (puntos.length < 3) return { area: 0, sentido: "-" };
+
+            let suma = 0;
+            const n = puntos.length;
+
+            for (let i = 0; i < n; i++) {
+                let j = (i + 1) % n; // Siguiente vértice
+
+                // Teorema de Green en forma determinista (Cruzado)
+                suma += (puntos[i].x * puntos[j].y) - (puntos[j].x * puntos[i].y);
+            }
+
+            // El signo determina la orientación geométrica del polígono
+            let sentido = "Indefinido";
+            if (suma > 0) {
+                sentido = "🔄 Antihorario (Normas hacia afuera)";
+            } else if (suma < 0) {
+                sentido = "時計 Horario (Normas hacia adentro)";
+            }
+
+            // El área real siempre es el valor absoluto dividido por 2
+            let areaReal = Math.abs(suma) / 2;
+
+            return {
+                area: areaReal.toFixed(1),
+                sentido: sentido
+            };
+        }
+
+        function actualizarUI() {
+            valVertices.innerText = puntos.length;
+
+            // Si tiene al menos 3 puntos podemos previsualizar o calcular
+            const resultado = calcularGreen();
+            valArea.innerText = resultado.area + " píxeles²";
+            valSentido.innerText = resultado.sentido;
+        }
+
+        // Renderizado del Canvas gráfico
+        function dibujar() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (puntos.length === 0) return;
+
+            // Dibujar el interior si está cerrado
+            if (poligonoCerrado && puntos.length > 2) {
+                ctx.beginPath();
+                ctx.moveTo(puntos[0].x, puntos[0].y);
+                for (let i = 1; i < puntos.length; i++) {
+                    ctx.lineTo(puntos[i].x, puntos[i].y);
+                }
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(76, 175, 80, 0.2)'; // Verde transparente
+                ctx.fill();
+            }
+
+            // Dibujar las líneas del contorno
+            ctx.beginPath();
+            ctx.moveTo(puntos[0].x, puntos[0].y);
+            for (let i = 1; i < puntos.length; i++) {
+                ctx.lineTo(puntos[i].x, puntos[i].y);
+            }
+
+            if (poligonoCerrado) {
+                ctx.closePath();
+                ctx.strokeStyle = '#4CAF50'; // Verde brillante si cerró
+                ctx.lineWidth = 3;
+            } else {
+                ctx.strokeStyle = '#00bcd4'; // Cian mientras se edita
+                ctx.lineWidth = 2;
+            }
+            ctx.stroke();
+
+            // Dibujar los nodos/vértices individuales
+            puntos.forEach((punto, index) => {
+                ctx.beginPath();
+                ctx.arc(punto.x, punto.y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = index === 0 ? '#ff5722' : '#fff'; // El primer punto es naranja
+                ctx.fill();
+
+                // Dibujar texto indicador del orden del vértice
+                ctx.fillStyle = '#aaa';
+                ctx.font = '10px Arial';
+                ctx.fillText(`P${index}`, punto.x + 8, punto.y - 4);
+            });
+        }
+
+        // Acciones de los botones
+        btnCerrar.addEventListener('click', () => {
+            if (puntos.length >= 3) {
+                poligonoCerrado = true;
+                actualizarUI();
+                dibujar();
+            } else {
+                alert("¡Necesitas al menos 3 puntos para cerrar un polígono!");
+            }
+        });
+
+        btnLimpiar.addEventListener('click', () => {
+            puntos = [];
+            poligonoCerrado = false;
+            actualizarUI();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+    </script>
+</body>
+</html>
