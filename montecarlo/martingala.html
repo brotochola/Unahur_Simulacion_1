@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Martingala en la Ruleta - Simulación Monte Carlo</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #22c55e;
+            --accent-blue: #3b82f6;
+            --accent-orange: #f97316;
+            --accent-purple: #a855f7;
+            --accent-red: #ef4444;
+            --border-color: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-height: 100vh;
+        }
+
+        header {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--accent-blue);
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .info-box {
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 12px 15px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .info-box b {
+            color: var(--text-main);
+        }
+
+        .panel {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .panel h3 {
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .panel h3 .tag {
+            font-size: 0.65rem;
+            font-weight: normal;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin-left: 8px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        input[type="number"],
+        select {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background-color: var(--bg-card-hover);
+        }
+
+        /* Pestañas */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            background: transparent;
+            color: var(--text-muted);
+            padding: 10px 16px;
+            border-radius: 6px 6px 0 0;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        .tab-btn.active {
+            background: var(--bg-card);
+            color: var(--accent-blue);
+        }
+
+        .tab-content {
+            display: none;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        @media (max-width: 900px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        canvas {
+            width: 100%;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat-box {
+            background: var(--bg-primary);
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-box .val {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        .stat-box .val.positivo {
+            color: var(--accent-green);
+        }
+
+        .stat-box .val.negativo {
+            color: var(--accent-red);
+        }
+
+        .stat-box .lbl {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .log-box {
+            background: var(--bg-primary);
+            font-family: monospace;
+            font-size: 0.78rem;
+            padding: 10px;
+            border-radius: 4px;
+            height: 260px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        .log-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 4px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .log-entry.gano {
+            color: var(--accent-green);
+        }
+
+        .log-entry.perdio {
+            color: var(--accent-red);
+        }
+
+        .progress-wrap {
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            height: 22px;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-blue);
+            width: 0%;
+            transition: width 0.1s linear;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Martingala en la Ruleta: Sesión individual vs. Simulación Monte Carlo</h1>
+        <p>Simulación 1 · Universidad de Hurlingham · Programación de Videojuegos</p>
+    </header>
+
+    <div class="info-box">
+        <b>Idea del experimento:</b> una <b>sesión</b> es una secuencia de tiradas con aleatoriedad (eso, por sí solo,
+        no es Monte Carlo).
+        <b>Monte Carlo</b> aparece cuando repetimos esa sesión miles o millones de veces y analizamos la
+        <b>distribución</b> de resultados
+        (cuántas sesiones terminan en ganancia, cuánto en promedio, con qué probabilidad hay quiebra, etc.), en vez de
+        mirar una sola corrida.
+    </div>
+
+    <!-- Panel de configuración compartido por ambas pestañas -->
+    <div class="panel controls-grid">
+        <div class="control-group"
+            title="Plata con la que el jugador arranca cada sesión. Si el capital cae por debajo de la apuesta que toca hacer, la sesión termina en quiebra.">
+            <label for="input-capital">Capital inicial ($)</label>
+            <input type="number" id="input-capital" value="1000" min="1" step="10">
+        </div>
+        <div class="control-group"
+            title="Apuesta con la que se arranca y a la que se vuelve cada vez que se gana. Es la unidad de la progresión de Martingala.">
+            <label for="input-apuesta">Apuesta base ($)</label>
+            <input type="number" id="input-apuesta" value="10" min="1" step="1">
+        </div>
+        <div class="control-group"
+            title="Tope que impone la mesa a la apuesta (así funcionan los casinos reales: evita que la duplicación crezca sin límite). Con 0, la apuesta puede duplicarse indefinidamente mientras el capital alcance.">
+            <label for="input-limite-mesa">Límite de mesa ($, 0 = sin límite)</label>
+            <input type="number" id="input-limite-mesa" value="500" min="0" step="10">
+        </div>
+        <div class="control-group"
+            title="Cantidad de tiradas que se juegan seguidas dentro de UNA sesión (capa 1). No confundir con la cantidad de sesiones de Monte Carlo (capa 2), que se elige en la otra pestaña.">
+            <label for="input-tiradas">Tiradas por sesión</label>
+            <input type="number" id="input-tiradas" value="100" min="1" step="1">
+        </div>
+    </div>
+
+    <!-- Pestañas -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="tab-sesion">Sesión individual (una corrida)</button>
+        <button class="tab-btn" data-tab="tab-montecarlo">Monte Carlo (muchas corridas)</button>
+    </div>
+
+    <!-- ================= PESTAÑA 1: SESIÓN INDIVIDUAL ================= -->
+    <div id="tab-sesion" class="tab-content active">
+        <div class="panel">
+            <button id="btn-jugar-sesion">Jugar una sesión</button>
+        </div>
+        <div class="workspace">
+            <div class="panel">
+                <h3>Evolución del capital <span class="tag">tirada a tirada</span></h3>
+                <canvas id="canvas-sesion" width="800" height="300"></canvas>
+                <div class="stats-grid">
+                    <div class="stat-box"
+                        title="Cuánta plata le quedó al jugador al terminar la sesión (o al momento de la quiebra, si la hubo).">
+                        <div class="val" id="s-capital-final">-</div>
+                        <div class="lbl">Capital final</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Capital final menos capital inicial. Positivo = ganó plata en esta sesión, negativo = perdió.">
+                        <div class="val" id="s-ganancia">-</div>
+                        <div class="lbl">Ganancia / Pérdida neta</div>
+                    </div>
+                    <div class="stat-box"
+                        title="La apuesta más alta que se llegó a hacer dentro de esta sesión, producto de las duplicaciones tras cada pérdida.">
+                        <div class="val" id="s-apuesta-max">-</div>
+                        <div class="lbl">Apuesta máxima alcanzada</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Sí, si en algún momento el capital disponible no alcanzó para cubrir la apuesta que tocaba (la sesión se corta antes de completar todas las tiradas).">
+                        <div class="val" id="s-quiebra">-</div>
+                        <div class="lbl">¿Hubo quiebra?</div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <h3>Registro de tiradas <span class="tag">log</span></h3>
+                <div class="log-box" id="log-sesion"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= PESTAÑA 2: MONTE CARLO ================= -->
+    <div id="tab-montecarlo" class="tab-content">
+        <div class="panel controls-grid">
+            <div class="control-group">
+                <label for="input-num-sesiones">Cantidad de sesiones a simular</label>
+                <select id="input-num-sesiones">
+                    <option value="1000">1.000</option>
+                    <option value="10000">10.000</option>
+                    <option value="100000" selected>100.000</option>
+                    <option value="1000000">1.000.000</option>
+                </select>
+            </div>
+            <button id="btn-correr-montecarlo">Correr simulación Monte Carlo</button>
+            <button id="btn-detener-montecarlo" class="secondary" disabled>Detener</button>
+        </div>
+
+        <div class="panel">
+            <div class="progress-wrap">
+                <div class="progress-bar" id="barra-progreso">0%</div>
+            </div>
+        </div>
+
+        <div class="workspace">
+            <div class="panel">
+                <h3>Distribución de la ganancia neta al final de cada sesión <span class="tag">histograma</span></h3>
+                <canvas id="canvas-histograma" width="800" height="320"></canvas>
+            </div>
+            <div class="panel">
+                <h3>Estadísticas agregadas</h3>
+                <div class="stats-grid">
+                    <div class="stat-box"
+                        title="Cantidad total de sesiones independientes que se corrieron. Es el tamaño de la muestra de Monte Carlo: a más sesiones, más confiable la estimación.">
+                        <div class="val" id="mc-sesiones">-</div>
+                        <div class="lbl">Sesiones simuladas</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Porcentaje de sesiones donde el capital final quedó por encima del inicial, aunque sea por poco. Con la Martingala suele ser alto: cada racha de pérdidas que se corta con una victoria deja neto +apuesta base.">
+                        <div class="val" id="mc-pct-ganadoras">-</div>
+                        <div class="lbl">% de sesiones ganadoras</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Promedio aritmético de la ganancia/pérdida de TODAS las sesiones (sumás todas las ganancias netas y dividís por la cantidad de sesiones). Puede ser negativo aunque la mayoría gane, si las pocas quiebras pierden montos enormes.">
+                        <div class="val" id="mc-ganancia-media">-</div>
+                        <div class="lbl">Ganancia neta promedio</div>
+                    </div>
+                    <div class="stat-box"
+                        title="El valor que queda justo en el medio al ordenar todas las ganancias netas de menor a mayor. Representa el resultado 'típico', y es menos sensible que el promedio a valores extremos (como una quiebra gigante).">
+                        <div class="val" id="mc-mediana">-</div>
+                        <div class="lbl">Mediana</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Mide cuán dispersos están los resultados respecto al promedio. Un desvío mucho más grande que la ganancia típica indica que unos pocos resultados extremos (quiebras) dominan la variabilidad: hay mucho riesgo de cola.">
+                        <div class="val" id="mc-desvio">-</div>
+                        <div class="lbl">Desvío estándar</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Porcentaje de sesiones en las que el jugador se quedó sin capital suficiente para cubrir la apuesta que tocaba antes de terminar todas las tiradas de la sesión.">
+                        <div class="val" id="mc-pct-quiebra">-</div>
+                        <div class="lbl">% de sesiones con quiebra</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Promedio, sobre todas las sesiones, de la apuesta más alta que se llegó a hacer en cada una. Un valor alto indica que hubo muchas rachas largas de pérdidas antes de cortar con una victoria.">
+                        <div class="val" id="mc-apuesta-max">-</div>
+                        <div class="lbl">Apuesta máxima promedio</div>
+                    </div>
+                    <div class="stat-box"
+                        title="El valor de ganancia tal que el 1% de las sesiones tuvo un resultado igual o peor. Si la probabilidad de quiebra es menor al 1%, este percentil puede no reflejar el verdadero peor escenario (revisar el % de quiebra al lado).">
+                        <div class="val" id="mc-peor-caso">-</div>
+                        <div class="lbl">Peor caso (percentil 1%)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ========================================================================
+         * 1. MODELO DE LA RULETA (EUROPEA, 37 NÚMEROS: 0 AL 36)
+         * ========================================================================
+         */
+
+        // Conjunto de números rojos en la ruleta europea estándar.
+        // Todo lo que no es rojo ni el cero (verde) es negro.
+        const NUMEROS_ROJOS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+
+        // Simula una tirada de ruleta: devuelve el número (0-36) y su color.
+        function girarRuleta() {
+            const numero = Math.floor(Math.random() * 37); // entero uniforme entre 0 y 36
+            let color;
+            if (numero === 0) {
+                color = 'verde';
+            } else if (NUMEROS_ROJOS.has(numero)) {
+                color = 'rojo';
+            } else {
+                color = 'negro';
+            }
+            return { numero, color };
+        }
+
+        /**
+         * ========================================================================
+         * 2. MOTOR DE UNA "SESIÓN" DE MARTINGALA
+         * ========================================================================
+         * Una sesión es una secuencia de eventos con aleatoriedad (cada tirada es
+         * un evento). Esto por sí solo NO es Monte Carlo: es una única trayectoria
+         * posible entre muchas. Estrategia: apostar siempre al rojo; si se pierde,
+         * se duplica la apuesta; si se gana, la apuesta vuelve al valor base.
+         */
+
+        function jugarSesionMartingala(config, guardarHistorial) {
+            let capital = config.capitalInicial;
+            let apuestaActual = config.apuestaBase;
+            let apuestaMaxima = apuestaActual;
+            let huboQuiebra = false;
+            const historial = guardarHistorial ? [] : null;
+
+            let tirada;
+            for (tirada = 1; tirada <= config.tiradasPorSesion; tirada++) {
+                // Si no le alcanza el capital para cubrir la apuesta actual, la sesión termina en quiebra.
+                if (capital < apuestaActual) {
+                    huboQuiebra = true;
+                    break;
+                }
+
+                const resultado = girarRuleta();
+                const gano = resultado.color === 'rojo';
+
+                capital += gano ? apuestaActual : -apuestaActual;
+
+                if (guardarHistorial) {
+                    historial.push({
+                        tirada,
+                        numero: resultado.numero,
+                        color: resultado.color,
+                        apuesta: apuestaActual,
+                        gano,
+                        capital
+                    });
+                }
+
+                if (gano) {
+                    apuestaActual = config.apuestaBase; // reinicia la progresión
+                } else {
+                    apuestaActual *= 2; // duplica tras la pérdida (Martingala clásica)
+                    if (config.limiteMesa > 0 && apuestaActual > config.limiteMesa) {
+                        apuestaActual = config.limiteMesa; // la mesa no deja apostar más que esto
+                    }
+                }
+
+                if (apuestaActual > apuestaMaxima) apuestaMaxima = apuestaActual;
+            }
+
+            return {
+                capitalFinal: capital,
+                gananciaNeta: capital - config.capitalInicial,
+                huboQuiebra,
+                apuestaMaxima,
+                historial
+            };
+        }
+
+        /**
+         * ========================================================================
+         * 3. MOTOR MONTE CARLO
+         * ========================================================================
+         * Acá es donde una simulación estocástica se convierte en Monte Carlo:
+         * repetimos la sesión N veces (cada una con números aleatorios distintos)
+         * y analizamos la distribución de los N resultados obtenidos.
+         * Se ejecuta en lotes con setTimeout para no congelar la interfaz.
+         */
+
+        const TAMANIO_LOTE = 5000; // sesiones simuladas por "tick" de la interfaz
+
+        function ejecutarMonteCarlo(config, numSesiones, onProgreso, onFinalizado) {
+            const ganancias = new Float64Array(numSesiones); // ganancia neta de cada sesión
+            let quiebras = 0;
+            let sesionesGanadoras = 0;
+            let sumaApuestaMaxima = 0;
+            let i = 0;
+            let detenido = false;
+
+            function procesarLote() {
+                if (detenido) return;
+
+                const limite = Math.min(i + TAMANIO_LOTE, numSesiones);
+                for (; i < limite; i++) {
+                    const resultado = jugarSesionMartingala(config, false); // sin historial: más rápido y liviano
+                    ganancias[i] = resultado.gananciaNeta;
+                    if (resultado.huboQuiebra) quiebras++;
+                    if (resultado.gananciaNeta > 0) sesionesGanadoras++;
+                    sumaApuestaMaxima += resultado.apuestaMaxima;
+                }
+
+                onProgreso(i, numSesiones);
+
+                if (i < numSesiones) {
+                    setTimeout(procesarLote, 0);
+                } else {
+                    // Nota: es normal (y es justamente lo que este experimento busca mostrar)
+                    // que "sesionesGanadoras" sea un porcentaje muy alto (la Martingala gana
+                    // seguido, en montos chicos) mientras que la ganancia neta PROMEDIO termine
+                    // siendo negativa o casi nula: alcanza con que un pequeño porcentaje de
+                    // sesiones "quiebre" perdiendo muchísimo para que el promedio se hunda.
+                    onFinalizado({
+                        ganancias,
+                        quiebras,
+                        sesionesGanadoras,
+                        apuestaMaximaPromedio: sumaApuestaMaxima / numSesiones
+                    });
+                }
+            }
+
+            procesarLote();
+
+            // Devuelve una función para poder cancelar la simulación desde afuera.
+            return () => { detenido = true; };
+        }
+
+        /**
+         * ========================================================================
+         * 4. ESTADÍSTICA SOBRE LOS RESULTADOS DE MONTE CARLO
+         * ========================================================================
+         */
+
+        function calcularEstadisticas(ganancias) {
+            const n = ganancias.length;
+
+            // Ordenamos una copia para poder calcular mediana y percentiles por posición.
+            // (No podemos ordenar el array original: se usa después para el histograma en su orden de generación).
+            const copiaOrdenada = Float64Array.from(ganancias).sort();
+
+            // MEDIA (promedio): suma de todas las ganancias netas dividido la cantidad de sesiones.
+            // Es sensible a valores extremos: una sola sesión con pérdida gigante puede arrastrar
+            // la media hacia abajo aunque casi todas las demás sesiones hayan ganado.
+            let suma = 0;
+            for (let i = 0; i < n; i++) suma += ganancias[i];
+            const media = suma / n;
+
+            // DESVÍO ESTÁNDAR: raíz cuadrada del promedio de las distancias al cuadrado respecto
+            // a la media. Al elevar al cuadrado, los valores extremos (quiebras con pérdidas enormes)
+            // pesan desproporcionadamente más que los resultados "típicos". Por eso, en una estrategia
+            // como la Martingala (muchas ganancias chicas + pocas pérdidas catastróficas), el desvío
+            // suele terminar siendo mucho más grande que la ganancia media o mediana: es la forma
+            // numérica de decir "esta estrategia tiene mucho riesgo de cola".
+            let sumaCuadrados = 0;
+            for (let i = 0; i < n; i++) sumaCuadrados += (ganancias[i] - media) ** 2;
+            const desvioEstandar = Math.sqrt(sumaCuadrados / n);
+
+            // PERCENTIL p: valor tal que una fracción p de las sesiones tuvo un resultado igual o
+            // peor. Como copiaOrdenada está ordenada de menor a mayor, el percentil p es el elemento
+            // que está a un p% del principio del array ordenado.
+            const percentil = p => copiaOrdenada[Math.floor(p * (n - 1))];
+
+            return {
+                media, // ganancia neta promedio (ver nota arriba sobre por qué puede ser negativa)
+                mediana: percentil(0.5), // resultado "típico": el que queda justo en el medio
+                desvioEstandar,
+                // "Peor caso" aproximado: el percentil 1% no necesariamente cae dentro de las
+                // sesiones con quiebra si la probabilidad de quiebra es menor al 1% (comparar
+                // siempre contra el % de sesiones con quiebra para interpretarlo bien).
+                percentil1: percentil(0.01)
+            };
+        }
+
+        /**
+         * ========================================================================
+         * 5. DIBUJO EN CANVAS (SIN LIBRERÍAS EXTERNAS)
+         * ========================================================================
+         */
+
+        function limpiarCanvas(ctx, canvas) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Gráfico de línea: evolución del capital tirada a tirada (para una sesión individual).
+        function dibujarGraficoCapital(canvas, historial, capitalInicial) {
+            const ctx = canvas.getContext('2d');
+            limpiarCanvas(ctx, canvas);
+
+            const margen = 40;
+            const anchoUtil = canvas.width - margen * 2;
+            const altoUtil = canvas.height - margen * 2;
+
+            const capitales = [capitalInicial, ...historial.map(h => h.capital)];
+            const minCap = Math.min(...capitales);
+            const maxCap = Math.max(...capitales);
+            const rango = (maxCap - minCap) || 1;
+
+            const x = i => margen + (i / (capitales.length - 1)) * anchoUtil;
+            const y = valor => margen + altoUtil - ((valor - minCap) / rango) * altoUtil;
+
+            // Línea de referencia: capital inicial
+            ctx.strokeStyle = '#334155';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(margen, y(capitalInicial));
+            ctx.lineTo(canvas.width - margen, y(capitalInicial));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Curva de capital
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            capitales.forEach((c, i) => {
+                i === 0 ? ctx.moveTo(x(i), y(c)) : ctx.lineTo(x(i), y(c));
+            });
+            ctx.stroke();
+
+            // Etiquetas de eje Y (mínimo y máximo)
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '11px monospace';
+            ctx.fillText(`$${maxCap.toFixed(0)}`, 4, y(maxCap) + 4);
+            ctx.fillText(`$${minCap.toFixed(0)}`, 4, y(minCap) + 4);
+        }
+
+        // Histograma: distribución de la ganancia neta a lo largo de todas las sesiones Monte Carlo.
+        function dibujarHistograma(canvas, ganancias, numBins) {
+            const ctx = canvas.getContext('2d');
+            limpiarCanvas(ctx, canvas);
+
+            const margen = 40;
+            const anchoUtil = canvas.width - margen * 2;
+            const altoUtil = canvas.height - margen * 2;
+
+            let minVal = Infinity, maxVal = -Infinity;
+            for (let i = 0; i < ganancias.length; i++) {
+                if (ganancias[i] < minVal) minVal = ganancias[i];
+                if (ganancias[i] > maxVal) maxVal = ganancias[i];
+            }
+            if (minVal === maxVal) { minVal -= 1; maxVal += 1; }
+
+            const anchoBin = (maxVal - minVal) / numBins;
+            const bins = new Array(numBins).fill(0);
+            for (let i = 0; i < ganancias.length; i++) {
+                let indice = Math.floor((ganancias[i] - minVal) / anchoBin);
+                if (indice >= numBins) indice = numBins - 1;
+                if (indice < 0) indice = 0;
+                bins[indice]++;
+            }
+
+            const maxFrecuencia = Math.max(...bins);
+            const anchoBarra = anchoUtil / numBins;
+
+            // Eje de referencia en ganancia = 0
+            const indiceCero = Math.floor((0 - minVal) / anchoBin);
+
+            bins.forEach((frecuencia, i) => {
+                const alturaBarra = (frecuencia / maxFrecuencia) * altoUtil;
+                const xBarra = margen + i * anchoBarra;
+                const yBarra = margen + altoUtil - alturaBarra;
+
+                const inicioBin = minVal + i * anchoBin;
+                ctx.fillStyle = inicioBin >= 0 ? 'rgba(34, 197, 94, 0.75)' : 'rgba(239, 68, 68, 0.75)';
+                ctx.fillRect(xBarra, yBarra, Math.max(anchoBarra - 1, 1), alturaBarra);
+            });
+
+            // Línea vertical marcando "ganancia neta = 0"
+            ctx.strokeStyle = '#f8fafc';
+            ctx.beginPath();
+            const xCero = margen + indiceCero * anchoBarra;
+            ctx.moveTo(xCero, margen);
+            ctx.lineTo(xCero, margen + altoUtil);
+            ctx.stroke();
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '11px monospace';
+            ctx.fillText(`$${minVal.toFixed(0)}`, margen, canvas.height - 8);
+            ctx.fillText(`$${maxVal.toFixed(0)}`, canvas.width - margen - 40, canvas.height - 8);
+            ctx.fillText('0', xCero - 3, margen - 6);
+        }
+
+        /**
+         * ========================================================================
+         * 6. LECTURA DE CONFIGURACIÓN E INTERFAZ
+         * ========================================================================
+         */
+
+        function leerConfiguracion() {
+            return {
+                capitalInicial: parseFloat(document.getElementById('input-capital').value) || 1000,
+                apuestaBase: parseFloat(document.getElementById('input-apuesta').value) || 10,
+                limiteMesa: parseFloat(document.getElementById('input-limite-mesa').value) || 0,
+                tiradasPorSesion: parseInt(document.getElementById('input-tiradas').value) || 100
+            };
+        }
+
+        // --- Pestañas ---
+        document.querySelectorAll('.tab-btn').forEach(boton => {
+            boton.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                boton.classList.add('active');
+                document.getElementById(boton.dataset.tab).classList.add('active');
+            });
+        });
+
+        // --- Pestaña 1: sesión individual ---
+        document.getElementById('btn-jugar-sesion').addEventListener('click', () => {
+            const config = leerConfiguracion();
+            const resultado = jugarSesionMartingala(config, true);
+
+            dibujarGraficoCapital(document.getElementById('canvas-sesion'), resultado.historial, config.capitalInicial);
+
+            const elGanancia = document.getElementById('s-ganancia');
+            elGanancia.innerText = `${resultado.gananciaNeta >= 0 ? '+' : ''}$${resultado.gananciaNeta.toFixed(2)}`;
+            elGanancia.className = 'val ' + (resultado.gananciaNeta >= 0 ? 'positivo' : 'negativo');
+
+            document.getElementById('s-capital-final').innerText = `$${resultado.capitalFinal.toFixed(2)}`;
+            document.getElementById('s-apuesta-max').innerText = `$${resultado.apuestaMaxima.toFixed(2)}`;
+            document.getElementById('s-quiebra').innerText = resultado.huboQuiebra ? 'Sí' : 'No';
+
+            const logDiv = document.getElementById('log-sesion');
+            logDiv.innerHTML = resultado.historial
+                .slice()
+                .reverse()
+                .map(h => `<div class="log-entry ${h.gano ? 'gano' : 'perdio'}">
+            <span>#${h.tirada} · número ${h.numero} (${h.color}) · apostó $${h.apuesta}</span>
+            <span>${h.gano ? 'GANÓ' : 'perdió'} → $${h.capital.toFixed(2)}</span>
+        </div>`)
+                .join('');
+        });
+
+        // --- Pestaña 2: Monte Carlo ---
+        let cancelarSimulacionActual = null;
+
+        document.getElementById('btn-correr-montecarlo').addEventListener('click', () => {
+            const config = leerConfiguracion();
+            const numSesiones = parseInt(document.getElementById('input-num-sesiones').value);
+
+            const btnCorrer = document.getElementById('btn-correr-montecarlo');
+            const btnDetener = document.getElementById('btn-detener-montecarlo');
+            btnCorrer.disabled = true;
+            btnDetener.disabled = false;
+
+            const barra = document.getElementById('barra-progreso');
+            barra.style.width = '0%';
+            barra.innerText = '0%';
+
+            cancelarSimulacionActual = ejecutarMonteCarlo(
+                config,
+                numSesiones,
+                (hechas, total) => {
+                    const pct = ((hechas / total) * 100).toFixed(0);
+                    barra.style.width = pct + '%';
+                    barra.innerText = `${pct}% (${hechas.toLocaleString('es-AR')} / ${total.toLocaleString('es-AR')})`;
+                },
+                (resultado) => {
+                    btnCorrer.disabled = false;
+                    btnDetener.disabled = true;
+
+                    const stats = calcularEstadisticas(resultado.ganancias);
+                    dibujarHistograma(document.getElementById('canvas-histograma'), resultado.ganancias, 40);
+
+                    document.getElementById('mc-sesiones').innerText = numSesiones.toLocaleString('es-AR');
+
+                    const pctGanadoras = (resultado.sesionesGanadoras / numSesiones) * 100;
+                    document.getElementById('mc-pct-ganadoras').innerText = `${pctGanadoras.toFixed(1)}%`;
+
+                    const elMedia = document.getElementById('mc-ganancia-media');
+                    elMedia.innerText = `${stats.media >= 0 ? '+' : ''}$${stats.media.toFixed(2)}`;
+                    elMedia.className = 'val ' + (stats.media >= 0 ? 'positivo' : 'negativo');
+
+                    document.getElementById('mc-mediana').innerText = `${stats.mediana >= 0 ? '+' : ''}$${stats.mediana.toFixed(2)}`;
+                    document.getElementById('mc-desvio').innerText = `$${stats.desvioEstandar.toFixed(2)}`;
+
+                    const pctQuiebra = (resultado.quiebras / numSesiones) * 100;
+                    document.getElementById('mc-pct-quiebra').innerText = `${pctQuiebra.toFixed(2)}%`;
+
+                    document.getElementById('mc-apuesta-max').innerText = `$${resultado.apuestaMaximaPromedio.toFixed(2)}`;
+                    document.getElementById('mc-peor-caso').innerText = `$${stats.percentil1.toFixed(2)}`;
+                }
+            );
+        });
+
+        document.getElementById('btn-detener-montecarlo').addEventListener('click', () => {
+            if (cancelarSimulacionActual) cancelarSimulacionActual();
+            document.getElementById('btn-correr-montecarlo').disabled = false;
+            document.getElementById('btn-detener-montecarlo').disabled = true;
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SoA vs Bitmask — 8 Boolean Flags Benchmark</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#0c0f13;
+  --panel:#151920;
+  --panel-2:#11141a;
+  --border:#262c36;
+  --text:#e9e7e0;
+  --text-dim:#8b93a3;
+  --amber:#ffb01f;
+  --amber-dim:#a87b2c;
+  --cyan:#49d3de;
+  --cyan-dim:#2f7f86;
+  --violet:#c792ea;
+  --violet-dim:#7d5c94;
+  --good:#7ad48a;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+body{
+  font-family:'Inter',sans-serif;
+  min-height:100vh;
+  padding:40px 24px 80px;
+}
+
+.wrap{max-width:920px;margin:0 auto;}
+
+.eyebrow{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;
+  letter-spacing:.14em;
+  color:var(--cyan);
+  text-transform:uppercase;
+  margin:0 0 10px;
+}
+
+h1{
+  font-family:'JetBrains Mono',monospace;
+  font-size:clamp(26px,4vw,38px);
+  font-weight:700;
+  margin:0 0 14px;
+  line-height:1.15;
+  letter-spacing:-.01em;
+}
+h1 .amber{color:var(--amber);}
+h1 .cyan{color:var(--cyan);}
+
+.lede{
+  color:var(--text-dim);
+  font-size:15px;
+  line-height:1.6;
+  max-width:640px;
+  margin:0 0 32px;
+}
+.lede-es{
+  border-left:2px solid var(--violet-dim);
+  padding-left:14px;
+  font-size:14px;
+}
+.lede-es b{color:var(--violet);}
+.footnote-es{
+  border-left:2px solid var(--violet-dim);
+  padding-left:14px;
+  margin-top:12px;
+}
+.footnote-es b{color:var(--violet);}
+
+.legend{
+  display:flex;gap:20px;flex-wrap:wrap;
+  font-family:'JetBrains Mono',monospace;
+  font-size:12.5px;
+  margin-bottom:28px;
+}
+.legend-item{display:flex;align-items:center;gap:8px;color:var(--text-dim);}
+.swatch{width:11px;height:11px;border-radius:2px;flex:none;}
+.swatch.amber{background:var(--amber);}
+.swatch.cyan{background:var(--cyan);}
+
+.panel{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:22px 24px;
+  margin-bottom:22px;
+}
+
+.controls-grid{
+  display:flex;
+  gap:14px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.chip{
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px;
+  display:flex;align-items:center;gap:8px;
+  background:var(--panel-2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:9px 14px;
+  cursor:pointer;
+  user-select:none;
+  transition:border-color .15s;
+}
+.chip:hover{border-color:#3a4250;}
+.chip input{accent-color:var(--cyan);width:14px;height:14px;}
+.chip.checked{border-color:var(--cyan-dim);background:#122024;}
+
+.run-btn{
+  font-family:'JetBrains Mono',monospace;
+  font-weight:600;
+  font-size:13.5px;
+  letter-spacing:.03em;
+  background:var(--cyan);
+  color:#06181a;
+  border:none;
+  border-radius:8px;
+  padding:10px 20px;
+  cursor:pointer;
+  margin-left:auto;
+  transition:opacity .15s, transform .1s;
+}
+.run-btn:hover{opacity:.9;}
+.run-btn:active{transform:scale(.97);}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+.status{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12.5px;
+  color:var(--text-dim);
+  margin-top:14px;
+  min-height:16px;
+}
+.status .dot{
+  display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--amber);margin-right:8px;
+  animation:pulse 1s infinite ease-in-out;
+}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+
+.results{display:flex;flex-direction:column;gap:16px;}
+
+.size-panel{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:20px 24px 22px;
+  animation:rise .35s ease;
+}
+@keyframes rise{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+.size-head{
+  display:flex;justify-content:space-between;align-items:baseline;
+  margin-bottom:16px;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.size-head h3{
+  font-family:'JetBrains Mono',monospace;
+  font-size:16px;margin:0;font-weight:600;
+}
+.mem-readout{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;color:var(--text-dim);
+}
+.mem-readout b{color:var(--good);font-weight:600;}
+
+.metric-row{margin-bottom:14px;}
+.metric-row:last-child{margin-bottom:0;}
+.metric-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11.5px;
+  color:var(--text-dim);
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  margin-bottom:7px;
+}
+
+.bar-line{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.bar-name{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11.5px;width:92px;flex:none;color:var(--text-dim);
+}
+.bar-track{flex:1;background:var(--panel-2);border-radius:4px;height:20px;overflow:hidden;position:relative;}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s cubic-bezier(.2,.8,.2,1);}
+.bar-fill.amber{background:linear-gradient(90deg,var(--amber-dim),var(--amber));}
+.bar-fill.cyan{background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));}
+.bar-fill.violet{background:linear-gradient(90deg,var(--violet-dim),var(--violet));}
+.bar-val{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;width:100px;flex:none;text-align:right;color:var(--text);
+}
+.speedup{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11.5px;
+  color:var(--good);
+  margin-top:2px;
+}
+
+.summary{
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px;
+  line-height:1.7;
+  color:var(--text-dim);
+}
+.summary b{color:var(--text);}
+
+.footnote{
+  font-size:12.5px;color:var(--text-dim);line-height:1.6;margin-top:28px;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Layout benchmark</p>
+  <h1>8× typed array (<span class="amber">SoA</span>) vs 1× typed array (<span class="cyan">bitmask</span>)</h1>
+  <p class="lede">
+    Same job — store 8 boolean properties per entity, then write and read all 8 of them for every entity, in order.
+    One approach uses eight separate typed arrays, one per flag. The other two pack all eight flags into a single
+    element per entity: one builds the value in a local variable before a single store (bulk set), the other reads,
+    modifies, and stores the value back for each individual flag (read-modify-write). Pick the element type below —
+    Uint8/Int8/Uint16/Int16/Uint32/Int32/Float32/Float64 are all supported. Timed in your browser, on your hardware.
+  </p>
+  <p class="lede lede-es">
+    <b>En español:</b> el mismo trabajo — guardar 8 propiedades booleanas por entidad, y luego escribir y leer las 8
+    para cada entidad, en orden. Un enfoque usa ocho arreglos tipados separados, uno por bandera (SoA). Los otros
+    dos empaquetan las ocho banderas en un solo elemento por entidad: uno arma el valor entero en una variable local
+    antes de guardarlo de una vez ("bulk set"), y el otro lee, modifica y vuelve a guardar el valor por cada bandera
+    individual ("read-modify-write" o RMW), que es el patrón más realista si cada propiedad se cambia por separado
+    en distintos momentos. Elegí el tipo de elemento más abajo — soporta Uint8/Int8/Uint16/Int16/Uint32/Int32/
+    Float32/Float64. Todo se mide en tu propio navegador, con tu propio hardware.
+  </p>
+
+  <div class="legend">
+    <div class="legend-item"><span class="swatch amber"></span> SoA — 8× typed array</div>
+    <div class="legend-item"><span class="swatch cyan"></span> Bitmask (bulk set) — 1× typed array</div>
+    <div class="legend-item"><span class="swatch" style="background:var(--violet);"></span> Bitmask (RMW) — 1× typed array</div>
+  </div>
+
+  <div class="panel">
+    <div class="controls-grid" id="sizeChips"></div>
+    <div class="controls-grid" style="margin-top:14px;">
+      <label class="chip" id="trialsChip" style="cursor:default;">
+        <span style="color:var(--text-dim);">trials per test</span>
+        <select id="trialsSelect" style="background:transparent;color:var(--text);border:none;font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;">
+          <option value="3" selected>3 (median)</option>
+          <option value="5">5 (median)</option>
+          <option value="1">1 (quick)</option>
+        </select>
+      </label>
+      <label class="chip" id="typeChip" style="cursor:default;">
+        <span style="color:var(--text-dim);">data type</span>
+        <select id="typeSelect" style="background:transparent;color:var(--text);border:none;font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;"></select>
+      </label>
+      <button class="run-btn" id="runBtn">Run benchmark</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="results" id="results"></div>
+
+  <div class="panel" id="summaryPanel" style="display:none;">
+    <div class="summary" id="summaryText"></div>
+  </div>
+
+  <p class="footnote">
+    Each "op" below = one flag read or write for one entity, so N = 1,000,000 means 8,000,000 ops per write pass
+    and 8,000,000 ops per read pass. Every combination is warmed up once (untimed) before timed trials to reduce
+    JIT-compilation noise; the reported time is the median of the trials. Read passes accumulate a checksum so the
+    engine can't optimize the loop away. Memory shown is raw bytes allocated for the flag storage only (SoA needs
+    <i>elementSize</i> bytes per flag per entity; bitmask needs <i>elementSize</i> bytes per entity total, for up
+    to 8 flags). Bitmask (RMW) uses the same single array as Bitmask (bulk set) — same memory — it only differs in
+    how the write loop touches it.
+    <br><br>
+    <b>Data type</b> picks the element type used to allocate every array in the run — for SoA it's the type of each
+    of the 8 flag arrays; for both bitmask variants it's the "word" each entity's packed byte lives inside (still
+    only 8 bits are ever used, so Uint16/Uint32 words waste the extra bits — included so you can see that cost
+    directly in the memory readout and, usually, in write/read time too). Signed vs unsigned integer types (Int8
+    vs Uint8, etc.) behave identically for the bit operations here, since JS bitwise operators always work on the
+    raw 32-bit two's-complement bits regardless of the typed array's signedness. <b>Float32/Float64 are only run
+    for SoA</b> — bitmask needs integer bit operations, and JS's bitwise operators coerce every operand to a 32-bit
+    integer first, so packing into a float array wouldn't measure what it claims to; the bitmask bars are hidden
+    for those two types.
+  </p>
+  <p class="footnote footnote-es">
+    <b>En español:</b> cada "op" (operación) es una lectura o escritura de una bandera para una entidad, entonces
+    N = 1.000.000 significa 8.000.000 de operaciones en el paso de escritura y 8.000.000 en el de lectura. Cada
+    combinación se "calienta" una vez sin medir antes de las pruebas cronometradas, para reducir el ruido de la
+    compilación JIT; el tiempo mostrado es la mediana de las pruebas. Los pasos de lectura acumulan un checksum
+    para que el motor no pueda optimizar y eliminar el bucle. La memoria mostrada son los bytes crudos asignados
+    solo para las banderas (SoA necesita <i>elementSize</i> bytes por bandera por entidad; el bitmask necesita
+    <i>elementSize</i> bytes por entidad en total, para hasta 8 banderas). Bitmask (RMW) usa el mismo arreglo único
+    que Bitmask (bulk set) — misma memoria — solo cambia cómo el bucle de escritura lo toca.
+    <br><br>
+    <b>Tipo de dato</b> elige el tipo de elemento usado para reservar cada arreglo de la corrida — para SoA es el
+    tipo de cada uno de los 8 arreglos de banderas; para las dos variantes de bitmask es la "palabra" donde vive el
+    byte empaquetado de cada entidad (siempre se usan solo 8 bits, así que palabras Uint16/Uint32 desperdician los
+    bits extra — se incluyen justamente para que veas ese costo reflejado en la memoria y, normalmente, también en
+    el tiempo). Los tipos con o sin signo (Int8 vs Uint8, etc.) se comportan igual en estas operaciones de bits,
+    porque los operadores bitwise de JS siempre trabajan sobre los 32 bits en complemento a dos, sin importar el
+    signo del arreglo tipado. <b>Float32/Float64 solo corren para SoA</b> — el bitmask necesita operaciones de bits
+    sobre enteros, y los operadores bitwise de JS convierten cada operando a un entero de 32 bits primero, así que
+    empaquetar en un arreglo de floats no mediría lo que dice medir; las barras de bitmask se ocultan para esos dos
+    tipos.
+  </p>
+
+</div>
+
+<script>
+const SIZES = [
+  {label:'100K', value:100000, checked:true},
+  {label:'1M', value:1000000, checked:true},
+  {label:'10M', value:10000000, checked:false},
+];
+
+// bitwiseCapable=false means JS bitwise ops would silently coerce to int32,
+// so bitmask variants are skipped for that type (SoA still runs).
+const TYPES = [
+  {key:'uint8',  ctor:Uint8Array,   bytes:1, label:'Uint8',   bitwiseCapable:true},
+  {key:'int8',   ctor:Int8Array,    bytes:1, label:'Int8',    bitwiseCapable:true},
+  {key:'uint16', ctor:Uint16Array,  bytes:2, label:'Uint16',  bitwiseCapable:true},
+  {key:'int16',  ctor:Int16Array,   bytes:2, label:'Int16',   bitwiseCapable:true},
+  {key:'uint32', ctor:Uint32Array,  bytes:4, label:'Uint32',  bitwiseCapable:true},
+  {key:'int32',  ctor:Int32Array,   bytes:4, label:'Int32',   bitwiseCapable:true},
+  {key:'float32',ctor:Float32Array, bytes:4, label:'Float32', bitwiseCapable:false},
+  {key:'float64',ctor:Float64Array, bytes:8, label:'Float64', bitwiseCapable:false},
+];
+
+const sizeChips = document.getElementById('sizeChips');
+SIZES.forEach((s,i)=>{
+  const chip = document.createElement('label');
+  chip.className = 'chip' + (s.checked ? ' checked' : '');
+  chip.innerHTML = `<input type="checkbox" data-idx="${i}" ${s.checked?'checked':''}> ${s.label} entities`;
+  chip.querySelector('input').addEventListener('change', e=>{
+    chip.classList.toggle('checked', e.target.checked);
+  });
+  sizeChips.appendChild(chip);
+});
+
+const typeSelect = document.getElementById('typeSelect');
+TYPES.forEach((t,i)=>{
+  const opt = document.createElement('option');
+  opt.value = i;
+  opt.textContent = t.bitwiseCapable ? t.label : `${t.label} (SoA only)`;
+  if(t.key === 'uint8') opt.selected = true;
+  typeSelect.appendChild(opt);
+});
+
+function yieldToUI(){ return new Promise(r=>setTimeout(r,0)); }
+function median(arr){ const a=[...arr].sort((x,y)=>x-y); return a[Math.floor(a.length/2)]; }
+function fmtMs(ms){ return ms < 1 ? (ms*1000).toFixed(0)+' µs' : ms.toFixed(2)+' ms'; }
+function fmtBytes(b){
+  if(b >= 1e6) return (b/1e6).toFixed(1)+' MB';
+  if(b >= 1e3) return (b/1e3).toFixed(1)+' KB';
+  return b+' B';
+}
+function fmtInt(n){ return n.toLocaleString('en-US'); }
+
+// ---- SoA passes ----
+function soaWritePass(props, N){
+  for(let i=0;i<N;i++){
+    const parity = i & 1;
+    for(let p=0;p<8;p++){
+      props[p][i] = (i + p + parity) & 1;
+    }
+  }
+}
+function soaReadPass(props, N){
+  let checksum = 0;
+  for(let i=0;i<N;i++){
+    for(let p=0;p<8;p++){
+      checksum += props[p][i];
+    }
+  }
+  return checksum;
+}
+
+// ---- Bitmask passes ----
+function bmWritePass(arr, N){
+  for(let i=0;i<N;i++){
+    const parity = i & 1;
+    let byte = 0;
+    for(let p=0;p<8;p++){
+      const v = (i + p + parity) & 1;
+      byte |= (v << p);
+    }
+    arr[i] = byte;
+  }
+}
+function bmReadPass(arr, N){
+  let checksum = 0;
+  for(let i=0;i<N;i++){
+    const byte = arr[i];
+    for(let p=0;p<8;p++){
+      checksum += (byte >> p) & 1;
+    }
+  }
+  return checksum;
+}
+
+// ---- Bitmask (read-modify-write) passes ----
+// Each of the 8 flags is set individually: read the byte, clear the bit,
+// OR in the new value, store the byte back. Repeated 8x per entity.
+function bmRmwWritePass(arr, N){
+  for(let i=0;i<N;i++){
+    const parity = i & 1;
+    for(let p=0;p<8;p++){
+      const v = (i + p + parity) & 1;
+      const mask = 1 << p;
+      arr[i] = (arr[i] & ~mask) | (v << p);
+    }
+  }
+}
+// Reading is identical to the bulk-set bitmask — same storage, same bits —
+// so it reuses bmReadPass. Kept as an alias for clarity in benchmarkSize.
+const bmRmwReadPass = bmReadPass;
+
+async function benchmarkSize(N, trials, dataType, onTrial){
+  // --- SoA ---
+  const soaProps = Array.from({length:8}, () => new dataType.ctor(N));
+  soaWritePass(soaProps, N); soaReadPass(soaProps, N); // warmup
+  await yieldToUI();
+
+  const soaWriteTimes = [], soaReadTimes = [];
+  let soaGuard = 0;
+  for(let t=0;t<trials;t++){
+    onTrial(`SoA write — trial ${t+1}/${trials}`);
+    let t0 = performance.now(); soaWritePass(soaProps, N); let t1 = performance.now();
+    soaWriteTimes.push(t1-t0);
+    await yieldToUI();
+
+    onTrial(`SoA read — trial ${t+1}/${trials}`);
+    let t2 = performance.now(); soaGuard ^= soaReadPass(soaProps, N); let t3 = performance.now();
+    soaReadTimes.push(t3-t2);
+    await yieldToUI();
+  }
+
+  const result = {
+    N,
+    dataType,
+    soaWrite: median(soaWriteTimes),
+    soaRead: median(soaReadTimes),
+    bmWrite: null, bmRead: null,
+    bmRmwWrite: null, bmRmwRead: null,
+    memSoA: N * 8 * dataType.bytes,
+    memBitmask: dataType.bitwiseCapable ? N * dataType.bytes : null,
+  };
+
+  if(!dataType.bitwiseCapable){
+    // Float types can't back the bitmask variants — bitwise ops in JS
+    // coerce every operand to int32, so this wouldn't measure float storage.
+    if (soaGuard === -1) console.log('unreachable');
+    return result;
+  }
+
+  // --- Bitmask (bulk set) ---
+  const bmArr = new dataType.ctor(N);
+  bmWritePass(bmArr, N); bmReadPass(bmArr, N); // warmup
+  await yieldToUI();
+
+  const bmWriteTimes = [], bmReadTimes = [];
+  let bmGuard = 0;
+  for(let t=0;t<trials;t++){
+    onTrial(`Bitmask (bulk) write — trial ${t+1}/${trials}`);
+    let t0 = performance.now(); bmWritePass(bmArr, N); let t1 = performance.now();
+    bmWriteTimes.push(t1-t0);
+    await yieldToUI();
+
+    onTrial(`Bitmask (bulk) read — trial ${t+1}/${trials}`);
+    let t2 = performance.now(); bmGuard ^= bmReadPass(bmArr, N); let t3 = performance.now();
+    bmReadTimes.push(t3-t2);
+    await yieldToUI();
+  }
+
+  // --- Bitmask (read-modify-write) ---
+  const bmRmwArr = new dataType.ctor(N);
+  bmRmwWritePass(bmRmwArr, N); bmRmwReadPass(bmRmwArr, N); // warmup
+  await yieldToUI();
+
+  const bmRmwWriteTimes = [], bmRmwReadTimes = [];
+  let bmRmwGuard = 0;
+  for(let t=0;t<trials;t++){
+    onTrial(`Bitmask (RMW) write — trial ${t+1}/${trials}`);
+    let t0 = performance.now(); bmRmwWritePass(bmRmwArr, N); let t1 = performance.now();
+    bmRmwWriteTimes.push(t1-t0);
+    await yieldToUI();
+
+    onTrial(`Bitmask (RMW) read — trial ${t+1}/${trials}`);
+    let t2 = performance.now(); bmRmwGuard ^= bmRmwReadPass(bmRmwArr, N); let t3 = performance.now();
+    bmRmwReadTimes.push(t3-t2);
+    await yieldToUI();
+  }
+
+  // keep the JS engine honest — guards are meaningless but "used"
+  if (soaGuard === -1 || bmGuard === -1 || bmRmwGuard === -1) console.log('unreachable');
+
+  result.bmWrite = median(bmWriteTimes);
+  result.bmRead = median(bmReadTimes);
+  result.bmRmwWrite = median(bmRmwWriteTimes);
+  result.bmRmwRead = median(bmRmwReadTimes);
+  return result;
+}
+
+function renderSizePanel(result){
+  const { N, dataType, soaWrite, soaRead, bmWrite, bmRead, bmRmwWrite, bmRmwRead, memSoA, memBitmask } = result;
+  const hasBitmask = dataType.bitwiseCapable;
+
+  function metricRow(label, entries){
+    // entries: [{name, cls, val}, ...] — val may be null (skipped variant)
+    const valid = entries.filter(e => e.val !== null);
+    const max = Math.max(...valid.map(e=>e.val), 0.0001);
+    const fastest = valid.reduce((a,b)=> a.val < b.val ? a : b);
+    const slowest = valid.reduce((a,b)=> a.val > b.val ? a : b);
+    const ratio = slowest.val / fastest.val;
+    const bars = entries.map(e => {
+      if(e.val === null){
+        return `
+          <div class="bar-line">
+            <div class="bar-name">${e.name}</div>
+            <div class="bar-track"></div>
+            <div class="bar-val" style="color:var(--text-dim);">n/a</div>
+          </div>
+        `;
+      }
+      const pct = (e.val/max*100).toFixed(1);
+      return `
+        <div class="bar-line">
+          <div class="bar-name">${e.name}</div>
+          <div class="bar-track"><div class="bar-fill ${e.cls}" style="width:${pct}%"></div></div>
+          <div class="bar-val">${fmtMs(e.val)}</div>
+        </div>
+      `;
+    }).join('');
+    const tail = valid.length > 1
+      ? `<div class="speedup">${fastest.name} is fastest here, ${ratio.toFixed(2)}× faster than ${slowest.name}</div>`
+      : `<div class="speedup" style="color:var(--text-dim);">bitmask skipped — ${dataType.label} isn't bitwise-safe</div>`;
+    return `
+      <div class="metric-row">
+        <div class="metric-label">${label} — ${fmtInt(N*8)} ops</div>
+        ${bars}
+        ${tail}
+      </div>
+    `;
+  }
+
+  const memLine = hasBitmask
+    ? `memory — SoA <b>${fmtBytes(memSoA)}</b> vs Bitmask <b>${fmtBytes(memBitmask)}</b> (${(memSoA/memBitmask).toFixed(0)}× smaller)`
+    : `memory — SoA <b>${fmtBytes(memSoA)}</b> (bitmask n/a for ${dataType.label})`;
+
+  const panel = document.createElement('div');
+  panel.className = 'size-panel';
+  panel.innerHTML = `
+    <div class="size-head">
+      <h3>N = ${fmtInt(N)} entities <span style="color:var(--text-dim);font-weight:400;">— ${dataType.label}</span></h3>
+      <div class="mem-readout">${memLine}</div>
+    </div>
+    ${metricRow('Write pass (set all 8 flags per entity)', [
+      {name:'SoA', cls:'amber', val:soaWrite},
+      {name:'Bitmask (bulk)', cls:'cyan', val:bmWrite},
+      {name:'Bitmask (RMW)', cls:'violet', val:bmRmwWrite},
+    ])}
+    ${metricRow('Read pass (get all 8 flags per entity)', [
+      {name:'SoA', cls:'amber', val:soaRead},
+      {name:'Bitmask (bulk)', cls:'cyan', val:bmRead},
+      {name:'Bitmask (RMW)', cls:'violet', val:bmRmwRead},
+    ])}
+  `;
+  document.getElementById('results').appendChild(panel);
+}
+
+function renderSummary(allResults){
+  if(!allResults.length) return;
+  const hasBitmask = allResults.every(r => r.bmWrite !== null);
+  const dt = allResults[0].dataType;
+
+  if(!hasBitmask){
+    document.getElementById('summaryText').innerHTML = `
+      <b>Summary:</b> ${dt.label} was benchmarked SoA-only — bitmask variants don't apply to float types
+      (see the note above). Switch the data type to an integer type to compare against bitmask.
+      <br><br>
+      <b>Resumen (ES):</b> ${dt.label} se corrió solo para SoA — las variantes de bitmask no aplican a tipos
+      float (ver la nota de arriba). Cambiá el tipo de dato a un entero para comparar contra bitmask.
+    `;
+    document.getElementById('summaryPanel').style.display = 'block';
+    return;
+  }
+
+  const totals = { soaWrite:0, bmWrite:0, bmRmwWrite:0, soaRead:0, bmRead:0, bmRmwRead:0 };
+  allResults.forEach(r=>{
+    totals.soaWrite += r.soaWrite; totals.bmWrite += r.bmWrite; totals.bmRmwWrite += r.bmRmwWrite;
+    totals.soaRead += r.soaRead; totals.bmRead += r.bmRead; totals.bmRmwRead += r.bmRmwRead;
+  });
+
+  function winnerOf(map){
+    const entries = Object.entries(map);
+    const [fastestName, fastestVal] = entries.reduce((a,b)=> a[1]<b[1]?a:b);
+    const [slowestName, slowestVal] = entries.reduce((a,b)=> a[1]>b[1]?a:b);
+    return { fastestName, ratio: slowestVal/fastestVal };
+  }
+
+  const write = winnerOf({SoA: totals.soaWrite, 'Bitmask (bulk)': totals.bmWrite, 'Bitmask (RMW)': totals.bmRmwWrite});
+  const read = winnerOf({SoA: totals.soaRead, 'Bitmask (bulk)': totals.bmRead, 'Bitmask (RMW)': totals.bmRmwRead});
+
+  document.getElementById('summaryText').innerHTML = `
+    <b>Summary across ${allResults.length} size(s), ${dt.label}:</b><br>
+    Writes: <b>${write.fastestName}</b> fastest overall (up to ~${write.ratio.toFixed(2)}× faster than the slowest write path).<br>
+    Reads: <b>${read.fastestName}</b> fastest overall (up to ~${read.ratio.toFixed(2)}× faster than the slowest read path).<br>
+    Memory: both bitmask variants share the same array and use <b>8× less</b> memory than SoA, regardless of data type.
+    <br><br>
+    <b>Resumen (ES), ${dt.label}:</b><br>
+    Escrituras: <b>${write.fastestName}</b> es la más rápida en general (hasta ~${write.ratio.toFixed(2)}× más rápida que la más lenta).<br>
+    Lecturas: <b>${read.fastestName}</b> es la más rápida en general (hasta ~${read.ratio.toFixed(2)}× más rápida que la más lenta).<br>
+    Memoria: ambas variantes de bitmask comparten el mismo arreglo y usan <b>8 veces menos</b> memoria que SoA, sin importar el tipo de dato.
+  `;
+  document.getElementById('summaryPanel').style.display = 'block';
+}
+
+document.getElementById('runBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('runBtn');
+  const status = document.getElementById('status');
+  const trials = parseInt(document.getElementById('trialsSelect').value, 10);
+  const dataType = TYPES[parseInt(document.getElementById('typeSelect').value, 10)];
+  const checked = [...document.querySelectorAll('#sizeChips input[type=checkbox]')]
+    .filter(c=>c.checked)
+    .map(c=>SIZES[parseInt(c.dataset.idx,10)].value)
+    .sort((a,b)=>a-b);
+
+  if(!checked.length){
+    status.textContent = 'Pick at least one size.';
+    return;
+  }
+
+  btn.disabled = true;
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('summaryPanel').style.display = 'none';
+  const allResults = [];
+
+  for(const N of checked){
+    status.innerHTML = `<span class="dot"></span> N = ${fmtInt(N)} (${dataType.label}) — starting…`;
+    await yieldToUI();
+    const result = await benchmarkSize(N, trials, dataType, (msg)=>{
+      status.innerHTML = `<span class="dot"></span> N = ${fmtInt(N)} (${dataType.label}) — ${msg}`;
+    });
+    allResults.push(result);
+    renderSizePanel(result);
+  }
+
+  status.textContent = `Done — ${checked.length} size(s) benchmarked with ${dataType.label}.`;
+  renderSummary(allResults);
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

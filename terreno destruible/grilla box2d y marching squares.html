@@ -1,0 +1,2152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marching Squares + Box2D</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #121212;
+            color: #e8e8e8;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        #app {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #sidebar {
+            width: 340px;
+            min-width: 300px;
+            max-width: 380px;
+            height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: #1e1e1e;
+            border-right: 1px solid #333;
+            padding: 14px 14px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #stage {
+            flex: 1;
+            min-width: 0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            background: #0a0a0a;
+        }
+
+        #sandbox {
+            background: #111;
+            border: 2px solid #444;
+            border-radius: 6px;
+            cursor: crosshair;
+            aspect-ratio: 16 / 9;
+            max-width: 100%;
+            max-height: 100%;
+            width: min(100%, calc((100vh - 24px) * 16 / 9));
+            height: auto;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+
+        .hint,
+        .muted {
+            font-size: 12px;
+            color: #888;
+            margin: 0;
+            line-height: 1.35;
+        }
+
+        #stats {
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            color: #a0aec0;
+            background: #161616;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px;
+            line-height: 1.4;
+        }
+
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .section h3 {
+            margin: 0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #9ae6b4;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .field.inline {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 12px;
+            user-select: none;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 4px 6px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #141414;
+            color: #fff;
+        }
+
+        button {
+            background: #2b6cb0;
+            color: white;
+            border: none;
+            padding: 7px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        button:hover {
+            background: #2c5282;
+        }
+
+        .mode-btn {
+            background: #444;
+            flex: 1;
+        }
+
+        .mode-btn.active {
+            background: #2f855a;
+        }
+
+        #debug-toggles {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        #debug-toggles label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        details.doc {
+            background: #181818;
+            border: 1px solid #2e2e2e;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+
+        details.doc summary {
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #63b3ed;
+        }
+
+        details.doc p,
+        details.doc li {
+            font-size: 12px;
+            color: #b0b0b0;
+            line-height: 1.4;
+            margin: 6px 0 0;
+        }
+
+        details.doc ul {
+            margin: 6px 0 0;
+            padding-left: 18px;
+        }
+
+        details.doc code {
+            font-size: 11px;
+            background: #222;
+            padding: 1px 4px;
+            border-radius: 3px;
+            color: #fbd38d;
+        }
+
+        .val {
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            color: #cbd5e0;
+            min-width: 2.5em;
+        }
+
+        select {
+            width: 100%;
+            padding: 6px 8px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #141414;
+            color: #fff;
+            font-size: 12px;
+        }
+
+        #simplify-field.disabled,
+        #greedy-fields.disabled,
+        #brush-size-field.disabled,
+        #brush-hardness-field.disabled,
+        #shot-fields.disabled {
+            opacity: 0.45;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <aside id="sidebar">
+            <h1>Grilla → MS → Box2D</h1>
+            <p class="hint">WASD jetpack · click izq según modo (Dibujar / Disparar / Borrar) · rueda zoom.</p>
+            <div id="stats">extracted: 0 | static: 0 | dynamic: 0</div>
+
+            <div class="section">
+                <h3>Herramientas</h3>
+                <div class="row">
+                    <button id="btn-draw" class="mode-btn active">Dibujar</button>
+                    <button id="btn-shoot" class="mode-btn">Disparar</button>
+                    <button id="btn-erase" class="mode-btn">Borrar</button>
+                </div>
+                <button id="btn-clear">Limpiar Todo</button>
+                <div class="field" id="brush-size-field">
+                    <label for="brush-size">Pincel (celdas): <span class="val" id="brush-size-val">3</span></label>
+                    <input type="range" id="brush-size" min="1" max="12" value="3">
+                </div>
+                <div class="field" id="brush-hardness-field">
+                    <label for="brush-hardness">Hardness: <span class="val" id="brush-hardness-val">0.35</span></label>
+                    <input type="range" id="brush-hardness" min="0" max="1" step="0.05" value="0.35">
+                </div>
+            </div>
+
+            <div class="section" id="shot-fields">
+                <h3>Disparo</h3>
+                <div class="field">
+                    <label for="shot-power">Poder: <span class="val" id="shot-power-val">0.40</span></label>
+                    <input type="range" id="shot-power" min="0.05" max="1" step="0.05" value="0.4">
+                </div>
+                <div class="field">
+                    <label for="shot-radius">Radio (celdas): <span class="val" id="shot-radius-val">2</span></label>
+                    <input type="range" id="shot-radius" min="0" max="8" step="1" value="2">
+                </div>
+                <div class="field">
+                    <label for="shot-falloff">Falloff: <span class="val" id="shot-falloff-val">1.0</span></label>
+                    <input type="range" id="shot-falloff" min="0" max="3" step="0.1" value="1">
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Fixtures</h3>
+                <div class="field">
+                    <label for="fixture-mode">Modo fixtures Box2D</label>
+                    <select id="fixture-mode">
+                        <option value="greedyRects" selected>Greedy rects (MS celdas)</option>
+                        <option value="contourSimplify">Contorno + simplify.js</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="threshold-slider">Umbral área (celdas²): <span class="val"
+                            id="threshold-val">80</span></label>
+                    <input type="range" id="threshold-slider" min="5" max="400" value="80">
+                </div>
+                <div class="field" id="simplify-field">
+                    <label for="simplify-tol">Tolerancia simplify (px): <span class="val"
+                            id="simplify-tol-val">3</span></label>
+                    <input type="range" id="simplify-tol" min="0" max="20" step="0.5" value="3">
+                </div>
+                <div id="greedy-fields">
+                    <div class="field">
+                        <label for="greedy-prefer">Greedy: expansión</label>
+                        <select id="greedy-prefer">
+                            <option value="maxArea" selected>Máx. área (prueba H y V)</option>
+                            <option value="horizontal">Primero horizontal</option>
+                            <option value="vertical">Primero vertical</option>
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="field">
+                            <label for="greedy-max-w">Max ancho (celdas, 0=∞): <span class="val"
+                                    id="greedy-max-w-val">0</span></label>
+                            <input type="range" id="greedy-max-w" min="0" max="80" value="0">
+                        </div>
+                        <div class="field">
+                            <label for="greedy-max-h">Max alto (celdas, 0=∞): <span class="val"
+                                    id="greedy-max-h-val">0</span></label>
+                            <input type="range" id="greedy-max-h" min="0" max="80" value="0">
+                        </div>
+                    </div>
+                    <label class="field inline">
+                        <input type="checkbox" id="greedy-include-edges" checked>
+                        Incluir fixtures de borde MS (1–14)
+                    </label>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Vista</h3>
+                <div class="field">
+                    <label for="zoom-slider">Zoom: <span class="val" id="zoom-val">1.00x</span></label>
+                    <input type="range" id="zoom-slider" min="25" max="300" value="100">
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Grilla</h3>
+                <div class="field">
+                    <label for="cell-size">Celda (px): <span class="val" id="cell-size-val">8</span></label>
+                    <input type="range" id="cell-size" min="4" max="24" value="8">
+                </div>
+                <div class="row">
+                    <div class="field">
+                        <label for="grid-cols">Cols</label>
+                        <input type="number" id="grid-cols" min="4" max="400" value="160">
+                    </div>
+                    <div class="field">
+                        <label for="grid-rows">Rows</label>
+                        <input type="number" id="grid-rows" min="4" max="250" value="100">
+                    </div>
+                </div>
+                <button id="btn-apply-grid">Aplicar grilla</button>
+                <span id="grid-preview" class="muted"></span>
+            </div>
+
+            <div class="section">
+                <h3>Debug</h3>
+                <div id="debug-toggles"></div>
+            </div>
+
+            <details class="doc" open>
+                <summary>Pipeline</summary>
+                <ol>
+                    <li>Grilla <code>Float32</code> [0,1]: nodos ≥ <code>ISO</code> (0.5) = sólido.</li>
+                    <li><b>Marching Squares</b> por celda (16 topologías + lerp geométrico según densidades) → fill /
+                        fixtures.</li>
+                    <li><b>BFS</b> agrupa nodos en islas.</li>
+                    <li><b>Green / shoelace</b> suma área de sólidos MS → si área &lt; umbral → dynamic, si no static.
+                    </li>
+                    <li>Rebuild Box2D en <b>mouseup</b> (pincel) o al instante tras disparo (kernel en grilla).</li>
+                </ol>
+            </details>
+
+            <details class="doc">
+                <summary>Polígonos Box2D</summary>
+                <p><b>Body</b> = 1 isla. <b>Fixture</b> = shape de colisión. Dos modos (select):</p>
+                <p><b>Greedy rects:</b> caso 15 → rectángulos. Parámetros: expansión H/V/máx.área, límites de tamaño,
+                    borde MS on/off. Con “máx. área” en cada semilla prueba ambas orientaciones y elige el rect más
+                    grande (evita tiras finas innecesarias).</p>
+                <p><b>Contorno + simplify:</b> cose aristas MS → separa <b>exterior y agujeros</b> →
+                    <code>simplify.js</code> → <code>earcut</code> (tris con holes) → fixtures. Si falla → greedy.
+                </p>
+                <p>Área static/dynamic = suma Green de sólidos MS (no depende del modo). Fill visual = MS por celda.</p>
+            </details>
+
+            <details class="doc">
+                <summary>Cámara / zoom / pincel</summary>
+                <ul>
+                    <li>Cámara centrada en el player, clamp al mundo.</li>
+                    <li>Zoom: slider o rueda del mouse sobre el canvas.</li>
+                    <li>Pincel: click izq en modo Dibujar/Borrar. Radio + hardness.</li>
+                    <li>Disparo: modo Disparar + click izq (mira al cursor).</li>
+                </ul>
+            </details>
+
+            <details class="doc">
+                <summary>Player</summary>
+                <ul>
+                    <li><code>A/D</code>: mover horizontal.</li>
+                    <li><code>W</code>/↑/Espacio: jetpack continuo (empuje débil arriba). <code>S</code>/↓: empuje
+                        abajo.</li>
+                    <li>Modo UI <b>Disparar</b> + click izq: ray DDA sobre grilla (primera celda density &gt; 0) → kernel daño.</li>
+                    <li>Body dynamic, <code>fixedRotation</code>, rect sin girar. Caer fuera → respawn.</li>
+                </ul>
+            </details>
+
+            <details class="doc">
+                <summary>Debug</summary>
+                <ul>
+                    <li><b>Grilla</b> — líneas de celdas.</li>
+                    <li><b>Nodos</b> — densidad 0…1 (gris); borde si ≥ ISO.</li>
+                    <li><b>Segmentos MS</b> — aristas del marching squares.</li>
+                    <li><b>Fill</b> — sólidos MS por celda.</li>
+                    <li><b>Contornos</b> — outline de islas estáticas (pre-simplify).</li>
+                    <li><b>Fixtures</b> — shapes Box2D (rects greedy o tris simplify).</li>
+                    <li><b>Centro/AABB</b> — origen y caja del body.</li>
+                    <li><b>Labels</b> — área S/D.</li>
+                </ul>
+            </details>
+        </aside>
+        <main id="stage">
+            <canvas id="sandbox" width="960" height="540"></canvas>
+        </main>
+    </div>
+
+    <script type="module">
+        import {
+            CreateWorld,
+            CreateBoxPolygon,
+            WorldStep,
+            b2Vec2,
+            b2BodyType,
+            b2DefaultWorldDef,
+            b2DefaultBodyDef,
+            b2DefaultShapeDef,
+            b2CreateBody,
+            b2DestroyBody,
+            b2DestroyWorld,
+            b2ComputeHull,
+            b2MakePolygon,
+            b2CreatePolygonShape,
+            b2Body_GetPosition,
+            b2Body_GetShapes,
+            b2Body_GetShapeCount,
+            b2Body_ComputeAABB,
+            b2Body_GetWorldPoint,
+            b2Body_GetLinearVelocity,
+            b2Body_SetLinearVelocity,
+            b2Body_SetAwake,
+            b2Shape_GetPolygon
+        } from 'https://cdn.jsdelivr.net/npm/phaser-box2d@1.1.0/dist/PhaserBox2D.min.js';
+        import simplify from 'https://cdn.jsdelivr.net/npm/simplify-js@1.2.4/+esm';
+        import earcut from 'https://cdn.jsdelivr.net/npm/earcut@2.2.4/+esm';
+
+        const canvas = document.getElementById('sandbox');
+        const ctx = canvas.getContext('2d');
+
+        const VIEW_W = 960;
+        const VIEW_H = 540;
+
+        let CELL_SIZE = 8;
+        let COLS = 160;
+        let ROWS = 100;
+        let MS_COLS = COLS - 1;
+        let MS_ROWS = ROWS - 1;
+        let worldW = COLS * CELL_SIZE;
+        let worldH = ROWS * CELL_SIZE;
+
+        const ISO = 0.5;
+        const BRUSH_STRENGTH = 0.35;
+        const FIXED_DT = 1 / 60;
+        const GRAVITY = 400;
+        const PLAYER_SPEED = 220;
+        const JETPACK_ACCEL = 900;
+        const JETPACK_MAX_UP = 180;
+        const PLAYER_HALF_W = 8;
+        const PLAYER_HALF_H = 12;
+        const SHOT_COOLDOWN = 0.12;
+
+        let grid = new Float32Array(COLS * ROWS);
+        let areaThreshold = 80;
+        /** @type {'draw'|'erase'|'shoot'} */
+        let toolMode = 'draw';
+        let isBrushing = false;
+        let isFiring = false;
+        let dirtyPhysics = false;
+        let brushRadius = 3;
+        let brushHardness = 0.35;
+        let shotPower = 0.4;
+        let shotRadius = 2;
+        let shotFalloff = 1;
+        let shotCooldown = 0;
+        let mouseClientX = 0;
+        let mouseClientY = 0;
+        /** @type {{ ox:number, oy:number, hx:number, hy:number, hit:boolean, until:number }|null} */
+        let lastShotFx = null;
+        let simplifyTol = 3;
+        let fixtureMode = 'greedyRects';
+        let greedyPrefer = 'maxArea'; // horizontal | vertical | maxArea
+        let greedyMaxW = 0; // 0 = unlimited
+        let greedyMaxH = 0;
+        let greedyIncludeEdges = true;
+        let zoom = 1;
+        let camX = 0;
+        let camY = 0;
+        let lastMeshStats = { rects: 0, edge: 0, fixtures: 0, verts: 0, simp: 0, holes: 0 };
+        let avgPhysicsMs = 0;
+        let avgRenderMs = 0;
+
+        let world = null;
+        let worldId = null;
+        let wallBodies = [];
+        let playerBodyId = null;
+        const keys = Object.create(null);
+
+        /** @type {{ bodyId: any, dynamic: boolean, area: number, contour: {x:number,y:number}[], color: string }[]} */
+        let terrainBodies = [];
+        /** @type {{ bodyId: any, dynamic: boolean, area: number, contour: {x:number,y:number}[], color: string }[]} */
+        let dynamicBodies = [];
+
+        /** Cached island debug from last rebuild */
+        let lastIslands = [];
+
+        function syncWorldSize() {
+            MS_COLS = Math.max(1, COLS - 1);
+            MS_ROWS = Math.max(1, ROWS - 1);
+            worldW = COLS * CELL_SIZE;
+            worldH = ROWS * CELL_SIZE;
+            canvas.width = VIEW_W;
+            canvas.height = VIEW_H;
+            updateGridPreview();
+        }
+
+        function updateGridPreview() {
+            const el = document.getElementById('grid-preview');
+            if (el) el.textContent = `${COLS}×${ROWS} · mundo ${worldW}×${worldH}px`;
+        }
+
+        function seedPlatform() {
+            grid.fill(0);
+            const thick = Math.max(3, Math.floor(ROWS * 0.04));
+            const y1 = ROWS - 2;
+            const y0 = Math.max(0, y1 - thick);
+            const margin = Math.max(2, Math.floor(COLS * 0.05));
+            for (let y = y0; y < y1; y++) {
+                for (let x = margin; x < COLS - margin; x++) {
+                    grid[y * COLS + x] = 1;
+                }
+            }
+            // unas plataformas extra
+            const midY = Math.floor(ROWS * 0.55);
+            for (let y = midY; y < midY + 2; y++) {
+                for (let x = Math.floor(COLS * 0.2); x < Math.floor(COLS * 0.45); x++) {
+                    grid[y * COLS + x] = 1;
+                }
+            }
+            const midY2 = Math.floor(ROWS * 0.35);
+            for (let y = midY2; y < midY2 + 2; y++) {
+                for (let x = Math.floor(COLS * 0.55); x < Math.floor(COLS * 0.8); x++) {
+                    grid[y * COLS + x] = 1;
+                }
+            }
+        }
+
+        function clamp(v, a, b) {
+            return Math.max(a, Math.min(b, v));
+        }
+
+        function updateCamera() {
+            if (playerBodyId) {
+                const pos = b2Body_GetPosition(playerBodyId);
+                camX = pos.x;
+                camY = pos.y;
+            }
+            const halfW = VIEW_W / (2 * zoom);
+            const halfH = VIEW_H / (2 * zoom);
+            if (worldW <= halfW * 2) camX = worldW / 2;
+            else camX = clamp(camX, halfW, worldW - halfW);
+            if (worldH <= halfH * 2) camY = worldH / 2;
+            else camY = clamp(camY, halfH, worldH - halfH);
+        }
+
+        function applyCameraTransform() {
+            ctx.setTransform(
+                zoom, 0, 0, zoom,
+                VIEW_W / 2 - camX * zoom,
+                VIEW_H / 2 - camY * zoom
+            );
+        }
+
+        function screenToWorld(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const sx = (clientX - rect.left) * (VIEW_W / rect.width);
+            const sy = (clientY - rect.top) * (VIEW_H / rect.height);
+            return {
+                x: camX + (sx - VIEW_W / 2) / zoom,
+                y: camY + (sy - VIEW_H / 2) / zoom
+            };
+        }
+
+        /** Celdas MS visibles (+ margen) para culling */
+        function visibleCellRange() {
+            const halfW = VIEW_W / (2 * zoom);
+            const halfH = VIEW_H / (2 * zoom);
+            const pad = CELL_SIZE * 2;
+            const minX = camX - halfW - pad;
+            const maxX = camX + halfW + pad;
+            const minY = camY - halfH - pad;
+            const maxY = camY + halfH + pad;
+            return {
+                cx0: clamp(Math.floor(minX / CELL_SIZE), 0, MS_COLS - 1),
+                cx1: clamp(Math.ceil(maxX / CELL_SIZE), 0, MS_COLS - 1),
+                cy0: clamp(Math.floor(minY / CELL_SIZE), 0, MS_ROWS - 1),
+                cy1: clamp(Math.ceil(maxY / CELL_SIZE), 0, MS_ROWS - 1),
+                nx0: clamp(Math.floor(minX / CELL_SIZE), 0, COLS - 1),
+                nx1: clamp(Math.ceil(maxX / CELL_SIZE), 0, COLS - 1),
+                ny0: clamp(Math.floor(minY / CELL_SIZE), 0, ROWS - 1),
+                ny1: clamp(Math.ceil(maxY / CELL_SIZE), 0, ROWS - 1)
+            };
+        }
+
+        const debug = {
+            grid: false,
+            nodes: false,
+            msSegs: false,
+            fill: true,
+            contours: false,
+            fixtures: false,
+            centers: false,
+            labels: false
+        };
+
+        const debugLabels = {
+            grid: 'Grilla',
+            nodes: 'Nodos densidad',
+            msSegs: 'Segmentos MS',
+            fill: 'Fill terreno',
+            contours: 'Contornos isla',
+            fixtures: 'Fixtures Box2D',
+            centers: 'Centro / AABB',
+            labels: 'Labels área'
+        };
+
+        (function buildDebugToggles() {
+            const row = document.getElementById('debug-toggles');
+            for (const key of Object.keys(debug)) {
+                const lab = document.createElement('label');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = debug[key];
+                cb.addEventListener('change', () => { debug[key] = cb.checked; });
+                lab.appendChild(cb);
+                lab.appendChild(document.createTextNode(debugLabels[key]));
+                row.appendChild(lab);
+            }
+        })();
+
+        syncWorldSize();
+        seedPlatform();
+        camX = worldW / 2;
+        camY = worldH / 2;
+
+        function node(x, y) {
+            return grid[y * COLS + x];
+        }
+
+        function interp(x0, y0, v0, x1, y1, v1) {
+            const dv = v1 - v0;
+            if (Math.abs(dv) < 1e-6) return { x: x0, y: y0 };
+            const t = (ISO - v0) / dv;
+            return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
+        }
+
+        // Edge indices: 0=top, 1=right, 2=bottom, 3=left
+        const MS_CASES = {
+            0: [], 15: [],
+            1: [[3, 2]], 14: [[3, 2]],
+            2: [[2, 1]], 13: [[2, 1]],
+            3: [[3, 1]], 12: [[3, 1]],
+            4: [[0, 1]], 11: [[0, 1]],
+            5: [[0, 3], [2, 1]],
+            6: [[0, 2]], 9: [[0, 2]],
+            7: [[0, 3]], 8: [[0, 3]],
+            10: [[0, 1], [2, 3]]
+        };
+
+        function cellCorners(cx, cy) {
+            const x0 = cx * CELL_SIZE, y0 = cy * CELL_SIZE;
+            const x1 = x0 + CELL_SIZE, y1 = y0 + CELL_SIZE;
+            const tl = node(cx, cy), tr = node(cx + 1, cy);
+            const br = node(cx + 1, cy + 1), bl = node(cx, cy + 1);
+            const a = tl >= ISO ? 1 : 0;
+            const b = tr >= ISO ? 1 : 0;
+            const c = br >= ISO ? 1 : 0;
+            const d = bl >= ISO ? 1 : 0;
+            const caseId = a * 8 + b * 4 + c * 2 + d;
+            const edges = [
+                interp(x0, y0, tl, x1, y0, tr),
+                interp(x1, y0, tr, x1, y1, br),
+                interp(x0, y1, bl, x1, y1, br),
+                interp(x0, y0, tl, x0, y1, bl)
+            ];
+            return {
+                caseId, edges,
+                TL: { x: x0, y: y0 }, TR: { x: x1, y: y0 },
+                BR: { x: x1, y: y1 }, BL: { x: x0, y: y1 },
+                tl, tr, br, bl
+            };
+        }
+
+        /** Convex solid polygons for one MS cell, tagged with solid corner nodes (for island ownership). */
+        function cellSolidParts(cx, cy) {
+            const c = cellCorners(cx, cy);
+            const { caseId, edges, TL, TR, BR, BL } = c;
+            const [T, R, B, L] = edges;
+            const nTL = { x: cx, y: cy }, nTR = { x: cx + 1, y: cy };
+            const nBR = { x: cx + 1, y: cy + 1 }, nBL = { x: cx, y: cy + 1 };
+            const part = (verts, solidNodes) => ({ verts, solidNodes });
+            switch (caseId) {
+                case 0: return [];
+                case 1: return [part([BL, B, L], [nBL])];
+                case 2: return [part([BR, R, B], [nBR])];
+                case 3: return [part([BL, BR, R, L], [nBL, nBR])];
+                case 4: return [part([TR, R, T], [nTR])];
+                case 5: return [part([TR, R, T], [nTR]), part([BL, B, L], [nBL])];
+                case 6: return [part([TR, BR, B, T], [nTR, nBR])];
+                case 7: return [part([TR, BR, BL, L, T], [nTR, nBR, nBL])];
+                case 8: return [part([TL, T, L], [nTL])];
+                case 9: return [part([TL, T, B, BL], [nTL, nBL])];
+                case 10: return [part([TL, T, L], [nTL]), part([BR, R, B], [nBR])];
+                case 11: return [part([TL, T, R, BR, BL], [nTL, nBR, nBL])];
+                case 12: return [part([TL, TR, R, L], [nTL, nTR])];
+                case 13: return [part([TL, TR, R, B, BL], [nTL, nTR, nBL])];
+                case 14: return [part([TL, TR, BR, B, L], [nTL, nTR, nBR])];
+                case 15: return [part([TL, TR, BR, BL], [nTL, nTR, nBR, nBL])];
+                default: return [];
+            }
+        }
+
+        function cellSolidPolygons(cx, cy) {
+            return cellSolidParts(cx, cy).map(p => p.verts);
+        }
+
+        function cellSegments(cx, cy) {
+            const c = cellCorners(cx, cy);
+            const segs = MS_CASES[c.caseId] || [];
+            return segs.map(([i, j]) => [c.edges[i], c.edges[j]]);
+        }
+
+        function calculatePolygonArea(vertices) {
+            if (vertices.length < 3) return 0;
+            let area = 0;
+            for (let i = 0; i < vertices.length; i++) {
+                const j = (i + 1) % vertices.length;
+                area += vertices[i].x * vertices[j].y;
+                area -= vertices[j].x * vertices[i].y;
+            }
+            return Math.abs(area) / 2;
+        }
+
+        function ptKey(p) {
+            return `${Math.round(p.x * 100) / 100},${Math.round(p.y * 100) / 100}`;
+        }
+
+        /** Stitch MS edge segments into closed loops (exterior + holes). */
+        function stitchContours(segments) {
+            if (!segments.length) return [];
+            const adj = new Map();
+            function addEdge(a, b) {
+                const ka = ptKey(a), kb = ptKey(b);
+                if (!adj.has(ka)) adj.set(ka, []);
+                if (!adj.has(kb)) adj.set(kb, []);
+                adj.get(ka).push({ key: kb, p: b });
+                adj.get(kb).push({ key: ka, p: a });
+            }
+            const points = new Map();
+            for (const [a, b] of segments) {
+                points.set(ptKey(a), a);
+                points.set(ptKey(b), b);
+                addEdge(a, b);
+            }
+
+            const used = new Set();
+            const loops = [];
+
+            for (const startKey of adj.keys()) {
+                for (const neigh of adj.get(startKey)) {
+                    const edgeId = startKey < neigh.key ? `${startKey}|${neigh.key}` : `${neigh.key}|${startKey}`;
+                    if (used.has(edgeId)) continue;
+
+                    const loop = [points.get(startKey)];
+                    let prev = startKey;
+                    let curr = neigh.key;
+                    used.add(edgeId);
+                    loop.push(points.get(curr));
+
+                    let guard = 0;
+                    while (curr !== startKey && guard++ < 10000) {
+                        const options = adj.get(curr) || [];
+                        let next = null;
+                        for (const o of options) {
+                            if (o.key === prev) continue;
+                            const eid = curr < o.key ? `${curr}|${o.key}` : `${o.key}|${curr}`;
+                            if (used.has(eid)) continue;
+                            next = o;
+                            used.add(eid);
+                            break;
+                        }
+                        if (!next) break;
+                        prev = curr;
+                        curr = next.key;
+                        if (curr !== startKey) loop.push(points.get(curr));
+                    }
+                    if (loop.length >= 3 && curr === startKey) loops.push(loop);
+                }
+            }
+            return loops;
+        }
+
+        function islandColor(i) {
+            const h = (i * 47) % 360;
+            return `hsl(${h} 80% 60%)`;
+        }
+
+        function extractIslands() {
+            // BFS sobre nodos sólidos. Polígonos MS asignados por ownership de esquinas sólidas.
+            const visited = new Uint8Array(COLS * ROWS);
+            const islands = [];
+
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    const idx = y * COLS + x;
+                    if (visited[idx] || node(x, y) < ISO) continue;
+
+                    const nodes = [];
+                    const queue = [{ x, y }];
+                    visited[idx] = 1;
+
+                    while (queue.length) {
+                        const cur = queue.shift();
+                        nodes.push(cur);
+                        const nbs = [
+                            { x: cur.x + 1, y: cur.y }, { x: cur.x - 1, y: cur.y },
+                            { x: cur.x, y: cur.y + 1 }, { x: cur.x, y: cur.y - 1 }
+                        ];
+                        for (const n of nbs) {
+                            if (n.x < 0 || n.x >= COLS || n.y < 0 || n.y >= ROWS) continue;
+                            const nIdx = n.y * COLS + n.x;
+                            if (visited[nIdx] || node(n.x, n.y) < ISO) continue;
+                            visited[nIdx] = 1;
+                            queue.push(n);
+                        }
+                    }
+
+                    const nodeSet = new Set(nodes.map(n => `${n.x},${n.y}`));
+                    const polys = [];
+                    const segments = [];
+                    const cellsMeta = [];
+
+                    for (let cy = 0; cy < MS_ROWS; cy++) {
+                        for (let cx = 0; cx < MS_COLS; cx++) {
+                            const parts = cellSolidParts(cx, cy);
+                            if (!parts.length) continue;
+                            const ownedParts = [];
+                            for (const part of parts) {
+                                const owned = part.solidNodes.every(n => nodeSet.has(`${n.x},${n.y}`));
+                                if (owned) {
+                                    polys.push(part.verts);
+                                    ownedParts.push(part);
+                                }
+                            }
+                            if (!ownedParts.length) continue;
+                            const caseId = cellCorners(cx, cy).caseId;
+                            cellsMeta.push({ cx, cy, caseId, parts: ownedParts });
+                            // Contorno: solo celdas totalmente owned (evita segs del otro lado en casos 5/10)
+                            const fullyOwned = parts.length === ownedParts.length;
+                            if (fullyOwned && caseId > 0 && caseId < 15) {
+                                for (const seg of cellSegments(cx, cy)) segments.push(seg);
+                            }
+                        }
+                    }
+
+                    let areaPx = 0;
+                    for (const poly of polys) areaPx += calculatePolygonArea(poly);
+
+                    const loops = stitchContours(segments);
+                    let contour = [];
+                    let best = 0;
+                    for (const loop of loops) {
+                        const a = calculatePolygonArea(loop);
+                        if (a > best) { best = a; contour = loop; }
+                    }
+                    // Centroide de celdas para orientar winding (sólido adentro)
+                    let cellCx = 0, cellCy = 0;
+                    if (cellsMeta.length) {
+                        for (const c of cellsMeta) {
+                            cellCx += (c.cx + 0.5) * CELL_SIZE;
+                            cellCy += (c.cy + 0.5) * CELL_SIZE;
+                        }
+                        cellCx /= cellsMeta.length;
+                        cellCy /= cellsMeta.length;
+                    }
+                    if (contour.length >= 3) {
+                        contour = orientContourSolidInside(contour, cellCx, cellCy);
+                    } else if (polys.length) {
+                        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                        for (const poly of polys) {
+                            for (const p of poly) {
+                                minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                                maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+                            }
+                        }
+                        contour = [
+                            { x: minX, y: minY }, { x: maxX, y: minY },
+                            { x: maxX, y: maxY }, { x: minX, y: maxY }
+                        ];
+                        contour = orientContourSolidInside(contour, cellCx, cellCy);
+                    }
+
+                    const areaCells = areaPx / (CELL_SIZE * CELL_SIZE);
+                    islands.push({
+                        nodes, polys, cellsMeta, contour, loops,
+                        areaPx, areaCells, cellCx, cellCy
+                    });
+                }
+            }
+            return islands;
+        }
+
+        function destroyBodyList(list) {
+            for (const b of list) {
+                try { b2DestroyBody(b.bodyId); } catch (_) { /* already gone */ }
+            }
+            list.length = 0;
+        }
+
+        function createPhysicsWorld() {
+            if (worldId) {
+                destroyBodyList(terrainBodies);
+                destroyBodyList(dynamicBodies);
+                destroyBodyList(wallBodies.map(id => ({ bodyId: id })));
+                wallBodies = [];
+                playerBodyId = null;
+                try { b2DestroyWorld(worldId); } catch (_) { /* */ }
+            }
+
+            const worldDef = b2DefaultWorldDef();
+            worldDef.gravity = new b2Vec2(0, GRAVITY);
+            world = CreateWorld({ worldDef });
+            worldId = world.worldId;
+
+            const thick = Math.max(16, CELL_SIZE);
+            const wallOpts = {
+                worldId,
+                type: b2BodyType.b2_staticBody,
+                density: 1,
+                friction: 0.6
+            };
+            const floor = CreateBoxPolygon({
+                ...wallOpts,
+                position: new b2Vec2(worldW / 2, worldH + thick / 2),
+                size: new b2Vec2(worldW / 2 + thick, thick / 2)
+            });
+            const left = CreateBoxPolygon({
+                ...wallOpts,
+                position: new b2Vec2(-thick / 2, worldH / 2),
+                size: new b2Vec2(thick / 2, worldH / 2 + thick)
+            });
+            const right = CreateBoxPolygon({
+                ...wallOpts,
+                position: new b2Vec2(worldW + thick / 2, worldH / 2),
+                size: new b2Vec2(thick / 2, worldH / 2 + thick)
+            });
+            wallBodies = [floor.bodyId, left.bodyId, right.bodyId];
+        }
+
+        function spawnPlayer() {
+            const x = worldW * 0.5;
+            const y = Math.max(PLAYER_HALF_H + 4, (ROWS - 10) * CELL_SIZE);
+            const result = CreateBoxPolygon({
+                worldId,
+                type: b2BodyType.b2_dynamicBody,
+                position: new b2Vec2(x, y),
+                size: new b2Vec2(PLAYER_HALF_W, PLAYER_HALF_H),
+                density: 1.2,
+                friction: 0.3,
+                restitution: 0,
+                fixedRotation: true
+            });
+            playerBodyId = result.bodyId;
+            b2Body_SetAwake(playerBodyId, true);
+        }
+
+        function keyDown(code) {
+            return !!keys[code];
+        }
+
+        function updatePlayer(dt) {
+            if (!playerBodyId) return;
+
+            const vel = b2Body_GetLinearVelocity(playerBodyId);
+            let vx = 0;
+            if (keyDown('KeyA') || keyDown('ArrowLeft')) vx -= PLAYER_SPEED;
+            if (keyDown('KeyD') || keyDown('ArrowRight')) vx += PLAYER_SPEED;
+
+            let vy = vel.y;
+            const thrustUp = keyDown('KeyW') || keyDown('ArrowUp') || keyDown('Space');
+            const thrustDown = keyDown('KeyS') || keyDown('ArrowDown');
+            if (thrustUp) {
+                vy -= JETPACK_ACCEL * dt;
+                if (vy < -JETPACK_MAX_UP) vy = -JETPACK_MAX_UP;
+            }
+            if (thrustDown) {
+                vy += JETPACK_ACCEL * dt;
+                if (vy > JETPACK_MAX_UP) vy = JETPACK_MAX_UP;
+            }
+
+            b2Body_SetLinearVelocity(playerBodyId, new b2Vec2(vx, vy));
+            b2Body_SetAwake(playerBodyId, true);
+
+            const pos = b2Body_GetPosition(playerBodyId);
+            if (pos.y > worldH + 100) {
+                try { b2DestroyBody(playerBodyId); } catch (_) { /* */ }
+                playerBodyId = null;
+                spawnPlayer();
+            }
+        }
+
+        function drawPlayer() {
+            if (!playerBodyId) return;
+            const pos = b2Body_GetPosition(playerBodyId);
+            const thrusting = keyDown('KeyW') || keyDown('ArrowUp') || keyDown('Space');
+            if (thrusting) {
+                ctx.fillStyle = 'rgba(255, 180, 60, 0.85)';
+                ctx.fillRect(pos.x - 4, pos.y + PLAYER_HALF_H, 8, 6 + Math.random() * 4);
+            }
+            ctx.fillStyle = '#48bb78';
+            ctx.strokeStyle = '#9ae6b4';
+            ctx.lineWidth = 2;
+            ctx.fillRect(pos.x - PLAYER_HALF_W, pos.y - PLAYER_HALF_H, PLAYER_HALF_W * 2, PLAYER_HALF_H * 2);
+            ctx.strokeRect(pos.x - PLAYER_HALF_W, pos.y - PLAYER_HALF_H, PLAYER_HALF_W * 2, PLAYER_HALF_H * 2);
+            ctx.fillStyle = '#1a202c';
+            ctx.fillRect(pos.x + 2, pos.y - 6, 3, 3);
+        }
+
+        function damageKernelAtCell(cx, cy) {
+            const R = shotRadius;
+            let changed = false;
+            if (R <= 0) {
+                if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return false;
+                const idx = cy * COLS + cx;
+                const next = clamp(grid[idx] - shotPower, 0, 1);
+                if (next !== grid[idx]) { grid[idx] = next; changed = true; }
+                return changed;
+            }
+            const rCeil = Math.ceil(R);
+            for (let dy = -rCeil; dy <= rCeil; dy++) {
+                for (let dx = -rCeil; dx <= rCeil; dx++) {
+                    const d = Math.hypot(dx, dy);
+                    if (d > R) continue;
+                    const nx = cx + dx;
+                    const ny = cy + dy;
+                    if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+                    const t = 1 - d / R;
+                    const w = Math.pow(t, shotFalloff);
+                    const idx = ny * COLS + nx;
+                    const next = clamp(grid[idx] - shotPower * w, 0, 1);
+                    if (next !== grid[idx]) { grid[idx] = next; changed = true; }
+                }
+            }
+            return changed;
+        }
+
+        /**
+         * DDA Amanatides–Woo sobre grilla. Primera celda con density > 0 = hit.
+         * point = entrada al borde de esa celda (o origen si ya estaba adentro).
+         */
+        function castRayGrid(ox, oy, dx, dy, maxDist) {
+            const missEnd = { x: ox + dx * maxDist, y: oy + dy * maxDist };
+            if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) {
+                return { hit: false, point: missEnd, gx: -1, gy: -1 };
+            }
+
+            let x = Math.floor(ox / CELL_SIZE);
+            let y = Math.floor(oy / CELL_SIZE);
+            const stepX = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+            const stepY = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+            const tDeltaX = stepX !== 0 ? Math.abs(CELL_SIZE / dx) : Infinity;
+            const tDeltaY = stepY !== 0 ? Math.abs(CELL_SIZE / dy) : Infinity;
+
+            let tMaxX = Infinity;
+            if (stepX > 0) tMaxX = ((x + 1) * CELL_SIZE - ox) / dx;
+            else if (stepX < 0) tMaxX = (x * CELL_SIZE - ox) / dx;
+
+            let tMaxY = Infinity;
+            if (stepY > 0) tMaxY = ((y + 1) * CELL_SIZE - oy) / dy;
+            else if (stepY < 0) tMaxY = (y * CELL_SIZE - oy) / dy;
+
+            let t = 0;
+            const maxSteps = COLS * ROWS + 2;
+            for (let i = 0; i < maxSteps; i++) {
+                if (x < 0 || y < 0 || x >= COLS || y >= ROWS) {
+                    return { hit: false, point: missEnd, gx: -1, gy: -1 };
+                }
+                if (grid[y * COLS + x] > 0) {
+                    return {
+                        hit: true,
+                        gx: x,
+                        gy: y,
+                        point: { x: ox + dx * t, y: oy + dy * t }
+                    };
+                }
+                if (tMaxX < tMaxY) {
+                    t = tMaxX;
+                    if (t > maxDist) break;
+                    tMaxX += tDeltaX;
+                    x += stepX;
+                } else {
+                    t = tMaxY;
+                    if (t > maxDist) break;
+                    tMaxY += tDeltaY;
+                    y += stepY;
+                }
+            }
+            return { hit: false, point: missEnd, gx: -1, gy: -1 };
+        }
+
+        function tryShoot() {
+            if (!playerBodyId) return;
+            if (shotCooldown > 0) return;
+            const pos = b2Body_GetPosition(playerBodyId);
+            const mouse = screenToWorld(mouseClientX, mouseClientY);
+            let dx = mouse.x - pos.x;
+            let dy = mouse.y - pos.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 1e-6) return;
+            const ux = dx / dist, uy = dy / dist;
+            const rayLen = Math.max(worldW, worldH) * 1.5;
+            const ox = pos.x + ux * (Math.max(PLAYER_HALF_W, PLAYER_HALF_H) + 1);
+            const oy = pos.y + uy * (Math.max(PLAYER_HALF_W, PLAYER_HALF_H) + 1);
+            const cast = castRayGrid(ox, oy, ux, uy, rayLen);
+            lastShotFx = {
+                ox, oy,
+                hx: cast.point.x, hy: cast.point.y,
+                hit: cast.hit,
+                until: performance.now() + 140
+            };
+            shotCooldown = SHOT_COOLDOWN;
+            if (!cast.hit) return;
+            if (damageKernelAtCell(cast.gx, cast.gy)) {
+                dirtyPhysics = true;
+                rebuildPhysics();
+                dirtyPhysics = false;
+            }
+        }
+
+        function drawShotFx() {
+            if (!lastShotFx) return;
+            if (performance.now() > lastShotFx.until) {
+                lastShotFx = null;
+                return;
+            }
+            ctx.strokeStyle = lastShotFx.hit ? 'rgba(255, 220, 80, 0.9)' : 'rgba(160, 180, 200, 0.5)';
+            ctx.lineWidth = Math.max(1, 2 / zoom);
+            ctx.beginPath();
+            ctx.moveTo(lastShotFx.ox, lastShotFx.oy);
+            ctx.lineTo(lastShotFx.hx, lastShotFx.hy);
+            ctx.stroke();
+            if (lastShotFx.hit) {
+                ctx.fillStyle = '#ff6b6b';
+                ctx.beginPath();
+                ctx.arc(lastShotFx.hx, lastShotFx.hy, Math.max(2, 4 / zoom), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function setToolMode(mode) {
+            toolMode = mode;
+            document.getElementById('btn-draw').classList.toggle('active', mode === 'draw');
+            document.getElementById('btn-shoot').classList.toggle('active', mode === 'shoot');
+            document.getElementById('btn-erase').classList.toggle('active', mode === 'erase');
+            const brush = mode === 'draw' || mode === 'erase';
+            document.getElementById('brush-size-field').classList.toggle('disabled', !brush);
+            document.getElementById('brush-hardness-field').classList.toggle('disabled', !brush);
+            document.getElementById('shot-fields').classList.toggle('disabled', mode !== 'shoot');
+            isFiring = false;
+            isBrushing = false;
+        }
+
+        function applyGridSettings() {
+            const cell = parseInt(document.getElementById('cell-size').value, 10);
+            let cols = parseInt(document.getElementById('grid-cols').value, 10);
+            let rows = parseInt(document.getElementById('grid-rows').value, 10);
+            CELL_SIZE = Math.max(4, Math.min(24, cell || 8));
+            COLS = Math.max(4, Math.min(400, cols || 160));
+            ROWS = Math.max(4, Math.min(250, rows || 100));
+            document.getElementById('grid-cols').value = COLS;
+            document.getElementById('grid-rows').value = ROWS;
+            document.getElementById('cell-size').value = CELL_SIZE;
+            document.getElementById('cell-size-val').textContent = CELL_SIZE;
+
+            syncWorldSize();
+            grid = new Float32Array(COLS * ROWS);
+            seedPlatform();
+            lastIslands = [];
+            lastExtractCount = 0;
+            camX = worldW / 2;
+            camY = worldH / 2;
+            createPhysicsWorld();
+            spawnPlayer();
+            rebuildPhysics();
+        }
+
+        function clearIslandFromGrid(island) {
+            for (const n of island.nodes) {
+                grid[n.y * COLS + n.x] = 0;
+            }
+        }
+
+        function cleanContour(contour) {
+            const pts = [];
+            for (const p of contour) {
+                if (!pts.length) {
+                    pts.push({ x: p.x, y: p.y });
+                    continue;
+                }
+                const prev = pts[pts.length - 1];
+                if (Math.hypot(p.x - prev.x, p.y - prev.y) < 0.05) continue;
+                pts.push({ x: p.x, y: p.y });
+            }
+            if (pts.length >= 2) {
+                const a = pts[0], b = pts[pts.length - 1];
+                if (Math.hypot(a.x - b.x, a.y - b.y) < 0.05) pts.pop();
+            }
+            return pts;
+        }
+
+        function signedArea(pts) {
+            let a = 0;
+            for (let i = 0; i < pts.length; i++) {
+                const j = (i + 1) % pts.length;
+                a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+            }
+            return a / 2;
+        }
+
+        /** Even-odd point in polygon */
+        function pointInPolygon(px, py, pts) {
+            let inside = false;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+                const xi = pts[i].x, yi = pts[i].y;
+                const xj = pts[j].x, yj = pts[j].y;
+                const intersect = ((yi > py) !== (yj > py)) &&
+                    (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-12) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        /** Asegura que el punto sólido quede dentro del contorno (corrige winding al revés). */
+        function orientContourSolidInside(contour, solidX, solidY) {
+            let pts = cleanContour(contour);
+            if (pts.length < 3) return pts;
+            if (!pointInPolygon(solidX, solidY, pts)) {
+                pts = pts.slice().reverse();
+            }
+            return pts;
+        }
+
+        function loopCentroid(pts) {
+            let cx = 0, cy = 0;
+            for (const p of pts) { cx += p.x; cy += p.y; }
+            return { x: cx / pts.length, y: cy / pts.length };
+        }
+
+        /** Exterior = loop más grande que contiene sólido. Holes = loops cuyo centroide cae dentro del exterior. */
+        function classifyLoops(loops, solidX, solidY) {
+            const minA = CELL_SIZE * CELL_SIZE * 0.05;
+            const cleaned = [];
+            for (const loop of loops || []) {
+                const pts = cleanContour(loop);
+                if (pts.length < 3) continue;
+                if (calculatePolygonArea(pts) < minA) continue;
+                cleaned.push(pts);
+            }
+            if (!cleaned.length) return { outer: [], holes: [] };
+
+            let outer = null;
+            let bestA = 0;
+            for (const loop of cleaned) {
+                const o = orientContourSolidInside(loop, solidX, solidY);
+                if (!pointInPolygon(solidX, solidY, o)) continue;
+                const a = calculatePolygonArea(o);
+                if (a > bestA) { bestA = a; outer = o; }
+            }
+            if (!outer) {
+                cleaned.sort((a, b) => calculatePolygonArea(b) - calculatePolygonArea(a));
+                outer = orientContourSolidInside(cleaned[0], solidX, solidY);
+                bestA = calculatePolygonArea(outer);
+            }
+
+            const holes = [];
+            for (const loop of cleaned) {
+                if (Math.abs(calculatePolygonArea(loop) - bestA) < 1e-6 &&
+                    Math.hypot(loopCentroid(loop).x - loopCentroid(outer).x,
+                        loopCentroid(loop).y - loopCentroid(outer).y) < 0.5) {
+                    continue;
+                }
+                const c = loopCentroid(loop);
+                if (!pointInPolygon(c.x, c.y, outer)) continue;
+                let h = cleanContour(loop);
+                if (!pointInPolygon(c.x, c.y, h)) h = h.slice().reverse();
+                // Agujero = vacío: el sólido de la isla no debe quedar dentro del ring del hole
+                if (pointInPolygon(solidX, solidY, h)) continue;
+                if (calculatePolygonArea(h) < minA) continue;
+                holes.push(h);
+            }
+            return { outer, holes };
+        }
+
+        /** earcut: flat coords + hole start indices (vertex index). */
+        function triangulateWithHoles(outer, holes) {
+            if (!outer || outer.length < 3) return [];
+            const data = [];
+            const holeIndices = [];
+            for (const p of outer) data.push(p.x, p.y);
+            for (const hole of holes) {
+                if (!hole || hole.length < 3) continue;
+                holeIndices.push(data.length / 2);
+                for (const p of hole) data.push(p.x, p.y);
+            }
+            let idx;
+            try {
+                idx = earcut(data, holeIndices.length ? holeIndices : undefined, 2);
+            } catch (_) {
+                return [];
+            }
+            if (!idx || !idx.length) return [];
+            const tris = [];
+            for (let i = 0; i < idx.length; i += 3) {
+                const a = idx[i], b = idx[i + 1], c = idx[i + 2];
+                tris.push([
+                    { x: data[a * 2], y: data[a * 2 + 1] },
+                    { x: data[b * 2], y: data[b * 2 + 1] },
+                    { x: data[c * 2], y: data[c * 2 + 1] }
+                ]);
+            }
+            return tris;
+        }
+
+        function simplifyRing(pts, tol) {
+            if (!pts || pts.length < 3) return pts || [];
+            if (!(tol > 0)) return pts;
+            let s = simplify(pts, tol, false);
+            return s.length >= 3 ? s : pts;
+        }
+
+        /** True si hay celda case-0 (vacía) dentro del exterior y fuera de holes → agujero no cosido. */
+        function hasUnstitchedEmpty(outer, holes) {
+            if (!outer || outer.length < 3) return false;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const p of outer) {
+                minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+            }
+            const cx0 = Math.max(0, Math.floor(minX / CELL_SIZE));
+            const cy0 = Math.max(0, Math.floor(minY / CELL_SIZE));
+            const cx1 = Math.min(MS_COLS - 1, Math.floor(maxX / CELL_SIZE));
+            const cy1 = Math.min(MS_ROWS - 1, Math.floor(maxY / CELL_SIZE));
+            for (let cy = cy0; cy <= cy1; cy++) {
+                for (let cx = cx0; cx <= cx1; cx++) {
+                    if (cellCorners(cx, cy).caseId !== 0) continue;
+                    const px = (cx + 0.5) * CELL_SIZE;
+                    const py = (cy + 0.5) * CELL_SIZE;
+                    if (!pointInPolygon(px, py, outer)) continue;
+                    let inHole = false;
+                    for (const h of holes) {
+                        if (pointInPolygon(px, py, h)) { inHole = true; break; }
+                    }
+                    if (!inHole) return true;
+                }
+            }
+            return false;
+        }
+
+        function pointInTri(p, a, b, c) {
+            const ax = a.x, ay = a.y;
+            const bx = b.x - ax, by = b.y - ay;
+            const cx = c.x - ax, cy = c.y - ay;
+            const px = p.x - ax, py = p.y - ay;
+            const den = bx * cy - cx * by;
+            if (Math.abs(den) < 1e-12) return false;
+            const u = (px * cy - cx * py) / den;
+            const v = (bx * py - px * by) / den;
+            return u >= -1e-9 && v >= -1e-9 && u + v <= 1 + 1e-9;
+        }
+
+        /** Ear-clip. Y-down: shoelace>0 = CW pantalla → invertir a CCW para cross>0. */
+        function triangulateContour(contour) {
+            let pts = cleanContour(contour);
+            if (pts.length < 3) return [];
+            if (signedArea(pts) > 0) pts = pts.slice().reverse();
+
+            const idx = pts.map((_, i) => i);
+            const tris = [];
+            let guard = 0;
+            while (idx.length > 3 && guard++ < 10000) {
+                let ear = -1;
+                const n = idx.length;
+                for (let i = 0; i < n; i++) {
+                    const i0 = idx[(i + n - 1) % n];
+                    const i1 = idx[i];
+                    const i2 = idx[(i + 1) % n];
+                    const a = pts[i0], b = pts[i1], c = pts[i2];
+                    const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+                    if (cross <= 0) continue;
+                    let inside = false;
+                    for (let j = 0; j < n; j++) {
+                        const k = idx[j];
+                        if (k === i0 || k === i1 || k === i2) continue;
+                        if (pointInTri(pts[k], a, b, c)) { inside = true; break; }
+                    }
+                    if (!inside) { ear = i; break; }
+                }
+                if (ear < 0) break;
+                const i0 = idx[(ear + n - 1) % n];
+                const i1 = idx[ear];
+                const i2 = idx[(ear + 1) % n];
+                tris.push([pts[i0], pts[i1], pts[i2]]);
+                idx.splice(ear, 1);
+            }
+            if (idx.length === 3) {
+                tris.push([pts[idx[0]], pts[idx[1]], pts[idx[2]]]);
+            }
+            return tris;
+        }
+
+        /** Expande rect desde (cx,cy): primary='h' ancho luego alto, primary='v' alto luego ancho. */
+        function expandRect(full, used, cx, cy, primary) {
+            const maxW = greedyMaxW > 0 ? greedyMaxW : 1e9;
+            const maxH = greedyMaxH > 0 ? greedyMaxH : 1e9;
+            let w = 1, h = 1;
+            if (primary === 'h') {
+                while (w < maxW && full.has(`${cx + w},${cy}`) && !used.has(`${cx + w},${cy}`)) w++;
+                outerH: while (h < maxH) {
+                    for (let dx = 0; dx < w; dx++) {
+                        const k = `${cx + dx},${cy + h}`;
+                        if (!full.has(k) || used.has(k)) break outerH;
+                    }
+                    h++;
+                }
+            } else {
+                while (h < maxH && full.has(`${cx},${cy + h}`) && !used.has(`${cx},${cy + h}`)) h++;
+                outerV: while (w < maxW) {
+                    for (let dy = 0; dy < h; dy++) {
+                        const k = `${cx + w},${cy + dy}`;
+                        if (!full.has(k) || used.has(k)) break outerV;
+                    }
+                    w++;
+                }
+            }
+            return { cx, cy, w, h, area: w * h };
+        }
+
+        /** Greedy meshing caso 15. maxArea prueba H y V en cada semilla (mejor rect). */
+        function greedyRectsFromCells(cellsMeta) {
+            const full = new Set();
+            for (const c of cellsMeta) {
+                if (c.caseId === 15) full.add(`${c.cx},${c.cy}`);
+            }
+            const used = new Set();
+            const rects = [];
+            const sorted = [...full].map(k => {
+                const [cx, cy] = k.split(',').map(Number);
+                return { cx, cy };
+            }).sort((a, b) => a.cy - b.cy || a.cx - b.cx);
+
+            for (const start of sorted) {
+                const key0 = `${start.cx},${start.cy}`;
+                if (used.has(key0)) continue;
+
+                let best;
+                if (greedyPrefer === 'horizontal') {
+                    best = expandRect(full, used, start.cx, start.cy, 'h');
+                } else if (greedyPrefer === 'vertical') {
+                    best = expandRect(full, used, start.cx, start.cy, 'v');
+                } else {
+                    const rh = expandRect(full, used, start.cx, start.cy, 'h');
+                    const rv = expandRect(full, used, start.cx, start.cy, 'v');
+                    best = rh.area >= rv.area ? rh : rv;
+                }
+
+                for (let dy = 0; dy < best.h; dy++) {
+                    for (let dx = 0; dx < best.w; dx++) used.add(`${best.cx + dx},${best.cy + dy}`);
+                }
+                const x0 = best.cx * CELL_SIZE;
+                const y0 = best.cy * CELL_SIZE;
+                const x1 = x0 + best.w * CELL_SIZE;
+                const y1 = y0 + best.h * CELL_SIZE;
+                rects.push([
+                    { x: x0, y: y0 }, { x: x1, y: y0 },
+                    { x: x1, y: y1 }, { x: x0, y: y1 }
+                ]);
+            }
+            return rects;
+        }
+
+        function edgePolysFromCells(cellsMeta) {
+            const polys = [];
+            for (const c of cellsMeta) {
+                if (c.caseId === 0 || c.caseId === 15) continue;
+                for (const part of c.parts) {
+                    if (part.verts.length >= 3) polys.push(part.verts);
+                }
+            }
+            return polys;
+        }
+
+        function attachFixtures(bodyId, shapeDef, polys) {
+            let n = 0;
+            for (const poly of polys) {
+                if (poly.length < 3 || poly.length > 8) continue;
+                const pos = b2Body_GetPosition(bodyId);
+                const local = poly.map(v => new b2Vec2(v.x - pos.x, v.y - pos.y));
+                const hull = b2ComputeHull(local, local.length);
+                if (!hull || hull.count < 3) continue;
+                b2CreatePolygonShape(bodyId, shapeDef, b2MakePolygon(hull, 0));
+                n++;
+            }
+            return n;
+        }
+
+        function centroidFromPolys(polys) {
+            let cx = 0, cy = 0, wSum = 0;
+            for (const poly of polys) {
+                const a = calculatePolygonArea(poly);
+                if (a < 1e-9) continue;
+                let px = 0, py = 0;
+                for (const v of poly) { px += v.x; py += v.y; }
+                px /= poly.length; py /= poly.length;
+                cx += px * a; cy += py * a; wSum += a;
+            }
+            if (wSum < 1e-9) return null;
+            return { cx: cx / wSum, cy: cy / wSum };
+        }
+
+        function buildGreedyFixtures(island) {
+            const rects = greedyRectsFromCells(island.cellsMeta || []);
+            const edges = greedyIncludeEdges ? edgePolysFromCells(island.cellsMeta || []) : [];
+            return { polys: [...rects, ...edges], rects: rects.length, edge: edges.length };
+        }
+
+        function buildContourFixtures(island) {
+            const sx = island.cellCx ?? 0;
+            const sy = island.cellCy ?? 0;
+            const rawLoops = (island.loops && island.loops.length)
+                ? island.loops
+                : (island.contour ? [island.contour] : []);
+            let { outer, holes } = classifyLoops(rawLoops, sx, sy);
+            if (!outer || outer.length < 3) {
+                const fb = buildGreedyFixtures(island);
+                return { polys: fb.polys, verts: 0, simp: 0, rects: fb.rects, edge: fb.edge, fallback: true };
+            }
+
+            // Varios loops cosidos pero ningún hole clasificado → stitch/winding dudoso → greedy
+            if (rawLoops.length > 1 && !holes.length) {
+                const fb = buildGreedyFixtures(island);
+                return { polys: fb.polys, verts: outer.length, simp: outer.length, rects: fb.rects, edge: fb.edge, fallback: true };
+            }
+
+            // Celda vacía dentro del exterior y fuera de holes → agujero no cosido → greedy
+            if (hasUnstitchedEmpty(outer, holes)) {
+                const fb = buildGreedyFixtures(island);
+                return { polys: fb.polys, verts: outer.length, simp: outer.length, rects: fb.rects, edge: fb.edge, fallback: true };
+            }
+
+            outer = orientContourSolidInside(simplifyRing(outer, simplifyTol), sx, sy);
+            holes = holes.map(h => {
+                const c = loopCentroid(h);
+                let s = simplifyRing(h, simplifyTol);
+                if (!pointInPolygon(c.x, c.y, s)) s = s.slice().reverse();
+                return s;
+            }).filter(h => h.length >= 3);
+
+            const vertsIn = outer.length + holes.reduce((n, h) => n + h.length, 0);
+            let tris = triangulateWithHoles(outer, holes);
+            // Sin holes: ear-clip local como backup si earcut vacío
+            if (!tris.length && !holes.length) tris = triangulateContour(outer);
+            if (!tris.length) {
+                const fb = buildGreedyFixtures(island);
+                return { polys: fb.polys, verts: vertsIn, simp: vertsIn, rects: fb.rects, edge: fb.edge, fallback: true };
+            }
+            return {
+                polys: tris,
+                verts: vertsIn,
+                simp: outer.length + holes.reduce((n, h) => n + h.length, 0),
+                rects: 0,
+                edge: 0,
+                fallback: false,
+                holes: holes.length
+            };
+        }
+
+        function createBodyFromIsland(island, isDynamic, color) {
+            let built;
+            if (fixtureMode === 'contourSimplify') {
+                built = buildContourFixtures(island);
+            } else {
+                built = buildGreedyFixtures(island);
+                built.verts = 0;
+                built.simp = 0;
+            }
+            const polys = built.polys;
+            if (!polys || !polys.length) return null;
+
+            const cen = centroidFromPolys(polys);
+            if (!cen) return null;
+
+            const bodyDef = b2DefaultBodyDef();
+            bodyDef.type = isDynamic ? b2BodyType.b2_dynamicBody : b2BodyType.b2_staticBody;
+            bodyDef.position = new b2Vec2(cen.cx, cen.cy);
+            const bodyId = b2CreateBody(worldId, bodyDef);
+
+            const shapeDef = b2DefaultShapeDef();
+            shapeDef.density = isDynamic ? 1 : 0;
+            shapeDef.friction = 0.5;
+            shapeDef.restitution = 0.05;
+
+            const fixtures = attachFixtures(bodyId, shapeDef, polys);
+            if (!fixtures) {
+                try { b2DestroyBody(bodyId); } catch (_) { /* */ }
+                return null;
+            }
+
+            lastMeshStats.rects += built.rects || 0;
+            lastMeshStats.edge += built.edge || 0;
+            lastMeshStats.fixtures += fixtures;
+            lastMeshStats.verts += built.verts || 0;
+            lastMeshStats.simp += built.simp || 0;
+            lastMeshStats.holes += built.holes || 0;
+
+            return {
+                bodyId,
+                dynamic: isDynamic,
+                area: island.areaCells,
+                contour: island.contour,
+                color
+            };
+        }
+
+        let lastExtractCount = 0;
+
+        function rebuildPhysics() {
+            destroyBodyList(terrainBodies);
+            lastMeshStats = { rects: 0, edge: 0, fixtures: 0, verts: 0, simp: 0, holes: 0 };
+
+            const islands = extractIslands();
+            lastExtractCount = islands.length;
+            const debugIslands = [];
+
+            for (let i = 0; i < islands.length; i++) {
+                const island = islands[i];
+                const color = islandColor(i);
+                const isDynamic = island.areaCells < areaThreshold;
+
+                if (isDynamic) {
+                    const body = createBodyFromIsland(island, true, color);
+                    if (body) dynamicBodies.push(body);
+                    clearIslandFromGrid(island);
+                } else {
+                    const body = createBodyFromIsland(island, false, color);
+                    if (body) terrainBodies.push(body);
+                    debugIslands.push(island);
+                }
+            }
+            lastIslands = debugIslands;
+            dirtyPhysics = false;
+            updateStats();
+        }
+
+        function updateStats() {
+            const s = lastMeshStats;
+            const mode = fixtureMode === 'contourSimplify' ? 'contour' : 'greedy';
+            let meshLine;
+            if (mode === 'contour') {
+                meshLine = `contour ${s.verts}→${s.simp}` +
+                    (s.holes ? ` · holes ${s.holes}` : '') +
+                    ` · fixtures ${s.fixtures} · tol ${simplifyTol}`;
+            } else {
+                meshLine = `rects ${s.rects} · edge ${s.edge} · fixtures ${s.fixtures}`;
+            }
+            const fps = avgRenderMs > 0.01 ? (1000 / Math.max(avgPhysicsMs + avgRenderMs, 0.01)) : 0;
+            document.getElementById('stats').textContent =
+                `extracted: ${lastExtractCount} | S:${terrainBodies.length} D:${dynamicBodies.length} | thr:${areaThreshold} | ${mode}\n` +
+                `${meshLine}\n` +
+                `physics: ${avgPhysicsMs.toFixed(2)}ms | render: ${avgRenderMs.toFixed(2)}ms | fps~${fps.toFixed(0)}`;
+        }
+
+        function syncModeFields() {
+            const simp = document.getElementById('simplify-field');
+            const greedy = document.getElementById('greedy-fields');
+            if (fixtureMode === 'contourSimplify') {
+                simp.classList.remove('disabled');
+                greedy.classList.add('disabled');
+            } else {
+                simp.classList.add('disabled');
+                greedy.classList.remove('disabled');
+            }
+        }
+
+        function rebuildFromModeChange() {
+            destroyBodyList(dynamicBodies);
+            rebuildPhysics();
+        }
+
+        function getWorldVerts(bodyId, shapeId) {
+            try {
+                const poly = b2Shape_GetPolygon(shapeId);
+                const count = poly.count;
+                const verts = [];
+                for (let i = 0; i < count; i++) {
+                    const w = b2Body_GetWorldPoint(bodyId, poly.vertices[i]);
+                    verts.push({ x: w.x, y: w.y });
+                }
+                return verts;
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function drawFilledTerrain() {
+            const v = visibleCellRange();
+            ctx.fillStyle = '#4a5568';
+            for (let cy = v.cy0; cy <= v.cy1; cy++) {
+                for (let cx = v.cx0; cx <= v.cx1; cx++) {
+                    for (const poly of cellSolidPolygons(cx, cy)) {
+                        ctx.beginPath();
+                        ctx.moveTo(poly[0].x, poly[0].y);
+                        for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        function drawMsSegments() {
+            const v = visibleCellRange();
+            ctx.strokeStyle = '#63b3ed';
+            ctx.lineWidth = 1.5 / zoom;
+            ctx.lineCap = 'round';
+            for (let cy = v.cy0; cy <= v.cy1; cy++) {
+                for (let cx = v.cx0; cx <= v.cx1; cx++) {
+                    for (const [a, b] of cellSegments(cx, cy)) {
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function drawGrid() {
+            const v = visibleCellRange();
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1 / zoom;
+            for (let x = v.nx0; x <= v.nx1 + 1 && x <= COLS; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * CELL_SIZE, v.ny0 * CELL_SIZE);
+                ctx.lineTo(x * CELL_SIZE, Math.min(ROWS, v.ny1 + 1) * CELL_SIZE);
+                ctx.stroke();
+            }
+            for (let y = v.ny0; y <= v.ny1 + 1 && y <= ROWS; y++) {
+                ctx.beginPath();
+                ctx.moveTo(v.nx0 * CELL_SIZE, y * CELL_SIZE);
+                ctx.lineTo(Math.min(COLS, v.nx1 + 1) * CELL_SIZE, y * CELL_SIZE);
+                ctx.stroke();
+            }
+        }
+
+        function drawNodes() {
+            const v = visibleCellRange();
+            const r = Math.max(1.5, 3 / zoom);
+            for (let y = v.ny0; y <= v.ny1; y++) {
+                for (let x = v.nx0; x <= v.nx1; x++) {
+                    const val = node(x, y);
+                    const g = Math.round(clamp(val, 0, 1) * 220);
+                    ctx.beginPath();
+                    ctx.arc(x * CELL_SIZE, y * CELL_SIZE, r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgb(${g},${g},${g})`;
+                    ctx.fill();
+                    if (val >= ISO) {
+                        ctx.strokeStyle = '#5ec8f8';
+                        ctx.lineWidth = Math.max(0.8, 1.2 / zoom);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function drawDynamicBodiesVisual() {
+            for (const b of dynamicBodies) {
+                const n = b2Body_GetShapeCount(b.bodyId);
+                const shapes = [];
+                b2Body_GetShapes(b.bodyId, shapes);
+                ctx.fillStyle = 'rgba(229, 62, 62, 0.85)';
+                ctx.strokeStyle = '#feb2b2';
+                ctx.lineWidth = 1.5;
+                for (let i = 0; i < n; i++) {
+                    const verts = getWorldVerts(b.bodyId, shapes[i]);
+                    if (verts.length < 3) continue;
+                    ctx.beginPath();
+                    ctx.moveTo(verts[0].x, verts[0].y);
+                    for (let k = 1; k < verts.length; k++) ctx.lineTo(verts[k].x, verts[k].y);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function drawFixturesDebug(list, stroke) {
+            for (const b of list) {
+                const n = b2Body_GetShapeCount(b.bodyId);
+                const shapes = [];
+                b2Body_GetShapes(b.bodyId, shapes);
+                ctx.strokeStyle = stroke || b.color || '#ffe066';
+                ctx.lineWidth = 1.5 / zoom;
+                for (let i = 0; i < n; i++) {
+                    const verts = getWorldVerts(b.bodyId, shapes[i]);
+                    if (verts.length < 3) continue;
+                    ctx.beginPath();
+                    ctx.moveTo(verts[0].x, verts[0].y);
+                    for (let k = 1; k < verts.length; k++) ctx.lineTo(verts[k].x, verts[k].y);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function drawCentersDebug(list) {
+            for (const b of list) {
+                const pos = b2Body_GetPosition(b.bodyId);
+                ctx.fillStyle = b.dynamic ? '#fc8181' : '#68d391';
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 4 / zoom, 0, Math.PI * 2);
+                ctx.fill();
+
+                try {
+                    const aabb = b2Body_ComputeAABB(b.bodyId);
+                    const minX = aabb.lowerBoundX ?? aabb.lowerBound?.x;
+                    const minY = aabb.lowerBoundY ?? aabb.lowerBound?.y;
+                    const maxX = aabb.upperBoundX ?? aabb.upperBound?.x;
+                    const maxY = aabb.upperBoundY ?? aabb.upperBound?.y;
+                    if (minX != null) {
+                        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+                        ctx.lineWidth = 1 / zoom;
+                        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+                    }
+                } catch (_) { /* */ }
+            }
+        }
+
+        function drawContoursAndLabels() {
+            for (let i = 0; i < lastIslands.length; i++) {
+                const island = lastIslands[i];
+                const color = islandColor(i);
+                if (debug.contours && island.contour.length >= 2) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(island.contour[0].x, island.contour[0].y);
+                    for (let k = 1; k < island.contour.length; k++) {
+                        ctx.lineTo(island.contour[k].x, island.contour[k].y);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                if (debug.labels && island.contour.length) {
+                    let cx = 0, cy = 0;
+                    for (const p of island.contour) { cx += p.x; cy += p.y; }
+                    cx /= island.contour.length;
+                    cy /= island.contour.length;
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '11px ui-monospace, monospace';
+                    ctx.fillText(`S ${island.areaCells.toFixed(1)}`, cx - 12, cy);
+                }
+            }
+            if (debug.labels) {
+                for (const b of dynamicBodies) {
+                    const pos = b2Body_GetPosition(b.bodyId);
+                    ctx.fillStyle = '#feb2b2';
+                    ctx.font = '11px ui-monospace, monospace';
+                    ctx.fillText(`D ${b.area.toFixed(1)}`, pos.x - 12, pos.y);
+                }
+            }
+        }
+
+        function cullFallenDynamics() {
+            for (let i = dynamicBodies.length - 1; i >= 0; i--) {
+                const b = dynamicBodies[i];
+                const pos = b2Body_GetPosition(b.bodyId);
+                if (pos.y > worldH + 80) {
+                    try { b2DestroyBody(b.bodyId); } catch (_) { /* */ }
+                    dynamicBodies.splice(i, 1);
+                }
+            }
+        }
+
+        function loop() {
+            shotCooldown = Math.max(0, shotCooldown - FIXED_DT);
+            if (isFiring && toolMode === 'shoot') tryShoot();
+            updatePlayer(FIXED_DT);
+
+            const tPhys0 = performance.now();
+            WorldStep({ worldId, deltaTime: FIXED_DT, fixedTimeStep: FIXED_DT, subStepCount: 2 });
+            const dtPhys = performance.now() - tPhys0;
+            avgPhysicsMs = avgPhysicsMs * 0.9 + dtPhys * 0.1;
+
+            cullFallenDynamics();
+            updateCamera();
+
+            const tRen0 = performance.now();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+            applyCameraTransform();
+
+            ctx.fillStyle = '#0d0d0d';
+            ctx.fillRect(0, 0, worldW, worldH);
+
+            if (debug.fill) drawFilledTerrain();
+            if (debug.grid) drawGrid();
+            if (debug.msSegs) drawMsSegments();
+            if (debug.nodes) drawNodes();
+
+            drawDynamicBodiesVisual();
+            drawPlayer();
+            drawShotFx();
+
+            if (debug.fixtures) {
+                drawFixturesDebug(terrainBodies, '#ffe066');
+                drawFixturesDebug(dynamicBodies, '#fc8181');
+            }
+            if (debug.centers) {
+                drawCentersDebug(terrainBodies);
+                drawCentersDebug(dynamicBodies);
+            }
+            if (debug.contours || debug.labels) drawContoursAndLabels();
+
+            const dtRen = performance.now() - tRen0;
+            avgRenderMs = avgRenderMs * 0.9 + dtRen * 0.1;
+            updateStats();
+
+            requestAnimationFrame(loop);
+        }
+
+        function smoothstep01(t) {
+            t = clamp(t, 0, 1);
+            return t * t * (3 - 2 * t);
+        }
+
+        function modifyGrid(e) {
+            const w = screenToWorld(e.clientX, e.clientY);
+            const targetX = Math.floor(w.x / CELL_SIZE);
+            const targetY = Math.floor(w.y / CELL_SIZE);
+            const radius = Math.max(1, brushRadius);
+            const hard = brushHardness >= 0.999;
+
+            for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    const nx = targetX + dx;
+                    const ny = targetY + dy;
+                    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > radius) continue;
+
+                    const idx = ny * COLS + nx;
+                    if (hard) {
+                        grid[idx] = toolMode === 'draw' ? 1 : 0;
+                        continue;
+                    }
+                    const d = dist / radius;
+                    const softW = 1 - smoothstep01(d);
+                    const hardW = d <= 1 ? 1 : 0;
+                    const wMask = softW * (1 - brushHardness) + hardW * brushHardness;
+                    if (wMask <= 1e-6) continue;
+                    const delta = BRUSH_STRENGTH * wMask;
+                    grid[idx] = clamp(grid[idx] + (toolMode === 'draw' ? delta : -delta), 0, 1);
+                }
+            }
+            dirtyPhysics = true;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            mouseClientX = e.clientX;
+            mouseClientY = e.clientY;
+            if (toolMode === 'shoot') {
+                isFiring = true;
+                tryShoot();
+                return;
+            }
+            isBrushing = true;
+            modifyGrid(e);
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            mouseClientX = e.clientX;
+            mouseClientY = e.clientY;
+            if (isBrushing && (toolMode === 'draw' || toolMode === 'erase')) modifyGrid(e);
+        });
+        window.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+                if (isBrushing && dirtyPhysics) rebuildPhysics();
+                isBrushing = false;
+                isFiring = false;
+                dirtyPhysics = false;
+            }
+        });
+
+        document.getElementById('btn-draw').addEventListener('click', () => setToolMode('draw'));
+        document.getElementById('btn-shoot').addEventListener('click', () => setToolMode('shoot'));
+        document.getElementById('btn-erase').addEventListener('click', () => setToolMode('erase'));
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            grid.fill(0);
+            destroyBodyList(terrainBodies);
+            destroyBodyList(dynamicBodies);
+            lastIslands = [];
+            lastExtractCount = 0;
+            dirtyPhysics = false;
+            updateStats();
+        });
+        document.getElementById('threshold-slider').addEventListener('input', (e) => {
+            areaThreshold = parseInt(e.target.value, 10);
+            document.getElementById('threshold-val').textContent = areaThreshold;
+            updateStats();
+        });
+
+        document.getElementById('brush-size').addEventListener('input', (e) => {
+            brushRadius = parseInt(e.target.value, 10);
+            document.getElementById('brush-size-val').textContent = brushRadius;
+        });
+        document.getElementById('brush-hardness').addEventListener('input', (e) => {
+            brushHardness = parseFloat(e.target.value);
+            document.getElementById('brush-hardness-val').textContent = brushHardness.toFixed(2);
+        });
+        document.getElementById('shot-power').addEventListener('input', (e) => {
+            shotPower = parseFloat(e.target.value);
+            document.getElementById('shot-power-val').textContent = shotPower.toFixed(2);
+        });
+        document.getElementById('shot-radius').addEventListener('input', (e) => {
+            shotRadius = parseInt(e.target.value, 10);
+            document.getElementById('shot-radius-val').textContent = shotRadius;
+        });
+        document.getElementById('shot-falloff').addEventListener('input', (e) => {
+            shotFalloff = parseFloat(e.target.value);
+            document.getElementById('shot-falloff-val').textContent = shotFalloff.toFixed(1);
+        });
+
+        document.getElementById('simplify-tol').addEventListener('input', (e) => {
+            simplifyTol = parseFloat(e.target.value);
+            document.getElementById('simplify-tol-val').textContent = simplifyTol;
+            updateStats();
+        });
+
+        document.getElementById('fixture-mode').addEventListener('change', (e) => {
+            fixtureMode = e.target.value;
+            syncModeFields();
+            rebuildFromModeChange();
+        });
+
+        document.getElementById('greedy-prefer').addEventListener('change', (e) => {
+            greedyPrefer = e.target.value;
+            if (fixtureMode === 'greedyRects') rebuildFromModeChange();
+        });
+        document.getElementById('greedy-max-w').addEventListener('input', (e) => {
+            greedyMaxW = parseInt(e.target.value, 10);
+            document.getElementById('greedy-max-w-val').textContent = greedyMaxW;
+            if (fixtureMode === 'greedyRects') rebuildFromModeChange();
+        });
+        document.getElementById('greedy-max-h').addEventListener('input', (e) => {
+            greedyMaxH = parseInt(e.target.value, 10);
+            document.getElementById('greedy-max-h-val').textContent = greedyMaxH;
+            if (fixtureMode === 'greedyRects') rebuildFromModeChange();
+        });
+        document.getElementById('greedy-include-edges').addEventListener('change', (e) => {
+            greedyIncludeEdges = e.target.checked;
+            if (fixtureMode === 'greedyRects') rebuildFromModeChange();
+        });
+        syncModeFields();
+
+        function setZoom(z) {
+            zoom = clamp(z, 0.25, 3);
+            document.getElementById('zoom-slider').value = Math.round(zoom * 100);
+            document.getElementById('zoom-val').textContent = zoom.toFixed(2) + 'x';
+        }
+        document.getElementById('zoom-slider').addEventListener('input', (e) => {
+            setZoom(parseInt(e.target.value, 10) / 100);
+        });
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY > 0 ? 0.9 : 1.1;
+            setZoom(zoom * factor);
+        }, { passive: false });
+
+        document.getElementById('cell-size').addEventListener('input', (e) => {
+            document.getElementById('cell-size-val').textContent = e.target.value;
+            refreshPreview();
+        });
+        function refreshPreview() {
+            const c = parseInt(document.getElementById('grid-cols').value, 10) || COLS;
+            const r = parseInt(document.getElementById('grid-rows').value, 10) || ROWS;
+            const cs = parseInt(document.getElementById('cell-size').value, 10) || CELL_SIZE;
+            document.getElementById('grid-preview').textContent =
+                `${c}×${r} · mundo ${c * cs}×${r * cs}px (aplicar)`;
+        }
+        document.getElementById('grid-cols').addEventListener('input', refreshPreview);
+        document.getElementById('grid-rows').addEventListener('input', refreshPreview);
+        document.getElementById('btn-apply-grid').addEventListener('click', applyGridSettings);
+
+        const controlCodes = new Set([
+            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+            'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space'
+        ]);
+        window.addEventListener('keydown', (e) => {
+            if (controlCodes.has(e.code)) {
+                keys[e.code] = true;
+                e.preventDefault();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (controlCodes.has(e.code)) {
+                keys[e.code] = false;
+                e.preventDefault();
+            }
+        });
+
+        syncModeFields();
+        setToolMode('draw');
+
+        createPhysicsWorld();
+        spawnPlayer();
+        rebuildPhysics();
+        loop();
+    </script>
+</body>
+</html>

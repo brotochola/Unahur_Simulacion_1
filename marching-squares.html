@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Marching Squares</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --accent: #5ec8f8;
+    --accent2: #f85e8a;
+    --accent3: #f8d75e;
+    --grid-line: rgba(255,255,255,0.08);
+    --text: #e6e8ee;
+    --muted: #9aa1b2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    gap: 14px;
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text);
+  }
+  h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 6px 0;
+    color: var(--text);
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: -8px;
+    text-align: center;
+    max-width: 680px;
+  }
+  .layout {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    max-width: 1000px;
+  }
+  canvas {
+    background: var(--panel);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    display: block;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 16px;
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    font-size: 13px;
+  }
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .row label {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+  }
+  select, input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  select {
+    background: #0f1117;
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 13px;
+  }
+  .toggles label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  button {
+    background: var(--accent);
+    color: #0f1117;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.18);
+  }
+  button:hover { filter: brightness(1.15); }
+  .hint {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  #nodeInfo {
+    color: var(--accent3);
+    font-size: 12px;
+    line-height: 1.4;
+    min-height: 32px;
+  }
+  .wide-panel {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 18px 20px;
+    width: 100%;
+    max-width: 1000px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .wide-panel p { margin: 6px 0; }
+  .wide-panel code {
+    background: rgba(255,255,255,0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .legend-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+  }
+  @media (max-width: 720px) {
+    .legend-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  .case-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .case-item canvas {
+    width: 100%;
+    aspect-ratio: 1;
+    background: #10131b;
+    border-radius: 6px;
+  }
+  .case-item span {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .case-item span.bits {
+    color: var(--accent);
+    font-family: monospace;
+    font-size: 10px;
+  }
+  details summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  ul.explain { margin: 6px 0; padding-left: 20px; }
+  ul.explain li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>Marching Squares</h1>
+<div class="sub">Campo escalar 2D generado con ruido, muestreado en una grilla. Cada celda mira sus 4 esquinas (dentro/fuera del umbral) y dibuja el segmento de contorno correspondiente a uno de los 16 casos posibles. Mové el mouse para deformar el campo, o activá el modo edición para fijar valores vos mismo/a.</div>
+
+<div class="layout">
+  <canvas id="main" width="560" height="560"></canvas>
+
+  <div class="panel">
+    <div class="row">
+      <label>Umbral (threshold) <span id="thVal">0.50</span></label>
+      <input id="threshold" type="range" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    <div class="row">
+      <label>Resolución de grilla <span id="resVal">20</span></label>
+      <input id="resolution" type="range" min="4" max="60" step="1" value="20">
+    </div>
+    <div class="row">
+      <label>Escala de ruido <span id="scaleVal">3.0</span></label>
+      <input id="scale" type="range" min="1" max="8" step="0.1" value="3.0">
+    </div>
+
+    <div class="row">
+      <label>Modo de renderizado</label>
+      <select id="renderMode">
+        <option value="lerp">Interpolado (lerp)</option>
+        <option value="texture">Texturas pregeneradas</option>
+      </select>
+    </div>
+
+    <div class="toggles">
+      <label><input type="checkbox" id="showGrid" checked> Mostrar grilla</label>
+      <label><input type="checkbox" id="showPoints" checked> Mostrar puntos (dentro/fuera)</label>
+      <label><input type="checkbox" id="showField"> Mostrar campo escalar (heatmap)</label>
+      <label><input type="checkbox" id="animate" checked> Animar campo</label>
+      <label><input type="checkbox" id="editMode"> Modo edición (click en nodos)</label>
+    </div>
+
+    <button id="reseed">Nueva semilla</button>
+    <button id="resetOverrides" class="secondary">Borrar valores manuales</button>
+
+    <div id="nodeInfo">Con "Modo edición" activo: click cerca de un nodo para asignarle un valor fijo (1 → 0.75 → 0.5 → 0.25 → 0 → automático). Los nodos manuales se ven con borde amarillo.</div>
+
+    <div class="hint">
+      Los puntos <b style="color:var(--accent)">celestes</b> están por encima del umbral (dentro), los <b style="color:var(--accent2)">rosas</b> por debajo (fuera). En modo lerp, la línea blanca se ubica proporcionalmente entre esquinas; en modo texturas, siempre pasa por el punto medio de cada arista.
+    </div>
+  </div>
+</div>
+
+<div class="wide-panel">
+  <details open>
+    <summary>Cómo funciona el algoritmo (y qué cambia entre los dos modos)</summary>
+    <ul class="explain">
+      <li><b>1. Grilla de nodos:</b> para una resolución <code>R</code> se generan <code>(R+1) × (R+1)</code> nodos. Cada nodo tiene un valor escalar (acá, ruido tipo <i>value noise</i>, más una protuberancia si el mouse está activo o un valor manual si lo editaste).</li>
+      <li><b>2. Binarización:</b> cada nodo se compara contra el umbral. Si el valor supera el umbral, el nodo es "1" (dentro); si no, es "0" (fuera).</li>
+      <li><b>3. Índice de caso:</b> cada celda tiene 4 esquinas (arriba-izq, arriba-der, abajo-der, abajo-izq). Sus 4 bits forman un número de 0 a 15 (<code>TL·8 + TR·4 + BR·2 + BL·1</code>) — el "caso" de esa celda. Hay exactamente 16 combinaciones posibles, y cada una tiene un patrón de líneas fijo predefinido (ver la leyenda abajo).</li>
+      <li><b>4. Ubicar el cruce sobre cada arista — acá difieren los dos modos:</b>
+        <ul class="explain">
+          <li><b>Interpolado (lerp):</b> mira los valores reales de los dos nodos de la arista y calcula en qué proporción exacta el umbral queda entre ellos. Da contornos suaves que siguen fielmente al campo, pero hay que recalcular geometría en cada frame.</li>
+          <li><b>Texturas pregeneradas:</b> ignora los valores reales, solo usa el patrón binario (el índice 0-15) y dibuja siempre el mismo segmento fijo, cruzando el punto medio de cada arista. Esas 16 imágenes se generan una sola vez al cargar la página; después, dibujar una celda es solo pegar (<code>drawImage</code>) la textura correspondiente escalada al tamaño de celda — mucho más barato computacionalmente, típico de motores que priorizan velocidad sobre precisión visual.</li>
+        </ul>
+      </li>
+      <li><b>5. Casos ambiguos (5 y 10):</b> son los dos casos "tablero de ajedrez", donde esquinas opuestas están dentro y las otras dos afuera. Matemáticamente hay dos formas válidas de conectar las 4 aristas activas (una silla de montar). Esta implementación siempre resuelve dibujando dos segmentos diagonales separados — una elección arbitraria pero consistente.</li>
+      <li><b>6. Edición manual:</b> te deja fijar el valor de un nodo puntual sin depender del ruido, para forzar a mano cualquiera de los 16 casos en una celda y ver exactamente qué segmento dibuja el algoritmo.</li>
+    </ul>
+  </details>
+
+  <h2 style="margin-top:14px;">Leyenda de los 16 casos</h2>
+  <div class="hint">Círculo lleno celeste = esquina "dentro" (bit 1). Círculo hueco rosa = esquina "fuera" (bit 0). El número es el índice del caso (0-15).</div>
+  <div class="legend-grid" id="legend"></div>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('main');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const thresholdEl = document.getElementById('threshold');
+  const resolutionEl = document.getElementById('resolution');
+  const scaleEl = document.getElementById('scale');
+  const thVal = document.getElementById('thVal');
+  const resVal = document.getElementById('resVal');
+  const scaleVal = document.getElementById('scaleVal');
+  const showGrid = document.getElementById('showGrid');
+  const showPoints = document.getElementById('showPoints');
+  const showField = document.getElementById('showField');
+  const animate = document.getElementById('animate');
+  const editMode = document.getElementById('editMode');
+  const renderMode = document.getElementById('renderMode');
+  const reseedBtn = document.getElementById('reseed');
+  const resetOverridesBtn = document.getElementById('resetOverrides');
+  const nodeInfo = document.getElementById('nodeInfo');
+
+  let mouse = { x: W/2, y: H/2, active: false };
+  canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - r.left) * (W / r.width);
+    mouse.y = (e.clientY - r.top) * (H / r.height);
+    mouse.active = true;
+  });
+  canvas.addEventListener('mouseleave', () => mouse.active = false);
+
+  // --- valores manuales por nodo (override del campo automático) ---
+  const overrides = new Map(); // key "i_j" -> valor fijo
+  const NODE_VALUES = [1, 0.75, 0.5, 0.25, 0];
+
+  function cycleOverride(key) {
+    if (!overrides.has(key)) {
+      overrides.set(key, NODE_VALUES[0]);
+      return NODE_VALUES[0];
+    }
+    const cur = overrides.get(key);
+    const idx = NODE_VALUES.indexOf(cur);
+    if (idx === -1 || idx === NODE_VALUES.length - 1) {
+      overrides.delete(key);
+      return 'auto';
+    }
+    const next = NODE_VALUES[idx + 1];
+    overrides.set(key, next);
+    return next;
+  }
+
+  canvas.addEventListener('click', e => {
+    if (!editMode.checked) return;
+    const r = canvas.getBoundingClientRect();
+    const mx = (e.clientX - r.left) * (W / r.width);
+    const my = (e.clientY - r.top) * (H / r.height);
+    const res = parseInt(resolutionEl.value);
+    const cell = W / res;
+    const i = Math.round(mx / cell);
+    const j = Math.round(my / cell);
+    if (i < 0 || i > res || j < 0 || j > res) return;
+    const nx = i * cell, ny = j * cell;
+    const dist = Math.hypot(mx - nx, my - ny);
+    if (dist > cell * 0.5) return; // click demasiado lejos de cualquier nodo
+    const key = i + '_' + j;
+    const result = cycleOverride(key);
+    nodeInfo.textContent = (result === 'auto')
+      ? `Nodo (${i}, ${j}) vuelto a automático (usa el ruido).`
+      : `Nodo (${i}, ${j}) fijado manualmente en ${result.toFixed(2)}.`;
+  });
+
+  resetOverridesBtn.addEventListener('click', () => {
+    overrides.clear();
+    nodeInfo.textContent = 'Todos los valores manuales fueron borrados.';
+  });
+
+  resolutionEl.addEventListener('input', () => overrides.clear());
+
+  // --- ruido simple tipo value-noise (para no depender de librerías) ---
+  let seed = Math.random() * 1000;
+  function reseed() { seed = Math.random() * 1000; }
+  reseedBtn.addEventListener('click', reseed);
+
+  function hash(x, y) {
+    const s = Math.sin(x * 127.1 + y * 311.7 + seed) * 43758.5453;
+    return s - Math.floor(s);
+  }
+  function smooth(t) { return t * t * (3 - 2 * t); }
+  function valueNoise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const a = hash(xi, yi), b = hash(xi + 1, yi);
+    const c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    const u = smooth(xf), v = smooth(yf);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+
+  let t = 0;
+  function field(x, y) {
+    // x,y normalizados 0..1
+    const s = parseFloat(scaleEl.value);
+    let n = valueNoise(x * s, y * s + t * 0.15);
+    n += valueNoise(x * s * 2 + 5.2, y * s * 2 + 1.3) * 0.5;
+    n /= 1.5;
+
+    if (mouse.active && !editMode.checked) {
+      const mx = mouse.x / W, my = mouse.y / H;
+      const dx = x - mx, dy = y - my;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      n += Math.max(0, 1 - d * 3.2) * 0.9;
+    }
+    return n;
+  }
+
+  // interpolación lineal para encontrar el punto de cruce en una arista
+  function interp(p1, v1, p2, v2, thresh) {
+    if (Math.abs(v1 - v2) < 1e-6) return p1;
+    const tt = (thresh - v1) / (v2 - v1);
+    return [p1[0] + (p2[0] - p1[0]) * tt, p1[1] + (p2[1] - p1[1]) * tt];
+  }
+
+  // tabla de casos: qué aristas conectar según el índice de 4 bits (TL,TR,BR,BL)
+  // aristas: 0=top,1=right,2=bottom,3=left
+  const CASES = {
+    0: [], 15: [],
+    1: [[3,2]], 14: [[3,2]],
+    2: [[2,1]], 13: [[2,1]],
+    3: [[3,1]], 12: [[3,1]],
+    4: [[0,1]], 11: [[0,1]],
+    5: [[0,3],[2,1]], // ambiguo, se resuelve con dos líneas
+    6: [[0,2]], 9: [[0,2]],
+    7: [[0,3]], 8: [[0,3]],
+    10: [[0,1],[2,3]] // ambiguo
+  };
+
+  // --- texturas pregeneradas: una por cada uno de los 16 casos ---
+  const TEX_SIZE = 80;
+  function buildCaseCanvas(idx) {
+    const c = document.createElement('canvas');
+    c.width = TEX_SIZE; c.height = TEX_SIZE;
+    const cx = c.getContext('2d');
+    cx.strokeStyle = '#ffffff';
+    cx.lineWidth = 6;
+    cx.lineCap = 'round';
+    const mid = TEX_SIZE / 2;
+    const edgePoints = [
+      [mid, 0],        // top
+      [TEX_SIZE, mid],  // right
+      [mid, TEX_SIZE],  // bottom
+      [0, mid]          // left
+    ];
+    const segs = CASES[idx] || [];
+    for (const [a, b] of segs) {
+      cx.beginPath();
+      cx.moveTo(edgePoints[a][0], edgePoints[a][1]);
+      cx.lineTo(edgePoints[b][0], edgePoints[b][1]);
+      cx.stroke();
+    }
+    return c;
+  }
+  const TEXTURES = [];
+  for (let i = 0; i < 16; i++) TEXTURES.push(buildCaseCanvas(i));
+
+  // --- leyenda visual de los 16 casos ---
+  function buildLegend() {
+    const legend = document.getElementById('legend');
+    for (let idx = 0; idx < 16; idx++) {
+      const item = document.createElement('div');
+      item.className = 'case-item';
+
+      const c = document.createElement('canvas');
+      c.width = TEX_SIZE; c.height = TEX_SIZE;
+      const cx = c.getContext('2d');
+      cx.drawImage(TEXTURES[idx], 0, 0);
+
+      // marcar las 4 esquinas según los bits del índice
+      const tl = (idx & 8) ? 1 : 0;
+      const tr = (idx & 4) ? 1 : 0;
+      const br = (idx & 2) ? 1 : 0;
+      const bl = (idx & 1) ? 1 : 0;
+      const corners = [
+        [6, 6, tl], [TEX_SIZE-6, 6, tr],
+        [TEX_SIZE-6, TEX_SIZE-6, br], [6, TEX_SIZE-6, bl]
+      ];
+      for (const [cx0, cy0, on] of corners) {
+        cx.beginPath();
+        cx.arc(cx0, cy0, 5, 0, Math.PI*2);
+        if (on) {
+          cx.fillStyle = '#5ec8f8';
+          cx.fill();
+        } else {
+          cx.strokeStyle = '#f85e8a';
+          cx.lineWidth = 2;
+          cx.stroke();
+        }
+      }
+
+      const label = document.createElement('span');
+      label.textContent = 'caso ' + idx;
+      const bits = document.createElement('span');
+      bits.className = 'bits';
+      bits.textContent = `${tl}${tr}${br}${bl}`;
+
+      item.appendChild(c);
+      item.appendChild(label);
+      item.appendChild(bits);
+      legend.appendChild(item);
+    }
+  }
+  buildLegend();
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    const res = parseInt(resolutionEl.value);
+    const thresh = parseFloat(thresholdEl.value);
+    thVal.textContent = thresh.toFixed(2);
+    resVal.textContent = res;
+    scaleVal.textContent = parseFloat(scaleEl.value).toFixed(1);
+
+    const cell = W / res;
+
+    // precalcular valores de campo en cada nodo de la grilla (auto o manual)
+    const vals = [];
+    for (let j = 0; j <= res; j++) {
+      const row = [];
+      for (let i = 0; i <= res; i++) {
+        const key = i + '_' + j;
+        row.push(overrides.has(key) ? overrides.get(key) : field(i / res, j / res));
+      }
+      vals.push(row);
+    }
+
+    // heatmap opcional
+    if (showField.checked) {
+      const img = ctx.createImageData(W, H);
+      const stepRes = res;
+      for (let py = 0; py < H; py++) {
+        for (let px = 0; px < W; px++) {
+          const gx = (px / W) * stepRes;
+          const gy = (py / H) * stepRes;
+          const i0 = Math.min(stepRes, Math.floor(gx));
+          const j0 = Math.min(stepRes, Math.floor(gy));
+          const v = vals[j0] ? vals[j0][i0] : 0;
+          const idx = (py * W + px) * 4;
+          const c = Math.floor(Math.max(0, Math.min(1, v)) * 255);
+          img.data[idx] = 30 + c * 0.3;
+          img.data[idx+1] = 30 + c * 0.5;
+          img.data[idx+2] = 45 + c * 0.7;
+          img.data[idx+3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+
+    // grilla
+    if (showGrid.checked) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= res; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cell, 0);
+        ctx.lineTo(i * cell, H);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * cell);
+        ctx.lineTo(W, i * cell);
+        ctx.stroke();
+      }
+    }
+
+    // marching squares: lerp o texturas pregeneradas
+    const useTexture = renderMode.value === 'texture';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+
+    for (let j = 0; j < res; j++) {
+      for (let i = 0; i < res; i++) {
+        const tl = vals[j][i], tr = vals[j][i+1];
+        const bl = vals[j+1][i], br = vals[j+1][i+1];
+
+        let idx = 0;
+        if (tl > thresh) idx |= 8;
+        if (tr > thresh) idx |= 4;
+        if (br > thresh) idx |= 2;
+        if (bl > thresh) idx |= 1;
+
+        const x0 = i * cell, y0 = j * cell;
+        const x1 = (i+1) * cell, y1 = (j+1) * cell;
+
+        if (useTexture) {
+          ctx.drawImage(TEXTURES[idx], x0, y0, cell, cell);
+        } else {
+          // puntos de cada arista (top, right, bottom, left), interpolados
+          const edgePoints = [
+            interp([x0,y0], tl, [x1,y0], tr, thresh), // top
+            interp([x1,y0], tr, [x1,y1], br, thresh), // right
+            interp([x0,y1], bl, [x1,y1], br, thresh), // bottom
+            interp([x0,y0], tl, [x0,y1], bl, thresh)  // left
+          ];
+          const segs = CASES[idx] || [];
+          for (const [a, b] of segs) {
+            ctx.beginPath();
+            ctx.moveTo(edgePoints[a][0], edgePoints[a][1]);
+            ctx.lineTo(edgePoints[b][0], edgePoints[b][1]);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // puntos de la grilla (dentro/fuera), con marca especial para overrides
+    if (showPoints.checked) {
+      for (let j = 0; j <= res; j++) {
+        for (let i = 0; i <= res; i++) {
+          const v = vals[j][i];
+          const key = i + '_' + j;
+          const isManual = overrides.has(key);
+          const px = i * cell, py = j * cell;
+
+          ctx.beginPath();
+          ctx.arc(px, py, isManual ? 5 : 3, 0, Math.PI * 2);
+          ctx.fillStyle = v > thresh ? '#5ec8f8' : '#f85e8a';
+          ctx.fill();
+
+          if (isManual) {
+            ctx.beginPath();
+            ctx.arc(px, py, 7, 0, Math.PI * 2);
+            ctx.strokeStyle = '#f8d75e';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    if (animate.checked) t += 0.006;
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack - Estrategias vs. Monte Carlo</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #22c55e;
+            --accent-blue: #3b82f6;
+            --accent-orange: #f97316;
+            --accent-purple: #a855f7;
+            --accent-red: #ef4444;
+            --border-color: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-height: 100vh;
+        }
+
+        header {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--accent-blue);
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .info-box {
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 12px 15px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .info-box b {
+            color: var(--text-main);
+        }
+
+        .panel {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .panel h3 {
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .panel h3 .tag {
+            font-size: 0.65rem;
+            font-weight: normal;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin-left: 8px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        input[type="number"],
+        select {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background-color: var(--bg-card-hover);
+        }
+
+        /* Pestañas */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            background: transparent;
+            color: var(--text-muted);
+            padding: 10px 16px;
+            border-radius: 6px 6px 0 0;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        .tab-btn.active {
+            background: var(--bg-card);
+            color: var(--accent-blue);
+        }
+
+        .tab-content {
+            display: none;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        @media (max-width: 900px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        canvas {
+            width: 100%;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat-box {
+            background: var(--bg-primary);
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-box .val {
+            font-size: 1.15rem;
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        .stat-box .val.positivo {
+            color: var(--accent-green);
+        }
+
+        .stat-box .val.negativo {
+            color: var(--accent-red);
+        }
+
+        .stat-box .lbl {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .log-box {
+            background: var(--bg-primary);
+            font-family: monospace;
+            font-size: 0.76rem;
+            padding: 10px;
+            border-radius: 4px;
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        .log-entry {
+            padding: 5px 4px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .log-entry .manos {
+            color: var(--text-main);
+        }
+
+        .log-entry .resultado {
+            display: block;
+            margin-top: 2px;
+            font-weight: bold;
+        }
+
+        .log-entry.gano .resultado {
+            color: var(--accent-green);
+        }
+
+        .log-entry.perdio .resultado {
+            color: var(--accent-red);
+        }
+
+        .log-entry.empate .resultado {
+            color: var(--text-muted);
+        }
+
+        .progress-wrap {
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            height: 22px;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-blue);
+            width: 0%;
+            transition: width 0.1s linear;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Blackjack: "Imitar al crupier" vs. Estrategia básica</h1>
+        <p>Simulación 1 · Universidad de Hurlingham · Programación de Videojuegos</p>
+    </header>
+
+    <div class="info-box">
+        <b>Idea del experimento:</b> comparar dos formas de jugar. <b>"Imitar al crupier"</b> es la estrategia más
+        simple posible:
+        pedir carta si el total es menor a 17, plantarse si es 17 o más (exactamente la regla que usa el dealer).
+        La <b>estrategia básica</b> (simplificada acá: solo pedir/plantarse, sin doblar ni dividir pares) decide según
+        la mano del
+        jugador <i>y</i> la carta visible del dealer. Un detalle interesante para el informe: con 17 "suave" (As + 6),
+        imitar al
+        crupier se planta, pero la básica indica pedir — esa única diferencia ya cambia bastante el resultado esperado.
+        Igual que con la ruleta: una <b>sesión</b> (varias manos seguidas) es una trayectoria aleatoria; <b>Monte
+            Carlo</b>
+        aparece al repetir esa sesión miles de veces y mirar la distribución de resultados.
+    </div>
+
+    <!-- Panel de configuración compartido por ambas pestañas -->
+    <div class="panel controls-grid">
+        <div class="control-group" title="Plata con la que el jugador arranca cada sesión.">
+            <label for="input-capital">Capital inicial ($)</label>
+            <input type="number" id="input-capital" value="1000" min="1" step="10">
+        </div>
+        <div class="control-group"
+            title="Apuesta fija que se juega en cada mano (acá no hay progresión tipo Martingala: siempre se apuesta lo mismo).">
+            <label for="input-apuesta">Apuesta por mano ($)</label>
+            <input type="number" id="input-apuesta" value="10" min="1" step="1">
+        </div>
+        <div class="control-group"
+            title="Cantidad de manos que se juegan seguidas dentro de UNA sesión (capa 1). No confundir con la cantidad de sesiones de Monte Carlo (capa 2).">
+            <label for="input-manos">Manos por sesión</label>
+            <input type="number" id="input-manos" value="100" min="1" step="1">
+        </div>
+        <div class="control-group" title="Cómo decide el jugador si pedir carta o plantarse en cada mano.">
+            <label for="input-estrategia">Estrategia del jugador</label>
+            <select id="input-estrategia">
+                <option value="imitar_crupier">Imitar al crupier (plantarse en 17+)</option>
+                <option value="estrategia_basica">Estrategia básica (simplificada)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Pestañas -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="tab-sesion">Sesión individual (una corrida)</button>
+        <button class="tab-btn" data-tab="tab-montecarlo">Monte Carlo (muchas corridas)</button>
+    </div>
+
+    <!-- ================= PESTAÑA 1: SESIÓN INDIVIDUAL ================= -->
+    <div id="tab-sesion" class="tab-content active">
+        <div class="panel">
+            <button id="btn-jugar-sesion">Jugar una sesión</button>
+        </div>
+        <div class="workspace">
+            <div class="panel">
+                <h3>Evolución del capital <span class="tag">mano a mano</span></h3>
+                <canvas id="canvas-sesion" width="800" height="300"></canvas>
+                <div class="stats-grid">
+                    <div class="stat-box"
+                        title="Plata que le quedó al jugador al terminar la sesión (o al momento de la quiebra).">
+                        <div class="val" id="s-capital-final">-</div>
+                        <div class="lbl">Capital final</div>
+                    </div>
+                    <div class="stat-box" title="Capital final menos capital inicial.">
+                        <div class="val" id="s-ganancia">-</div>
+                        <div class="lbl">Ganancia / Pérdida neta</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Cuántas manos ganó de las que efectivamente se jugaron en esta sesión.">
+                        <div class="val" id="s-manos-ganadas">-</div>
+                        <div class="lbl">Manos ganadas</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Sí, si en algún momento el capital no alcanzó para cubrir la apuesta por mano.">
+                        <div class="val" id="s-quiebra">-</div>
+                        <div class="lbl">¿Hubo quiebra?</div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <h3>Registro de manos <span class="tag">log</span></h3>
+                <div class="log-box" id="log-sesion"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= PESTAÑA 2: MONTE CARLO ================= -->
+    <div id="tab-montecarlo" class="tab-content">
+        <div class="panel controls-grid">
+            <div class="control-group">
+                <label for="input-num-sesiones">Cantidad de sesiones a simular</label>
+                <select id="input-num-sesiones">
+                    <option value="1000">1.000</option>
+                    <option value="10000">10.000</option>
+                    <option value="100000" selected>100.000</option>
+                    <option value="1000000">1.000.000</option>
+                </select>
+            </div>
+            <button id="btn-correr-montecarlo">Correr simulación Monte Carlo</button>
+            <button id="btn-detener-montecarlo" class="secondary" disabled>Detener</button>
+        </div>
+
+        <div class="panel">
+            <div class="progress-wrap">
+                <div class="progress-bar" id="barra-progreso">0%</div>
+            </div>
+        </div>
+
+        <div class="workspace">
+            <div class="panel">
+                <h3>Distribución de la ganancia neta al final de cada sesión <span class="tag">histograma</span></h3>
+                <canvas id="canvas-histograma" width="800" height="320"></canvas>
+            </div>
+            <div class="panel">
+                <h3>Estadísticas agregadas</h3>
+                <div class="stats-grid">
+                    <div class="stat-box" title="Cantidad total de sesiones independientes simuladas.">
+                        <div class="val" id="mc-sesiones">-</div>
+                        <div class="lbl">Sesiones simuladas</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Porcentaje de sesiones donde el capital final quedó por encima del inicial.">
+                        <div class="val" id="mc-pct-ganadoras">-</div>
+                        <div class="lbl">% de sesiones ganadoras</div>
+                    </div>
+                    <div class="stat-box" title="Promedio de la ganancia/pérdida de todas las sesiones.">
+                        <div class="val" id="mc-ganancia-media">-</div>
+                        <div class="lbl">Ganancia neta promedio</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Valor que queda en el medio al ordenar todas las ganancias netas: el resultado 'típico'.">
+                        <div class="val" id="mc-mediana">-</div>
+                        <div class="lbl">Mediana</div>
+                    </div>
+                    <div class="stat-box" title="Qué tan dispersos están los resultados respecto al promedio.">
+                        <div class="val" id="mc-desvio">-</div>
+                        <div class="lbl">Desvío estándar</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Porcentaje de sesiones en las que el jugador se quedó sin capital para cubrir la apuesta antes de terminar todas las manos.">
+                        <div class="val" id="mc-pct-quiebra">-</div>
+                        <div class="lbl">% de sesiones con quiebra</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Porcentaje de manos ganadas sobre el total de manos jugadas en TODAS las sesiones (métrica clásica de blackjack, independiente de la quiebra por sesión).">
+                        <div class="val" id="mc-pct-manos-ganadas">-</div>
+                        <div class="lbl">% de manos ganadas (global)</div>
+                    </div>
+                    <div class="stat-box"
+                        title="Ventaja estimada de la casa: cuánto pierde el jugador en promedio por cada $1 apostado, expresado en porcentaje. Se calcula como -(ganancia promedio por mano) / (apuesta por mano) × 100.">
+                        <div class="val" id="mc-ventaja-casa">-</div>
+                        <div class="lbl">Ventaja de la casa estimada</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ========================================================================
+         * 1. MODELO DE CARTAS Y MANOS
+         * ========================================================================
+         * Simplificación: se reparte "con reposición" (cada carta es independiente,
+         * como si el mazo fuera infinito). Esto evita simular el descarte/reciclado
+         * del zapato de cartas, a costa de no poder modelar conteo de cartas real
+         * (que sí depende de qué cartas ya salieron). Para comparar estrategias de
+         * juego (no de conteo) esta simplificación es suficiente.
+         */
+
+        const RANGOS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+        const PALOS = ['♠', '♥', '♦', '♣']; // solo estético, no afecta el valor de la carta
+
+        function repartirCarta() {
+            return {
+                rango: RANGOS[Math.floor(Math.random() * RANGOS.length)],
+                palo: PALOS[Math.floor(Math.random() * PALOS.length)]
+            };
+        }
+
+        // Valor numérico de una carta (As vale 11 acá; se ajusta a 1 en calcularValorMano si hace falta).
+        function valorCarta(rango) {
+            if (rango === 'A') return 11;
+            if (rango === 'J' || rango === 'Q' || rango === 'K') return 10;
+            return parseInt(rango, 10);
+        }
+
+        // Calcula el total de una mano y si es "suave" (tiene un As contando como 11).
+        function calcularValorMano(cartas) {
+            let total = 0;
+            let ases = 0;
+            for (const carta of cartas) {
+                total += valorCarta(carta.rango);
+                if (carta.rango === 'A') ases++;
+            }
+            // Mientras nos pasemos de 21 y tengamos un As contado como 11, lo bajamos a 1.
+            while (total > 21 && ases > 0) {
+                total -= 10;
+                ases--;
+            }
+            return { total, esSuave: ases > 0 };
+        }
+
+        function textoCarta(carta) {
+            return `${carta.rango}${carta.palo}`;
+        }
+
+        /**
+         * ========================================================================
+         * 2. ESTRATEGIAS DEL JUGADOR (deciden "pedir" o "plantarse")
+         * ========================================================================
+         */
+
+        // Estrategia "imitar al crupier": la regla más simple, la misma que usa el dealer.
+        function decidirImitarCrupier(total) {
+            return total >= 17 ? 'plantarse' : 'pedir';
+        }
+
+        // Estrategia básica simplificada (solo pedir/plantarse; sin doblar ni dividir pares).
+        // Basada en la tabla clásica de basic strategy, colapsando las recomendaciones de
+        // "doblar" a la decisión más parecida en espíritu (pedir una carta más).
+        function decidirEstrategiaBasica(total, esSuave, valorCartaDealer) {
+            if (esSuave) {
+                // Manos suaves (con As contando 11): As+2 hasta As+6 -> siempre pedir.
+                if (total <= 17) return 'pedir';
+                if (total === 18) {
+                    // As+7: pedir contra 9, 10 o As del dealer; plantarse contra el resto.
+                    return (valorCartaDealer >= 9) ? 'pedir' : 'plantarse';
+                }
+                return 'plantarse'; // As+8 o más (suave 19+): siempre plantarse
+            } else {
+                if (total <= 11) return 'pedir';
+                if (total === 12) {
+                    return (valorCartaDealer >= 4 && valorCartaDealer <= 6) ? 'plantarse' : 'pedir';
+                }
+                if (total >= 13 && total <= 16) {
+                    return (valorCartaDealer >= 2 && valorCartaDealer <= 6) ? 'plantarse' : 'pedir';
+                }
+                return 'plantarse'; // 17 o más: siempre plantarse
+            }
+        }
+
+        /**
+         * ========================================================================
+         * 3. MOTOR DE UNA MANO
+         * ========================================================================
+         */
+
+        const ETIQUETAS_RESULTADO = {
+            blackjack: 'Blackjack (paga 3 a 2)',
+            pierde_blackjack_dealer: 'El dealer tiene blackjack',
+            empate_blackjack: 'Empate (ambos con blackjack)',
+            se_pasa_jugador: 'Te pasaste de 21',
+            se_pasa_dealer: 'El dealer se pasó de 21',
+            gana: 'Ganaste la mano',
+            pierde: 'Perdiste la mano',
+            empate: 'Empate (push)'
+        };
+
+        function jugarManoBlackjack(estrategia, apuesta) {
+            const manoJugador = [repartirCarta(), repartirCarta()];
+            const manoDealer = [repartirCarta(), repartirCarta()];
+
+            const valorInicialJugador = calcularValorMano(manoJugador);
+            const valorInicialDealer = calcularValorMano(manoDealer);
+            const cartaVisibleDealer = valorCarta(manoDealer[0].rango); // la segunda carta del dealer queda "oculta"
+
+            const jugadorTieneBlackjack = valorInicialJugador.total === 21;
+            const dealerTieneBlackjack = valorInicialDealer.total === 21;
+
+            // Blackjack natural: se resuelve antes de que nadie pida más cartas.
+            if (jugadorTieneBlackjack || dealerTieneBlackjack) {
+                let resultado, pago;
+                if (jugadorTieneBlackjack && dealerTieneBlackjack) { resultado = 'empate_blackjack'; pago = 0; }
+                else if (jugadorTieneBlackjack) { resultado = 'blackjack'; pago = apuesta * 1.5; }
+                else { resultado = 'pierde_blackjack_dealer'; pago = -apuesta; }
+                return { cartasJugador: manoJugador, cartasDealer: manoDealer, totalJugador: valorInicialJugador.total, totalDealer: valorInicialDealer.total, resultado, pago };
+            }
+
+            // Turno del jugador: pide cartas según la estrategia elegida.
+            const cartasJugador = [...manoJugador];
+            let valorJugador = valorInicialJugador;
+            while (true) {
+                if (valorJugador.total > 21) {
+                    return { cartasJugador, cartasDealer: manoDealer, totalJugador: valorJugador.total, totalDealer: valorInicialDealer.total, resultado: 'se_pasa_jugador', pago: -apuesta };
+                }
+                const jugada = estrategia === 'imitar_crupier'
+                    ? decidirImitarCrupier(valorJugador.total)
+                    : decidirEstrategiaBasica(valorJugador.total, valorJugador.esSuave, cartaVisibleDealer);
+                if (jugada === 'plantarse') break;
+                cartasJugador.push(repartirCarta());
+                valorJugador = calcularValorMano(cartasJugador);
+            }
+
+            // Turno del dealer: pide hasta 17 (se planta en cualquier 17, sea duro o suave; simplificación "S17").
+            const cartasDealer = [...manoDealer];
+            let valorDealer = valorInicialDealer;
+            while (valorDealer.total < 17) {
+                cartasDealer.push(repartirCarta());
+                valorDealer = calcularValorMano(cartasDealer);
+            }
+
+            if (valorDealer.total > 21) {
+                return { cartasJugador, cartasDealer, totalJugador: valorJugador.total, totalDealer: valorDealer.total, resultado: 'se_pasa_dealer', pago: apuesta };
+            }
+            if (valorJugador.total > valorDealer.total) {
+                return { cartasJugador, cartasDealer, totalJugador: valorJugador.total, totalDealer: valorDealer.total, resultado: 'gana', pago: apuesta };
+            }
+            if (valorJugador.total < valorDealer.total) {
+                return { cartasJugador, cartasDealer, totalJugador: valorJugador.total, totalDealer: valorDealer.total, resultado: 'pierde', pago: -apuesta };
+            }
+            return { cartasJugador, cartasDealer, totalJugador: valorJugador.total, totalDealer: valorDealer.total, resultado: 'empate', pago: 0 };
+        }
+
+        /**
+         * ========================================================================
+         * 4. MOTOR DE UNA "SESIÓN" (VARIAS MANOS SEGUIDAS CON APUESTA FIJA)
+         * ========================================================================
+         * A diferencia de la Martingala, acá no hay progresión de apuesta: lo que
+         * varía de una sesión a otra es pura suerte de las cartas repartidas.
+         */
+
+        function jugarSesionBlackjack(config, guardarHistorial) {
+            let capital = config.capitalInicial;
+            let manosJugadas = 0;
+            let manosGanadas = 0;
+            let huboQuiebra = false;
+            const historial = guardarHistorial ? [] : null;
+
+            for (let mano = 1; mano <= config.manosPorSesion; mano++) {
+                if (capital < config.apuestaPorMano) {
+                    huboQuiebra = true;
+                    break;
+                }
+
+                const resultado = jugarManoBlackjack(config.estrategia, config.apuestaPorMano);
+                capital += resultado.pago;
+                manosJugadas++;
+                if (resultado.pago > 0) manosGanadas++;
+
+                if (guardarHistorial) {
+                    historial.push({ mano, ...resultado, capital });
+                }
+            }
+
+            return {
+                capitalFinal: capital,
+                gananciaNeta: capital - config.capitalInicial,
+                huboQuiebra,
+                manosJugadas,
+                manosGanadas,
+                historial
+            };
+        }
+
+        /**
+         * ========================================================================
+         * 5. MOTOR MONTE CARLO
+         * ========================================================================
+         * Repite la sesión N veces y agrega estadísticas sobre el conjunto de
+         * resultados, en vez de mirar una sola corrida. Se ejecuta en lotes con
+         * setTimeout para no congelar la interfaz.
+         */
+
+        const TAMANIO_LOTE = 5000; // sesiones simuladas por "tick" de la interfaz
+
+        function ejecutarMonteCarlo(config, numSesiones, onProgreso, onFinalizado) {
+            const ganancias = new Float64Array(numSesiones);
+            let quiebras = 0;
+            let sesionesGanadoras = 0;
+            let sumaManosJugadas = 0;
+            let sumaManosGanadas = 0;
+            let i = 0;
+            let detenido = false;
+
+            function procesarLote() {
+                if (detenido) return;
+
+                const limite = Math.min(i + TAMANIO_LOTE, numSesiones);
+                for (; i < limite; i++) {
+                    const resultado = jugarSesionBlackjack(config, false); // sin historial: más rápido y liviano
+                    ganancias[i] = resultado.gananciaNeta;
+                    if (resultado.huboQuiebra) quiebras++;
+                    if (resultado.gananciaNeta > 0) sesionesGanadoras++;
+                    sumaManosJugadas += resultado.manosJugadas;
+                    sumaManosGanadas += resultado.manosGanadas;
+                }
+
+                onProgreso(i, numSesiones);
+
+                if (i < numSesiones) {
+                    setTimeout(procesarLote, 0);
+                } else {
+                    onFinalizado({ ganancias, quiebras, sesionesGanadoras, sumaManosJugadas, sumaManosGanadas });
+                }
+            }
+
+            procesarLote();
+
+            return () => { detenido = true; }; // permite cancelar desde afuera
+        }
+
+        /**
+         * ========================================================================
+         * 6. ESTADÍSTICA SOBRE LOS RESULTADOS DE MONTE CARLO
+         * ========================================================================
+         */
+
+        function calcularEstadisticas(ganancias) {
+            const n = ganancias.length;
+            const copiaOrdenada = Float64Array.from(ganancias).sort();
+
+            let suma = 0;
+            for (let i = 0; i < n; i++) suma += ganancias[i];
+            const media = suma / n;
+
+            let sumaCuadrados = 0;
+            for (let i = 0; i < n; i++) sumaCuadrados += (ganancias[i] - media) ** 2;
+            const desvioEstandar = Math.sqrt(sumaCuadrados / n);
+
+            const percentil = p => copiaOrdenada[Math.floor(p * (n - 1))];
+
+            return { media, mediana: percentil(0.5), desvioEstandar };
+        }
+
+        /**
+         * ========================================================================
+         * 7. DIBUJO EN CANVAS (SIN LIBRERÍAS EXTERNAS)
+         * ========================================================================
+         */
+
+        function limpiarCanvas(ctx, canvas) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function dibujarGraficoCapital(canvas, historial, capitalInicial) {
+            const ctx = canvas.getContext('2d');
+            limpiarCanvas(ctx, canvas);
+
+            const margen = 40;
+            const anchoUtil = canvas.width - margen * 2;
+            const altoUtil = canvas.height - margen * 2;
+
+            const capitales = [capitalInicial, ...historial.map(h => h.capital)];
+            const minCap = Math.min(...capitales);
+            const maxCap = Math.max(...capitales);
+            const rango = (maxCap - minCap) || 1;
+
+            const x = i => margen + (i / (capitales.length - 1)) * anchoUtil;
+            const y = valor => margen + altoUtil - ((valor - minCap) / rango) * altoUtil;
+
+            ctx.strokeStyle = '#334155';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(margen, y(capitalInicial));
+            ctx.lineTo(canvas.width - margen, y(capitalInicial));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            capitales.forEach((c, i) => { i === 0 ? ctx.moveTo(x(i), y(c)) : ctx.lineTo(x(i), y(c)); });
+            ctx.stroke();
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '11px monospace';
+            ctx.fillText(`$${maxCap.toFixed(0)}`, 4, y(maxCap) + 4);
+            ctx.fillText(`$${minCap.toFixed(0)}`, 4, y(minCap) + 4);
+        }
+
+        function dibujarHistograma(canvas, ganancias, numBins) {
+            const ctx = canvas.getContext('2d');
+            limpiarCanvas(ctx, canvas);
+
+            const margen = 40;
+            const anchoUtil = canvas.width - margen * 2;
+            const altoUtil = canvas.height - margen * 2;
+
+            let minVal = Infinity, maxVal = -Infinity;
+            for (let i = 0; i < ganancias.length; i++) {
+                if (ganancias[i] < minVal) minVal = ganancias[i];
+                if (ganancias[i] > maxVal) maxVal = ganancias[i];
+            }
+            if (minVal === maxVal) { minVal -= 1; maxVal += 1; }
+
+            const anchoBin = (maxVal - minVal) / numBins;
+            const bins = new Array(numBins).fill(0);
+            for (let i = 0; i < ganancias.length; i++) {
+                let indice = Math.floor((ganancias[i] - minVal) / anchoBin);
+                if (indice >= numBins) indice = numBins - 1;
+                if (indice < 0) indice = 0;
+                bins[indice]++;
+            }
+
+            const maxFrecuencia = Math.max(...bins);
+            const anchoBarra = anchoUtil / numBins;
+            const indiceCero = Math.floor((0 - minVal) / anchoBin);
+
+            bins.forEach((frecuencia, i) => {
+                const alturaBarra = (frecuencia / maxFrecuencia) * altoUtil;
+                const xBarra = margen + i * anchoBarra;
+                const yBarra = margen + altoUtil - alturaBarra;
+                const inicioBin = minVal + i * anchoBin;
+                ctx.fillStyle = inicioBin >= 0 ? 'rgba(34, 197, 94, 0.75)' : 'rgba(239, 68, 68, 0.75)';
+                ctx.fillRect(xBarra, yBarra, Math.max(anchoBarra - 1, 1), alturaBarra);
+            });
+
+            ctx.strokeStyle = '#f8fafc';
+            ctx.beginPath();
+            const xCero = margen + indiceCero * anchoBarra;
+            ctx.moveTo(xCero, margen);
+            ctx.lineTo(xCero, margen + altoUtil);
+            ctx.stroke();
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '11px monospace';
+            ctx.fillText(`$${minVal.toFixed(0)}`, margen, canvas.height - 8);
+            ctx.fillText(`$${maxVal.toFixed(0)}`, canvas.width - margen - 40, canvas.height - 8);
+            ctx.fillText('0', xCero - 3, margen - 6);
+        }
+
+        /**
+         * ========================================================================
+         * 8. LECTURA DE CONFIGURACIÓN E INTERFAZ
+         * ========================================================================
+         */
+
+        function leerConfiguracion() {
+            return {
+                capitalInicial: parseFloat(document.getElementById('input-capital').value) || 1000,
+                apuestaPorMano: parseFloat(document.getElementById('input-apuesta').value) || 10,
+                manosPorSesion: parseInt(document.getElementById('input-manos').value) || 100,
+                estrategia: document.getElementById('input-estrategia').value
+            };
+        }
+
+        // --- Pestañas ---
+        document.querySelectorAll('.tab-btn').forEach(boton => {
+            boton.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                boton.classList.add('active');
+                document.getElementById(boton.dataset.tab).classList.add('active');
+            });
+        });
+
+        // --- Pestaña 1: sesión individual ---
+        document.getElementById('btn-jugar-sesion').addEventListener('click', () => {
+            const config = leerConfiguracion();
+            const resultado = jugarSesionBlackjack(config, true);
+
+            dibujarGraficoCapital(document.getElementById('canvas-sesion'), resultado.historial, config.capitalInicial);
+
+            const elGanancia = document.getElementById('s-ganancia');
+            elGanancia.innerText = `${resultado.gananciaNeta >= 0 ? '+' : ''}$${resultado.gananciaNeta.toFixed(2)}`;
+            elGanancia.className = 'val ' + (resultado.gananciaNeta >= 0 ? 'positivo' : 'negativo');
+
+            document.getElementById('s-capital-final').innerText = `$${resultado.capitalFinal.toFixed(2)}`;
+            document.getElementById('s-manos-ganadas').innerText = `${resultado.manosGanadas} / ${resultado.manosJugadas}`;
+            document.getElementById('s-quiebra').innerText = resultado.huboQuiebra ? 'Sí' : 'No';
+
+            const logDiv = document.getElementById('log-sesion');
+            logDiv.innerHTML = resultado.historial
+                .slice()
+                .reverse()
+                .map(h => {
+                    const claseResultado = h.pago > 0 ? 'gano' : (h.pago < 0 ? 'perdio' : 'empate');
+                    return `<div class="log-entry ${claseResultado}">
+                <span class="manos">#${h.mano} · Vos: [${h.cartasJugador.map(textoCarta).join(' ')}] = ${h.totalJugador}
+                &nbsp;|&nbsp; Dealer: [${h.cartasDealer.map(textoCarta).join(' ')}] = ${h.totalDealer}</span>
+                <span class="resultado">${ETIQUETAS_RESULTADO[h.resultado]} ${h.pago >= 0 ? '+' : ''}$${h.pago.toFixed(2)} → capital $${h.capital.toFixed(2)}</span>
+            </div>`;
+                })
+                .join('');
+        });
+
+        // --- Pestaña 2: Monte Carlo ---
+        let cancelarSimulacionActual = null;
+
+        document.getElementById('btn-correr-montecarlo').addEventListener('click', () => {
+            const config = leerConfiguracion();
+            const numSesiones = parseInt(document.getElementById('input-num-sesiones').value);
+
+            const btnCorrer = document.getElementById('btn-correr-montecarlo');
+            const btnDetener = document.getElementById('btn-detener-montecarlo');
+            btnCorrer.disabled = true;
+            btnDetener.disabled = false;
+
+            const barra = document.getElementById('barra-progreso');
+            barra.style.width = '0%';
+            barra.innerText = '0%';
+
+            cancelarSimulacionActual = ejecutarMonteCarlo(
+                config,
+                numSesiones,
+                (hechas, total) => {
+                    const pct = ((hechas / total) * 100).toFixed(0);
+                    barra.style.width = pct + '%';
+                    barra.innerText = `${pct}% (${hechas.toLocaleString('es-AR')} / ${total.toLocaleString('es-AR')})`;
+                },
+                (resultado) => {
+                    btnCorrer.disabled = false;
+                    btnDetener.disabled = true;
+
+                    const stats = calcularEstadisticas(resultado.ganancias);
+                    dibujarHistograma(document.getElementById('canvas-histograma'), resultado.ganancias, 40);
+
+                    document.getElementById('mc-sesiones').innerText = numSesiones.toLocaleString('es-AR');
+
+                    const pctGanadoras = (resultado.sesionesGanadoras / numSesiones) * 100;
+                    document.getElementById('mc-pct-ganadoras').innerText = `${pctGanadoras.toFixed(1)}%`;
+
+                    const elMedia = document.getElementById('mc-ganancia-media');
+                    elMedia.innerText = `${stats.media >= 0 ? '+' : ''}$${stats.media.toFixed(2)}`;
+                    elMedia.className = 'val ' + (stats.media >= 0 ? 'positivo' : 'negativo');
+
+                    document.getElementById('mc-mediana').innerText = `${stats.mediana >= 0 ? '+' : ''}$${stats.mediana.toFixed(2)}`;
+                    document.getElementById('mc-desvio').innerText = `$${stats.desvioEstandar.toFixed(2)}`;
+
+                    const pctQuiebra = (resultado.quiebras / numSesiones) * 100;
+                    document.getElementById('mc-pct-quiebra').innerText = `${pctQuiebra.toFixed(2)}%`;
+
+                    const pctManosGanadas = (resultado.sumaManosGanadas / resultado.sumaManosJugadas) * 100;
+                    document.getElementById('mc-pct-manos-ganadas').innerText = `${pctManosGanadas.toFixed(2)}%`;
+
+                    // Ventaja de la casa: cuánto pierde el jugador en promedio por cada $1 apostado.
+                    const gananciaPromedioPorMano = (stats.media * numSesiones) / resultado.sumaManosJugadas;
+                    const ventajaCasa = -(gananciaPromedioPorMano / config.apuestaPorMano) * 100;
+                    const elVentaja = document.getElementById('mc-ventaja-casa');
+                    elVentaja.innerText = `${ventajaCasa.toFixed(2)}%`;
+                    elVentaja.className = 'val ' + (ventajaCasa >= 0 ? 'negativo' : 'positivo');
+                }
+            );
+        });
+
+        document.getElementById('btn-detener-montecarlo').addEventListener('click', () => {
+            if (cancelarSimulacionActual) cancelarSimulacionActual();
+            document.getElementById('btn-correr-montecarlo').disabled = false;
+            document.getElementById('btn-detener-montecarlo').disabled = true;
+        });
+    </script>
+</body>
+</html>

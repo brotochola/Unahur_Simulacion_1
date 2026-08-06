@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulador de Comunidad 3000 AC</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface-1: #1a2332;
+      --surface-2: #243044;
+      --text-primary: #e7ecf3;
+      --text-secondary: #9aa8bc;
+      --text-muted: #6b7a90;
+      --text-danger: #f07178;
+      --fill-warning: #ffb454;
+      --fill-accent: #59c2ff;
+      --fill-success: #7fd962;
+      --radius: 10px;
+    }
+
+    body {
+      margin: 0;
+      padding: 1.25rem;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+    }
+
+    .layout {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .col-map {
+      flex: 0 0 auto;
+    }
+
+    .col-info {
+      flex: 1;
+      min-width: 300px;
+    }
+
+    #map-container canvas {
+      border-radius: var(--radius);
+      border: 2px solid var(--surface-2);
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+
+    button,
+    select {
+      background: var(--surface-2);
+      color: var(--text-primary);
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: #2d3b52;
+    }
+
+    #stats-bar {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 14px;
+      background: var(--surface-1);
+      padding: 10px;
+      border-radius: var(--radius);
+      margin-bottom: 1rem;
+    }
+
+    #stats-bar span {
+      color: var(--text-secondary);
+    }
+
+    #stats-bar strong {
+      color: var(--text-primary);
+      margin-left: 4px;
+    }
+
+    #log {
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--surface-1);
+      padding: 10px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ev-muerte {
+      color: var(--text-danger);
+      font-weight: bold;
+    }
+
+    .ev-nacimiento {
+      color: #ff8fb3;
+    }
+
+    .ev-bueno {
+      color: var(--fill-success);
+    }
+
+    .ev-malo {
+      color: var(--fill-warning);
+    }
+
+    .ev-intimo {
+      color: #c792ea;
+    }
+
+    .ev-pareja {
+      color: #ff69b4;
+      font-weight: bold;
+    }
+
+    .ev-amor {
+      color: #ff1493;
+    }
+
+    #people {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--surface-1);
+      border-radius: var(--radius);
+      padding: 10px;
+      font-size: 12px;
+    }
+
+    .card-name {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .bar-bg {
+      flex: 1;
+      height: 4px;
+      background: var(--surface-2);
+      border-radius: 4px;
+      margin: 0 8px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+    }
+
+    .trait-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .social-matrix-wrap {
+      flex: 1;
+      width: 100%;
+      overflow: auto;
+      background: #131922;
+    }
+    .social-matrix {
+      border-collapse: collapse;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .social-matrix th, .social-matrix td {
+      border: 1px solid #243044;
+      padding: 4px 6px;
+      text-align: center;
+      min-width: 72px;
+    }
+    .social-matrix thead th, .social-matrix tbody th {
+      position: sticky;
+      background: #1a2230;
+      color: var(--text-primary);
+      z-index: 2;
+      font-weight: 600;
+    }
+    .social-matrix thead th {
+      top: 0;
+    }
+    .social-matrix tbody th {
+      left: 0;
+      text-align: left;
+      z-index: 1;
+    }
+    .social-matrix thead th:first-child {
+      left: 0;
+      z-index: 3;
+    }
+    .social-matrix td {
+      color: #e8eef7;
+      font-variant-numeric: tabular-nums;
+    }
+    .social-diag {
+      background: #0d1218 !important;
+      color: var(--text-muted);
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+  <script src="src/SeededRandom.js"></script>
+  <script src="src/SimplexNoise.js"></script>
+  <script src="src/MinHeap.js"></script>
+  <script src="src/Constants.js"></script>
+  <script src="src/Person.js"></script>
+  <script src="src/Map.js"></script>
+  <script src="src/Housing.js"></script>
+  <script src="src/ActionSystem.js"></script>
+  <script src="src/Events.js"></script>
+  <script src="src/SimulationEvents.js"></script>
+  <script src="src/Simulation.js"></script>
+  <script src="src/SocialGraph.js"></script>
+</head>
+<body>
+  <div id="setup-overlay" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,20,25,0.95); z-index:100; display:flex; justify-content:center; align-items:center;">
+    <div style="background:var(--surface-1); padding:2rem; border-radius:var(--radius); border:2px solid var(--surface-2); text-align:center;">
+      <h2 style="margin-top:0;">Configuración Inicial</h2>
+      <div style="margin-bottom: 1rem; display:flex; justify-content:space-between; align-items:center; gap:20px;">
+        <label>Semilla (Seed):</label>
+        <input type="number" id="setup-seed" value="12345" style="width:100px; padding:0.5rem; background:var(--surface-2); color:white; border:1px solid #334155; border-radius:5px;">
+      </div>
+      <div style="margin-bottom: 2rem; display:flex; justify-content:space-between; align-items:center; gap:20px;">
+        <label>Población Inicial:</label>
+        <input type="number" id="setup-pop" value="16" style="width:100px; padding:0.5rem; background:var(--surface-2); color:white; border:1px solid #334155; border-radius:5px;">
+      </div>
+      <button id="btn-start" style="font-size:16px; padding:0.75rem 2rem; background:var(--fill-success); color:#000; font-weight:bold; border:none;">Comenzar Simulación</button>
+    </div>
+  </div>
+
+  <h1>Simulador de Comunidad 3000 AC</h1>
+
+  <div class="controls">
+    <button id="btn-play" title="Inicia/Pausa el procesamiento de eventos de la cola (DES)">Play / Pause</button>
+    <button id="btn-hour" title="Procesa el próximo evento en la cola y salta el tiempo a ese momento">+1 Evento</button>
+    <button id="btn-social-graph" style="background:var(--fill-accent); color:black; font-weight:bold;">Ver Mapa Social</button>
+    <select id="speed">
+      <option value="500">Lento</option>
+      <option value="150" selected>Normal</option>
+      <option value="50">Rápido</option>
+      <option value="2">Lo más rápido posible</option>
+    </select>
+    <select id="ui-freq" title="Cada cuántos eventos procesados renderizamos el mapa (optimización Lazy)">
+      <option value="1" selected>UI en cada evento</option>
+      <option value="5">UI cada 5 eventos</option>
+      <option value="24">UI cada 24 eventos</option>
+      <option value="100">UI cada 100 eventos</option>
+    </select>
+    <label title="Sin mapa, log ni fichas: solo reloj, inventario y demografía. Mucho más rápido." style="margin-left: 8px; cursor: pointer;">
+      <input type="checkbox" id="ui-stats-only"> Solo datos generales
+    </label>
+    <div id="clock" style="font-weight: bold;"
+      title="El reloj global. Salta automáticamente al momento del próximo evento (Discrete Event Sim).">Día 1 · 00:00
+    </div>
+  </div>
+
+  <div class="controls"
+    style="font-size: 13px; background: var(--surface-1); padding: 8px 15px; border-radius: var(--radius);">
+    <label title="Mínimo inventario deseado antes de salir a recolectar">Stock Mín. Comida: <input type="number"
+        id="pol-comida" value="50" style="width: 50px; padding: 2px;"></label>
+    <label title="Mínimo inventario deseado antes de salir a recolectar" style="margin-left: 10px;">Agua: <input
+        type="number" id="pol-agua" value="50" style="width: 50px; padding: 2px;"></label>
+    <label title="Mínimo inventario deseado antes de salir a recolectar" style="margin-left: 10px;">Madera: <input
+        type="number" id="pol-madera" value="10" style="width: 50px; padding: 2px;"></label>
+  </div>
+
+  <div class="controls" style="font-size: 13px; background: var(--surface-2); padding: 8px 15px; border-radius: var(--radius); flex-wrap: wrap;">
+    <strong style="color: var(--fill-accent); margin-right: 15px;">Ajustes Sociales:</strong>
+    <label title="Probabilidad de que un encuentro íntimo resulte en embarazo" style="margin-right: 15px;">Prob. Concepción: 
+      <input type="range" id="knob-concepcion" min="0" max="1" step="0.05" value="0.20" style="vertical-align: middle;">
+      <span id="val-concepcion">20%</span>
+    </label>
+    <label title="Frecuencia con la que ocurren interacciones orgánicas entre personas (0 a 1)" style="margin-right: 15px;">Socialización Orgánica: 
+      <input type="range" id="knob-socializacion" min="0" max="1" step="0.05" value="0.30" style="vertical-align: middle;">
+      <span id="val-socializacion">30%</span>
+    </label>
+    <label title="Multiplicador general de probabilidad de infidelidades y enamoramientos (0.1 a 3.0)" style="margin-right: 15px;">Romance Multiplier: 
+      <input type="range" id="knob-romance" min="0.1" max="3" step="0.1" value="1.0" style="vertical-align: middle;">
+      <span id="val-romance">1.0x</span>
+    </label>
+    <label title="Horas entre cada chequeo social">Chequeo social (h): 
+      <input type="range" id="knob-social-interval" min="1" max="48" step="1" value="12" style="vertical-align: middle;">
+      <span id="val-social-interval">12h</span>
+    </label>
+  </div>
+
+  <div class="controls" style="font-size: 13px; background: var(--surface-2); padding: 8px 15px; border-radius: var(--radius); flex-wrap: wrap;">
+    <strong style="color: var(--fill-success); margin-right: 15px;">Ajustes Ecosistema:</strong>
+    <label title="Probabilidad de que un árbol esparza bosque a un vecino en cada tick" style="margin-right: 15px;">Esparcir bosque: 
+      <input type="range" id="knob-bosque" min="0" max="0.05" step="0.001" value="0.005" style="vertical-align: middle;">
+      <span id="val-bosque">0.5%</span>
+    </label>
+    <label title="Horas entre cada renovación del ecosistema" style="margin-right: 15px;">Tick ecosistema (h): 
+      <input type="range" id="knob-eco-interval" min="1" max="72" step="1" value="24" style="vertical-align: middle;">
+      <span id="val-eco-interval">24h</span>
+    </label>
+    <label title="Madera obtenida al talar un árbol" style="margin-right: 15px;">Madera/árbol: 
+      <input type="range" id="knob-madera-arbol" min="10" max="300" step="10" value="100" style="vertical-align: middle;">
+      <span id="val-madera-arbol">100</span>
+    </label>
+    <label title="Comida obtenida en una caza exitosa">Comida/caza: 
+      <input type="range" id="knob-comida-caza" min="20" max="400" step="10" value="150" style="vertical-align: middle;">
+      <span id="val-comida-caza">150</span>
+    </label>
+  </div>
+
+  <div class="layout">
+    <div class="col-map">
+      <div id="map-container"></div>
+    </div>
+
+    <div class="col-info">
+      <div id="stats-bar">
+        <span>Vivos: <strong id="st-vivos">0</strong></span>
+        <span>Edad prom.: <strong id="st-edad-prom">—</strong></span>
+        <span>Casas: <strong id="st-casas">0</strong></span>
+        <span id="st-estacion">—</span>
+        <span>Inventario Común:
+          <span>🥩 <strong id="st-comida">0</strong></span>
+          <span>💧 <strong id="st-agua">0</strong></span>
+          <span>🪓 <strong id="st-madera">0</strong></span>
+        </span>
+      </div>
+      <div id="demo-stats" style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-size:12px; color:var(--text-secondary); margin-bottom:12px; padding:8px; background:var(--surface-1); border-radius:var(--radius);"></div>
+
+      <h3 title="Eventos procesados desde la cola (MinHeap)">Historial de Eventos</h3>
+      <select id="log-filter" style="margin-bottom: 10px; width: 100%;">
+        <option value="all">Todos los eventos</option>
+      </select>
+      <div id="log"></div>
+
+      <h3 title="Eventos encolados para el futuro en el MinHeap">Próximos Eventos</h3>
+      <div id="upcoming-log"
+        style="max-height: 120px; overflow-y: auto; background: var(--surface-1); padding: 10px; border-radius: var(--radius); font-size: 12px; color: var(--text-secondary); margin-bottom: 1rem; display: flex; flex-direction: column; gap: 4px;">
+      </div>
+
+      <h3>Pobladores</h3>
+      <div id="people"></div>
+    </div>
+  </div>
+
+  <div id="social-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,20,25,0.9); z-index:200;">
+    <div style="position:absolute; top:20px; left:20px; right:20px; bottom:20px; background:var(--surface-1); border-radius:var(--radius); border:2px solid var(--surface-2); display:flex; flex-direction:column;">
+      <div style="padding:15px; border-bottom:1px solid var(--surface-2); display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="margin:0;">Matriz Social</h2>
+        <button id="btn-close-social" style="background:#f07178; color:#fff; border:none; padding:8px 16px;">Cerrar</button>
+      </div>
+      <div style="padding:10px; font-size:12px; display:flex; gap:15px; justify-content:center; border-bottom:1px solid var(--surface-2); flex-wrap:wrap;">
+        <span>Celda = <strong>Af</strong> afinidad · <strong>At</strong> atracción (fila→col) · <strong>♥</strong> pareja</span>
+        <span>Fondo: frío = baja afinidad, cálido = alta</span>
+      </div>
+      <div id="social-network-container" class="social-matrix-wrap"></div>
+    </div>
+  </div>
+
+  <script>
+    let playing = false;
+    let intervalId = null;
+    let socialGraph = null;
+
+    document.getElementById('btn-start').addEventListener('click', () => {
+      let seed = parseInt(document.getElementById('setup-seed').value);
+      let pop = parseInt(document.getElementById('setup-pop').value);
+      
+      window.RNG = new SeededRandom(seed);
+      document.getElementById('map-container').innerHTML = ''; // clear previous canvas
+      
+      window.Sim = new Simulation();
+      window.Sim.init(pop);
+      window.Sim.onUpdate = updateUI;
+      window.Sim.uiStatsOnly = document.getElementById('ui-stats-only').checked;
+      
+      socialGraph = new SocialGraph('social-network-container');
+
+      document.getElementById('setup-overlay').style.display = 'none';
+      updateUI();
+    });
+
+    document.getElementById('btn-social-graph').addEventListener('click', () => {
+      document.getElementById('social-modal').style.display = 'block';
+      if (socialGraph) socialGraph.update(window.Sim);
+    });
+
+    document.getElementById('btn-close-social').addEventListener('click', () => {
+      document.getElementById('social-modal').style.display = 'none';
+    });
+
+    function renderBar(label, value, color) {
+      return `
+        <div class="bar-row">
+          <span style="width: 50px;">${label}</span>
+          <div class="bar-bg"><div class="bar-fill" style="width: ${Math.round(value)}%; background: ${color};"></div></div>
+          <span style="width: 25px; text-align: right;">${Math.round(value)}</span>
+        </div>
+      `;
+    }
+
+    function updateUI() {
+      if (!window.Sim) return;
+      // Update Clock + estación
+      document.getElementById('clock').innerText = formatSimTime(window.Sim.time.hour);
+      let fria = esEstacionFria(window.Sim.time.hour);
+      document.getElementById('st-estacion').innerText = fria ? '❄️ Frío' : '☀️ Calor';
+
+      // Update Stats
+      let vivasAll = window.Sim.personas.filter(p => p.isAlive());
+      let nVivos = vivasAll.length;
+      document.getElementById('st-vivos').innerText = nVivos;
+      document.getElementById('st-edad-prom').innerText = nVivos
+        ? (vivasAll.reduce((s, p) => s + p.edad, 0) / nVivos).toFixed(1)
+        : '—';
+      document.getElementById('st-casas').innerText = window.Sim.housing.casas.length;
+      document.getElementById('st-comida').innerText = window.Sim.inventario.comida;
+      document.getElementById('st-agua').innerText = window.Sim.inventario.agua;
+      document.getElementById('st-madera').innerText = window.Sim.inventario.madera;
+
+      // Demografía
+      function pct(n) { return nVivos ? ((n / nVivos) * 100).toFixed(0) + '%' : '0%'; }
+      function countEtapa(etapaPred, sexo) {
+        return vivasAll.filter(p => {
+          let et = p.getEtapa();
+          let okEt = etapaPred === 'nino' ? (et === 'nino' || et === 'adolescente') : et === etapaPred;
+          return okEt && p.sexo === sexo;
+        }).length;
+      }
+      let bebeM = countEtapa('bebe', 'M'), bebeF = countEtapa('bebe', 'F');
+      let ninoM = countEtapa('nino', 'M'), ninoF = countEtapa('nino', 'F');
+      let adultM = countEtapa('adulto', 'M'), adultF = countEtapa('adulto', 'F');
+      let emb = vivasAll.filter(p => p.embarazoHorasRestantes !== null).length;
+      let solteros = vivasAll.filter(p => p.isAdult() && !p.pareja).length;
+      document.getElementById('demo-stats').innerHTML = `
+        <div>Bebés: <strong>${bebeM + bebeF}</strong> (${pct(bebeM + bebeF)}) · ♂${bebeM} ♀${bebeF}</div>
+        <div>Niños: <strong>${ninoM + ninoF}</strong> (${pct(ninoM + ninoF)}) · ♂${ninoM} ♀${ninoF}</div>
+        <div>Adultos: <strong>${adultM + adultF}</strong> (${pct(adultM + adultF)}) · ♂${adultM} ♀${adultF}</div>
+        <div>Embarazadas: <strong>${emb}</strong> (${pct(emb)})</div>
+        <div>Solteros (adultos): <strong>${solteros}</strong> (${pct(solteros)})</div>
+      `;
+
+      if (window.Sim.uiStatsOnly) return;
+
+      // Update Log Filter
+      let filterEl = document.getElementById('log-filter');
+      let currentFilter = filterEl.value;
+      if (filterEl.options.length !== window.Sim.personas.length + 1) {
+        let optionsHtml = '<option value="all">Todos los eventos (Global)</option>';
+        window.Sim.personas.forEach(p => {
+          optionsHtml += `<option value="${p.id}" ${currentFilter == p.id ? 'selected' : ''}>Eventos de ${p.nombre}</option>`;
+        });
+        filterEl.innerHTML = optionsHtml;
+      }
+
+      // Update Log
+      let logData = window.Sim.log;
+      if (currentFilter !== 'all') {
+        let p = window.Sim.personas.find(x => x.id == currentFilter);
+        if (p && p.eventLog) logData = p.eventLog;
+        else logData = [];
+      }
+      let logHtml = logData.slice().reverse().map(e => `<div class="${e.cls}">${e.text}</div>`).join('');
+      document.getElementById('log').innerHTML = logHtml;
+
+      // Update Upcoming Events (heap no está ordenado linealmente: ordenar copia)
+      let upcomingData = window.Sim.eventQueue.data.slice().sort((a, b) => {
+        let d = a.time - b.time;
+        return d !== 0 ? d : a.seq - b.seq;
+      }).slice(0, 8);
+      let upcomingHtml = upcomingData.map(ev => {
+        let desc = ev.name;
+        if (ev.name === 'DecideAction') {
+          let p = window.Sim.personas.find(x => x.id === ev.personId);
+          desc = p ? `<strong>${p.nombre}</strong> debe tomar una decisión` : `Decisión`;
+        } else if (ev.name === 'ActionComplete') {
+          let p = window.Sim.personas.find(x => x.id === ev.personId);
+          let actionName = ev.actionType ? ev.actionType.replace('_', ' ') : 'acción';
+          desc = p ? `<strong>${p.nombre}</strong> terminará de ${actionName}` : `Acción completada`;
+        } else if (ev.name === 'EcosystemUpdate') {
+          desc = `🌲 Renovación del ecosistema`;
+        } else if (ev.name === 'SocialEventCheck') {
+          desc = `❤️ Evaluación social y clima`;
+        } else if (ev.name === 'ExecuteRandomEvent') {
+          desc = `🎲 Evento de entorno`;
+        } else if (ev.name === 'LeaveHouse') {
+          desc = `Salen de la casa`;
+        }
+        return `<div style="padding: 2px 0; border-bottom: 1px solid var(--bg);">${formatSimTime(ev.time)} — ${desc}</div>`;
+      }).join('');
+      document.getElementById('upcoming-log').innerHTML = upcomingHtml;
+
+      // Update People
+      let peopleHtml = window.Sim.personas.map(p => {
+        let actionTxt = p.isAlive() ? (p.currentAction ? p.currentAction.type : 'ocioso') : 'Fallecido';
+        let casaTxt = p.casaId ? '🛖 Casa' : 'Sin casa';
+        let parejaName = p.pareja ? window.Sim.personas.find(x => x.id === p.pareja)?.nombre : null;
+        let parejaTxt = parejaName ? `❤️ Pareja: ${parejaName}` : 'Soltero/a';
+        let cargaTxt = p.carga && p.carga.cantidad > 0 ? `🎒 ${p.carga.cantidad} ${p.carga.tipo}` : '';
+        let embTxt = p.embarazoHorasRestantes !== null
+          ? `🤰 Emb: ${(p.embarazoHorasRestantes / CONSTANTS.HORAS_POR_DIA).toFixed(1)}d`
+          : '';
+        let nacTxt = `Nac: ${formatSimTime(p.nacimientoHora)}`;
+        let hijosTxt = p.hijos.length > 0 ? `👶 Hijos: ${p.hijos.length}` : '';
+
+        let opacity = p.isAlive() ? 1 : 0.5;
+
+        return `
+          <div class="card" style="opacity: ${opacity}">
+            <div class="card-name">${p.nombre} (${p.sexo}) - ${p.edad} años</div>
+            <div style="margin-bottom: 4px; color: var(--text-secondary); font-size:11px;">${nacTxt}</div>
+            <div style="margin-bottom: 4px; color: var(--text-secondary);">${actionTxt} | ${casaTxt}${p.inHouse ? ' (dentro)' : ''}</div>
+            <div style="margin-bottom: 8px; color: var(--text-secondary); display:flex; flex-wrap:wrap; gap:5px; font-size:11px;">
+               ${parejaTxt ? `<span>${parejaTxt}</span>` : ''}
+               ${embTxt ? `<span style="color:#ff8fb3;">${embTxt}</span>` : ''}
+               ${hijosTxt ? `<span>${hijosTxt}</span>` : ''}
+               ${cargaTxt ? `<span style="color:var(--fill-accent);">${cargaTxt}</span>` : ''}
+            </div>
+            
+            ${renderBar('Hambre', p.hambre, 'var(--fill-warning)')}
+            ${renderBar('Sed', p.sed, '#59c2ff')}
+            ${renderBar('Energía', p.energia, 'var(--fill-success)')}
+            ${renderBar('Frío', p.frio, '#88ccff')}
+            ${renderBar('Soledad', p.soledad, '#c792ea')}
+            ${renderBar('Felicidad', p.felicidad, '#ffb454')}
+            
+            <div style="margin-top: 8px; border-top: 1px solid var(--surface-2); padding-top: 5px;">
+              <div class="trait-row"><span>Hetero:</span> <span>${(p.heterosexualidad * 100).toFixed(0)}%</span></div>
+              <div class="trait-row"><span>Homo:</span> <span>${(p.homosexualidad * 100).toFixed(0)}%</span></div>
+              <div class="trait-row"><span>Velocidad:</span> <span>${p.velocidad.toFixed(2)}x</span></div>
+              <div class="trait-row"><span>Carga:</span> <span>${p.fuerza_carga} ud.</span></div>
+            </div>
+            ${(() => {
+              if (!p.isAlive()) return '';
+              let vivas = window.Sim.personas.filter(x => x.isAlive() && x.id !== p.id);
+              let rels = vivas.map(other => {
+                let af = window.Sim.events.getAfinidad(p.id, other.id);
+                let attr = p.getAfractionTo(other);
+                return { nombre: other.nombre, af: af, attr: attr };
+              });
+              rels.sort((a,b) => b.af - a.af);
+              let topRels = rels.slice(0, 3);
+              if (topRels.length === 0) return '';
+              let html = '<div style="margin-top: 8px; border-top: 1px solid var(--surface-2); padding-top: 5px;"><strong style="font-size:11px; color:var(--text-primary);">Relaciones Principales:</strong>';
+              topRels.forEach(r => {
+                html += `<div class="trait-row" style="margin-top:3px;">
+                  <span>${r.nombre}</span> 
+                  <span title="Afinidad: ${r.af.toFixed(0)} | Atracción: ${r.attr.toFixed(2)}">Af: ${r.af.toFixed(0)} | At: ${r.attr.toFixed(2)}</span>
+                </div>`;
+              });
+              html += '</div>';
+              return html;
+            })()}
+          </div>
+        `;
+      }).join('');
+      document.getElementById('people').innerHTML = peopleHtml;
+
+      if (socialGraph && document.getElementById('social-modal').style.display !== 'none') {
+        socialGraph.update(window.Sim);
+      }
+    };
+
+    function tickLoop() {
+      if (window.Sim.personas.length > 0 && window.Sim.personas.filter(p => p.isAlive()).length === 0) {
+        if (playing) {
+          playing = false;
+          clearInterval(intervalId);
+          setTimeout(() => alert("¡La comunidad se ha extinguido trágicamente!"), 100);
+        }
+        return;
+      }
+
+      let uiFreq = window.Sim.updateFreq;
+      // Si la velocidad es 2ms y la frecuencia de UI es alta, procesamos varios eventos por frame
+      // para que realmente vaya rapido y aprovechemos el DES
+      if (parseInt(document.getElementById('speed').value) === 2 && uiFreq > 1) {
+        for (let i = 0; i < uiFreq; i++) {
+          if (!window.Sim.step()) break;
+        }
+      } else {
+        window.Sim.step();
+      }
+    }
+
+    document.getElementById('btn-play').addEventListener('click', () => {
+      playing = !playing;
+      if (playing) {
+        let speed = parseInt(document.getElementById('speed').value);
+        intervalId = setInterval(tickLoop, speed);
+      } else {
+        clearInterval(intervalId);
+      }
+    });
+
+    document.getElementById('btn-hour').addEventListener('click', () => {
+      if (playing) { playing = false; clearInterval(intervalId); }
+      window.Sim.step();
+      if (window.Sim.onUpdate) window.Sim.onUpdate(); // forzar render
+    });
+
+    document.getElementById('speed').addEventListener('change', (e) => {
+      if (playing) {
+        clearInterval(intervalId);
+        intervalId = setInterval(tickLoop, parseInt(e.target.value));
+      }
+    });
+
+    document.getElementById('ui-freq').addEventListener('change', (e) => {
+      window.Sim.updateFreq = parseInt(e.target.value);
+    });
+
+    document.getElementById('ui-stats-only').addEventListener('change', (e) => {
+      if (!window.Sim) return;
+      window.Sim.uiStatsOnly = e.target.checked;
+      if (!e.target.checked) {
+        // Mapa quedó congelado: sincronizar sprites
+        window.Sim.personas.forEach(p => p.updateStats(window.Sim.time.hour));
+        window.Sim.personas.filter(p => p.isAlive()).forEach(p => window.Sim.map.updatePersonPosition(p));
+        window.Sim.map.updateHouses(window.Sim.housing.casas);
+      }
+      if (window.Sim.onUpdate) window.Sim.onUpdate();
+    });
+
+    document.getElementById('log-filter').addEventListener('change', (e) => {
+      if (window.Sim.onUpdate) window.Sim.onUpdate();
+    });
+
+    // Policies
+    document.getElementById('pol-comida').addEventListener('change', e => { window.Sim.policies.minComida = parseInt(e.target.value); });
+    document.getElementById('pol-agua').addEventListener('change', e => { window.Sim.policies.minAgua = parseInt(e.target.value); });
+    document.getElementById('pol-madera').addEventListener('change', e => { window.Sim.policies.minMadera = parseInt(e.target.value); });
+
+    // Knobs — mutan CONSTANTS en vivo
+    function bindKnob(id, key, fmt) {
+      let el = document.getElementById(id);
+      let valEl = document.getElementById('val-' + id.replace('knob-', ''));
+      el.value = CONSTANTS[key];
+      if (valEl) valEl.innerText = fmt(CONSTANTS[key]);
+      el.addEventListener('input', e => {
+        let v = parseFloat(e.target.value);
+        CONSTANTS[key] = v;
+        if (valEl) valEl.innerText = fmt(v);
+      });
+    }
+
+    bindKnob('knob-concepcion', 'PROB_CONCEPCION', v => (v * 100).toFixed(0) + '%');
+    bindKnob('knob-socializacion', 'SOCIAL_CHANCE', v => (v * 100).toFixed(0) + '%');
+    bindKnob('knob-romance', 'ROMANCE_MULTIPLIER', v => v.toFixed(1) + 'x');
+    bindKnob('knob-social-interval', 'HORAS_SOCIAL_CHECK', v => v + 'h');
+    bindKnob('knob-bosque', 'PROB_ESPALIR_BOSQUE', v => (v * 100).toFixed(1) + '%');
+    bindKnob('knob-eco-interval', 'HORAS_ECOSYSTEM_TICK', v => v + 'h');
+    bindKnob('knob-madera-arbol', 'MADERA_POR_ARBOL', v => String(v));
+    bindKnob('knob-comida-caza', 'COMIDA_POR_CAZA_EXITOSA', v => String(v));
+
+    // Se llama a updateUI desde el btn-start
+
+  </script>
+</body>
+</html>

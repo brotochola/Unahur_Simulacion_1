@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Benchmark: SoA vs AoS — TypedArrays vs Array vs Objetos</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2f3a;
+    --text: #e6e9ef;
+    --muted: #8b93a7;
+    --soa: #5eb3ff;
+    --aos: #ff7ab8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 24px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  label { font-size: 13px; color: var(--muted); }
+  input[type=number] {
+    background: #0d0f14;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px 8px;
+    width: 90px;
+    font-size: 13px;
+  }
+  button {
+    background: var(--soa);
+    color: #05070a;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
+  .status { color: var(--muted); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .group-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    padding-top: 14px !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+  .bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .bar-track { flex: 1; height: 10px; background: #0d0f14; border-radius: 5px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 5px; }
+  .soa .bar-fill { background: var(--soa); }
+  .aos .bar-fill { background: var(--aos); }
+  code { background: #0d0f14; padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Benchmark: SoA vs AoS — TypedArrays vs Array vs Objetos</h1>
+  <p class="sub">
+    10000 entidades con campos x, y, vx, vy. Cada frame hace <code>x += vx*dt; y += vy*dt</code>
+    y acumula <code>abs(vx)+abs(vy)</code> para que el JIT no elimine el trabajo.
+    Se comparan 7 layouts de memoria distintos.
+  </p>
+
+  <div class="panel">
+    <div class="row">
+      <div>
+        <label>Entidades</label><br>
+        <input type="number" id="nEntities" value="10000" min="100" step="1000">
+      </div>
+      <div>
+        <label>Frames por prueba</label><br>
+        <input type="number" id="nFrames" value="2000" min="10" step="100">
+      </div>
+      <div>
+        <label>Repeticiones</label><br>
+        <input type="number" id="nTrials" value="7" min="1" max="20">
+      </div>
+      <div style="align-self:flex-end;">
+        <button id="runBtn">Correr benchmark</button>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="panel" id="resultsPanel" style="display:none;">
+    <table>
+      <thead>
+        <tr><th>Implementación</th><th>Mediana</th><th>Min</th><th>Max</th><th></th></tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <p class="sub" style="margin:0;">
+      <b>SoA</b> = 4 arrays separados (x[], y[], vx[], vy[]). <b>AoS objetos</b> = array de <code>{x,y,vx,vy}</code> (un objeto JS por entidad).
+      <b>AoS interleaved</b> = un solo array plano <code>[x,y,vx,vy, x,y,vx,vy, ...]</code> usando TypedArray o Array común.
+      Todos los valores son floats (<code>Math.random()</code>), incluida la variante "Array común" en ambos layouts.
+      Se hace warm-up antes de medir y se reporta la mediana de varias repeticiones.
+    </p>
+  </div>
+</div>
+
+<script>
+const runBtn = document.getElementById('runBtn');
+const statusEl = document.getElementById('status');
+const resultsPanel = document.getElementById('resultsPanel');
+const resultsBody = document.getElementById('resultsBody');
+
+function median(arr) {
+  const s = [...arr].sort((a,b)=>a-b);
+  const mid = Math.floor(s.length/2);
+  return s.length % 2 ? s[mid] : (s[mid-1]+s[mid])/2;
+}
+
+// ---- constructores de datos por layout ----
+
+function buildSoA(n, ArrType) {
+  const make = () => ArrType === 'plain' ? new Array(n).fill(0) : new (ArrType)(n);
+  const a = { x: make(), y: make(), vx: make(), vy: make() };
+  for (let i = 0; i < n; i++) {
+    a.x[i] = Math.random() * 100;
+    a.y[i] = Math.random() * 100;
+    a.vx[i] = (Math.random() - 0.5) * 2;
+    a.vy[i] = (Math.random() - 0.5) * 2;
+  }
+  return a;
+}
+
+function buildAoSObjects(n) {
+  const arr = new Array(n);
+  for (let i = 0; i < n; i++) {
+    arr[i] = {
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2
+    };
+  }
+  return arr;
+}
+
+function buildAoSFlat(n, ArrType) {
+  const buf = ArrType === 'plain' ? new Array(n * 4).fill(0) : new (ArrType)(n * 4);
+  for (let i = 0; i < n; i++) {
+    const base = i * 4;
+    buf[base]     = Math.random() * 100;       // x
+    buf[base + 1] = Math.random() * 100;       // y
+    buf[base + 2] = (Math.random() - 0.5) * 2; // vx
+    buf[base + 3] = (Math.random() - 0.5) * 2; // vy
+  }
+  return buf;
+}
+
+// ---- loops de actualizacion por layout ----
+
+function updateSoA(a, n, frames, dt) {
+  let acc = 0;
+  const { x, y, vx, vy } = a;
+  for (let f = 0; f < frames; f++) {
+    for (let i = 0; i < n; i++) {
+      x[i] += vx[i] * dt;
+      y[i] += vy[i] * dt;
+      acc += Math.abs(vx[i]) + Math.abs(vy[i]);
+    }
+  }
+  return acc;
+}
+
+function updateAoSObjects(arr, n, frames, dt) {
+  let acc = 0;
+  for (let f = 0; f < frames; f++) {
+    for (let i = 0; i < n; i++) {
+      const o = arr[i];
+      o.x += o.vx * dt;
+      o.y += o.vy * dt;
+      acc += Math.abs(o.vx) + Math.abs(o.vy);
+    }
+  }
+  return acc;
+}
+
+function updateAoSFlat(buf, n, frames, dt) {
+  let acc = 0;
+  for (let f = 0; f < frames; f++) {
+    for (let i = 0; i < n; i++) {
+      const base = i * 4;
+      buf[base]     += buf[base + 2] * dt;
+      buf[base + 1] += buf[base + 3] * dt;
+      acc += Math.abs(buf[base + 2]) + Math.abs(buf[base + 3]);
+    }
+  }
+  return acc;
+}
+
+// ---- definicion de variantes ----
+
+const VARIANTS = [
+  { key: 'soa-f32', group: 'SoA', label: 'Float32Array', cls: 'soa',
+    build: n => buildSoA(n, Float32Array), run: updateSoA },
+  { key: 'soa-f64', group: 'SoA', label: 'Float64Array', cls: 'soa',
+    build: n => buildSoA(n, Float64Array), run: updateSoA },
+  { key: 'soa-arr', group: 'SoA', label: 'Array común (floats)', cls: 'soa',
+    build: n => buildSoA(n, 'plain'), run: updateSoA },
+  { key: 'aos-obj', group: 'AoS', label: 'Array de objetos {x,y,vx,vy}', cls: 'aos',
+    build: n => buildAoSObjects(n), run: updateAoSObjects },
+  { key: 'aos-f32', group: 'AoS interleaved', label: 'Float32Array plano', cls: 'aos',
+    build: n => buildAoSFlat(n, Float32Array), run: updateAoSFlat },
+  { key: 'aos-f64', group: 'AoS interleaved', label: 'Float64Array plano', cls: 'aos',
+    build: n => buildAoSFlat(n, Float64Array), run: updateAoSFlat },
+  { key: 'aos-arr', group: 'AoS interleaved', label: 'Array común plano (floats)', cls: 'aos',
+    build: n => buildAoSFlat(n, 'plain'), run: updateAoSFlat },
+];
+
+function timeOne(variant, n, frames, dt) {
+  const data = variant.build(n);
+  // warm-up
+  variant.run(data, n, Math.min(50, frames), dt);
+  const t0 = performance.now();
+  const acc = variant.run(data, n, frames, dt);
+  const t1 = performance.now();
+  if (acc === -1) console.log(acc); // evita dead-code elimination agresiva
+  return t1 - t0;
+}
+
+async function runBenchmark() {
+  const n = parseInt(document.getElementById('nEntities').value, 10);
+  const frames = parseInt(document.getElementById('nFrames').value, 10);
+  const trials = parseInt(document.getElementById('nTrials').value, 10);
+  const dt = 1/60;
+
+  runBtn.disabled = true;
+  resultsPanel.style.display = 'none';
+
+  const results = {};
+  for (const v of VARIANTS) {
+    statusEl.textContent = `Corriendo ${v.group} — ${v.label}...`;
+    await new Promise(r => setTimeout(r, 30));
+    const times = [];
+    for (let t = 0; t < trials; t++) {
+      times.push(timeOne(v, n, frames, dt));
+      await new Promise(r => setTimeout(r, 5));
+    }
+    results[v.key] = times;
+  }
+
+  statusEl.textContent = `Listo — ${n} entidades × ${frames} frames × ${trials} repeticiones.`;
+
+  const meds = VARIANTS.map(v => ({
+    ...v,
+    med: median(results[v.key]),
+    min: Math.min(...results[v.key]),
+    max: Math.max(...results[v.key])
+  }));
+  const maxMed = Math.max(...meds.map(m => m.med));
+
+  let lastGroup = null;
+  resultsBody.innerHTML = meds.map(m => {
+    const groupRow = m.group !== lastGroup
+      ? `<tr><td class="group-label" colspan="5">${m.group}</td></tr>`
+      : '';
+    lastGroup = m.group;
+    return groupRow + `
+    <tr class="${m.cls}">
+      <td>${m.label}</td>
+      <td>${m.med.toFixed(2)} ms</td>
+      <td>${m.min.toFixed(2)} ms</td>
+      <td>${m.max.toFixed(2)} ms</td>
+      <td style="width:34%;">
+        <div class="bar-wrap">
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${(m.med/maxMed*100).toFixed(1)}%"></div>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  resultsPanel.style.display = 'block';
+  runBtn.disabled = false;
+}
+
+runBtn.addEventListener('click', runBenchmark);
+</script>
+</body>
+</html>

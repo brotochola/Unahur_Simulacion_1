@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Wolfenstein 3D Raycaster - Editor Pro & Multiple Lights</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background-color: #121214;
+            color: #e1e1e6;
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { margin: 0 0 15px 0; font-size: 1.4rem; color: #52b788; }
+
+        .app-layout {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 20px;
+            max-width: 1400px;
+            width: 100%;
+        }
+
+        .panel {
+            background: #1e1e24;
+            border: 1px solid #2d2d38;
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .viewports-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .viewport-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .viewport-title {
+            font-size: 0.85rem;
+            color: #74c69d;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        canvas {
+            background: #000;
+            border: 1px solid #3a3a4c;
+            border-radius: 6px;
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        #editorCanvas { cursor: crosshair; }
+        #renderCanvas { cursor: pointer; }
+
+        .section-title {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #52b788;
+            border-bottom: 1px solid #2d2d38;
+            padding-bottom: 4px;
+            margin-top: 5px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: #a8a8b3;
+            cursor: pointer;
+        }
+
+        .checkbox-group input {
+            accent-color: #52b788;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        label {
+            font-size: 0.8rem;
+            color: #a8a8b3;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .val { color: #f8f9fa; font-weight: bold; }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #52b788;
+        }
+
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        button {
+            background: #2b2b36;
+            color: #e1e1e6;
+            border: 1px solid #3a3a4c;
+            padding: 8px 4px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover { background: #3a3a4c; }
+        button.active { background: #52b788; color: #121214; font-weight: bold; }
+
+        .info-card {
+            background: #141418;
+            border-left: 3px solid #52b788;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #a8a8b3;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Wolfenstein 3D Engine: Mapa 32x32, Columnas & Luces Múltiples</h1>
+
+    <div class="app-layout">
+        <!-- Panel de Herramientas y Ajustes -->
+        <div class="panel">
+            <div class="info-card">
+                <b>Herramientas 2D:</b> Seleccioná un modo para editar el mapa.<br>
+                <b>3D Viewport:</b> Click para bloquear el cursor. Movimiento con <b>WASD</b> y giro con <b>Mouse</b>.
+            </div>
+
+            <div class="section-title">Herramientas de Edición</div>
+            <div class="btn-grid">
+                <button id="btnWall" class="active">Pared Cuadrada</button>
+                <button id="btnCylinder">Columna Cilindro</button>
+                <button id="btnLightAdd">Añadir Luz</button>
+                <button id="btnLightRemove">Quitar Luz</button>
+                <button id="btnErase">Borrador</button>
+                <button id="btnPlayer">Mover Player</button>
+            </div>
+
+            <div class="section-title">Iluminación</div>
+            <label class="checkbox-group">
+                <span>Linterna del Player (Antorcha)</span>
+                <input type="checkbox" id="chkPlayerLight" checked>
+            </label>
+            <div class="control-group">
+                <label>Alcance Luces de Mapa: <span id="valLightRadius" class="val">8</span>m</label>
+                <input type="range" id="knobLightRadius" min="2" max="20" value="8">
+            </div>
+
+            <div class="section-title">Ajustes de Render 3D</div>
+            <div class="control-group">
+                <label>Resolución Ancho: <span id="valRes" class="val">320px</span></label>
+                <input type="range" id="knobRes" min="80" max="640" step="20" value="320">
+            </div>
+            <div class="control-group">
+                <label>Rayos Emitidos: <span id="valRays" class="val">320</span></label>
+                <input type="range" id="knobRays" min="40" max="640" step="10" value="320">
+            </div>
+            <div class="control-group">
+                <label>FOV (Ángulo de Visión): <span id="valFOV" class="val">60°</span></label>
+                <input type="range" id="knobFOV" min="30" max="120" value="60">
+            </div>
+            <div class="control-group">
+                <label>Velocidad Jugador: <span id="valSpeed" class="val">0.045</span></label>
+                <input type="range" id="knobSpeed" min="0.01" max="0.1" step="0.005" value="0.045">
+            </div>
+
+            <button id="btnClear" style="margin-top: 10px; background: #8d0801; color: #fff;">Limpiar Todo</button>
+        </div>
+
+        <!-- Viewports Interactivos -->
+        <div class="panel viewports-container">
+            <div class="viewport-box">
+                <div class="viewport-title">Editor 2D (Grilla 32x32)</div>
+                <canvas id="editorCanvas" width="480" height="480"></canvas>
+            </div>
+            <div class="viewport-box">
+                <div class="viewport-title">Proyección 3D</div>
+                <canvas id="renderCanvas" width="320" height="240" style="width: 480px; height: 360px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTES Y MAPA (32x32) ---
+        const MAP_WIDTH = 32;
+        const MAP_HEIGHT = 32;
+        const TYPE_EMPTY = 0;
+        const TYPE_WALL = 1;
+        const TYPE_CYLINDER = 2;
+
+        const editorCanvas = document.getElementById('editorCanvas');
+        const ctxEdit = editorCanvas.getContext('2d');
+        const CELL_SIZE = editorCanvas.width / MAP_WIDTH;
+
+        const renderCanvas = document.getElementById('renderCanvas');
+        const ctxRender = renderCanvas.getContext('2d');
+
+        let WIDTH = renderCanvas.width;
+        let HEIGHT = renderCanvas.height;
+
+        let imgData = ctxRender.createImageData(WIDTH, HEIGHT);
+        let pixelBuffer = new Uint32Array(imgData.data.buffer);
+
+        let map = new Array(MAP_WIDTH * MAP_HEIGHT).fill(TYPE_EMPTY);
+
+        // Paredes del perímetro por defecto
+        for (let r = 0; r < MAP_HEIGHT; r++) {
+            for (let c = 0; c < MAP_WIDTH; c++) {
+                if (r === 0 || r === MAP_HEIGHT - 1 || c === 0 || c === MAP_WIDTH - 1) {
+                    map[r * MAP_WIDTH + c] = TYPE_WALL;
+                }
+            }
+        }
+
+        // --- ENTIDADES Y LUCES ---
+        const player = {
+            x: 4.5,
+            y: 4.5,
+            angle: 0,
+            fov: 60 * Math.PI / 180,
+            speed: 0.045,
+            rayCount: 320,
+            hasLight: true
+        };
+
+        // Array para múltiples fuentes de luz dinámicas
+        let lights = [
+            { x: 8.5, y: 8.5, radius: 8 },
+            { x: 20.5, y: 12.5, radius: 8 }
+        ];
+
+        // --- ESTADO Y CONTROLES DE EDICIÓN ---
+        let currentTool = 'wall';
+        let isMouseDown = false;
+
+        const knobRes = document.getElementById('knobRes');
+        const knobRays = document.getElementById('knobRays');
+        const knobFOV = document.getElementById('knobFOV');
+        const knobLightRadius = document.getElementById('knobLightRadius');
+        const knobSpeed = document.getElementById('knobSpeed');
+        const chkPlayerLight = document.getElementById('chkPlayerLight');
+
+        chkPlayerLight.addEventListener('change', (e) => player.hasLight = e.target.checked);
+
+        knobRes.addEventListener('input', (e) => {
+            const w = parseInt(e.target.value);
+            const h = Math.round(w * 0.75);
+            renderCanvas.width = w;
+            renderCanvas.height = h;
+            WIDTH = w; HEIGHT = h;
+            imgData = ctxRender.createImageData(WIDTH, HEIGHT);
+            pixelBuffer = new Uint32Array(imgData.data.buffer);
+            document.getElementById('valRes').textContent = w + 'px';
+        });
+
+        knobRays.addEventListener('input', (e) => {
+            player.rayCount = parseInt(e.target.value);
+            document.getElementById('valRays').textContent = e.target.value;
+        });
+
+        knobFOV.addEventListener('input', (e) => {
+            player.fov = parseFloat(e.target.value) * Math.PI / 180;
+            document.getElementById('valFOV').textContent = e.target.value + '°';
+        });
+
+        knobLightRadius.addEventListener('input', (e) => {
+            const r = parseFloat(e.target.value);
+            lights.forEach(l => l.radius = r);
+            document.getElementById('valLightRadius').textContent = e.target.value + 'm';
+        });
+
+        knobSpeed.addEventListener('input', (e) => {
+            player.speed = parseFloat(e.target.value);
+            document.getElementById('valSpeed').textContent = e.target.value;
+        });
+
+        const tools = {
+            wall: document.getElementById('btnWall'),
+            cylinder: document.getElementById('btnCylinder'),
+            lightAdd: document.getElementById('btnLightAdd'),
+            lightRemove: document.getElementById('btnLightRemove'),
+            erase: document.getElementById('btnErase'),
+            player: document.getElementById('btnPlayer')
+        };
+
+        Object.keys(tools).forEach(key => {
+            tools[key].addEventListener('click', () => {
+                Object.values(tools).forEach(b => b.classList.remove('active'));
+                tools[key].classList.add('active');
+                currentTool = key;
+            });
+        });
+
+        document.getElementById('btnClear').addEventListener('click', () => {
+            map.fill(TYPE_EMPTY);
+            for (let r = 0; r < MAP_HEIGHT; r++) {
+                for (let c = 0; c < MAP_WIDTH; c++) {
+                    if (r === 0 || r === MAP_HEIGHT - 1 || c === 0 || c === MAP_WIDTH - 1) {
+                        map[r * MAP_WIDTH + c] = TYPE_WALL;
+                    }
+                }
+            }
+            lights = [];
+        });
+
+        function handleEdit(e) {
+            const rect = editorCanvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const gridX = Math.floor(mouseX / CELL_SIZE);
+            const gridY = Math.floor(mouseY / CELL_SIZE);
+
+            if (gridX < 0 || gridX >= MAP_WIDTH || gridY < 0 || gridY >= MAP_HEIGHT) return;
+
+            const worldX = mouseX / CELL_SIZE;
+            const worldY = mouseY / CELL_SIZE;
+
+            const idx = gridY * MAP_WIDTH + gridX;
+
+            if (currentTool === 'wall') {
+                map[idx] = TYPE_WALL;
+            } else if (currentTool === 'cylinder') {
+                map[idx] = TYPE_CYLINDER;
+            } else if (currentTool === 'erase') {
+                map[idx] = TYPE_EMPTY;
+            } else if (currentTool === 'lightAdd') {
+                // Prevenir colocar múltiples luces extremadamente juntas
+                const exists = lights.some(l => Math.hypot(l.x - worldX, l.y - worldY) < 0.8);
+                if (!exists) {
+                    const currentRadius = parseFloat(knobLightRadius.value);
+                    lights.push({ x: worldX, y: worldY, radius: currentRadius });
+                }
+            } else if (currentTool === 'lightRemove') {
+                lights = lights.filter(l => Math.hypot(l.x - worldX, l.y - worldY) > 1.0);
+            } else if (currentTool === 'player') {
+                if (map[idx] === TYPE_EMPTY) {
+                    player.x = worldX;
+                    player.y = worldY;
+                }
+            }
+        }
+
+        editorCanvas.addEventListener('mousedown', (e) => { isMouseDown = true; handleEdit(e); });
+        editorCanvas.addEventListener('mousemove', (e) => { if (isMouseDown) handleEdit(e); });
+        window.addEventListener('mouseup', () => isMouseDown = false);
+
+        // --- MOVIMIENTO Y FÍSICA ---
+        const keys = {};
+        renderCanvas.addEventListener('click', () => renderCanvas.requestPointerLock());
+
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === renderCanvas) {
+                player.angle += e.movementX * 0.003;
+            }
+        });
+
+        window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+        function isSolid(x, y) {
+            const mx = Math.floor(x);
+            const my = Math.floor(y);
+            if (mx < 0 || mx >= MAP_WIDTH || my < 0 || my >= MAP_HEIGHT) return true;
+            const tile = map[my * MAP_WIDTH + mx];
+            if (tile === TYPE_WALL) return true;
+            if (tile === TYPE_CYLINDER) {
+                // Colisión circular dentro del bloque cilindro
+                const cx = mx + 0.5;
+                const cy = my + 0.5;
+                return Math.hypot(x - cx, y - cy) < 0.45;
+            }
+            return false;
+        }
+
+        function updatePlayer() {
+            const radius = 0.2;
+            let moveX = 0, moveY = 0;
+
+            if (keys['w']) { moveX += Math.cos(player.angle) * player.speed; moveY += Math.sin(player.angle) * player.speed; }
+            if (keys['s']) { moveX -= Math.cos(player.angle) * player.speed; moveY -= Math.sin(player.angle) * player.speed; }
+            if (keys['a']) { moveX += Math.sin(player.angle) * player.speed; moveY -= Math.cos(player.angle) * player.speed; }
+            if (keys['d']) { moveX -= Math.sin(player.angle) * player.speed; moveY += Math.cos(player.angle) * player.speed; }
+
+            if (moveX !== 0 && !isSolid(player.x + moveX + Math.sign(moveX) * radius, player.y)) player.x += moveX;
+            if (moveY !== 0 && !isSolid(player.x, player.y + moveY + Math.sign(moveY) * radius)) player.y += moveY;
+        }
+
+        let debugRays = [];
+
+        // --- ALGORITMO DDA CON INTERSECCIÓN DE CILINDROS ---
+        function castRay(rayAngle) {
+            const rdx = Math.cos(rayAngle);
+            const rdy = Math.sin(rayAngle);
+
+            let mapX = Math.floor(player.x);
+            let mapY = Math.floor(player.y);
+
+            const deltaDistX = Math.abs(1 / (rdx || 1e-30));
+            const deltaDistY = Math.abs(1 / (rdy || 1e-30));
+
+            let stepX = rdx < 0 ? -1 : 1;
+            let stepY = rdy < 0 ? -1 : 1;
+
+            let sideDistX = rdx < 0 ? (player.x - mapX) * deltaDistX : (mapX + 1.0 - player.x) * deltaDistX;
+            let sideDistY = rdy < 0 ? (player.y - mapY) * deltaDistY : (mapY + 1.0 - player.y) * deltaDistY;
+
+            let hit = false;
+            let side = 0;
+            let hitType = TYPE_WALL;
+            let distance = 0;
+            let hitX = 0, hitY = 0;
+            let normalX = 0, normalY = 0;
+
+            let steps = 0;
+            const maxSteps = 64;
+
+            while (!hit && steps < maxSteps) {
+                steps++;
+                if (sideDistX < sideDistY) {
+                    sideDistX += deltaDistX;
+                    mapX += stepX;
+                    side = 0;
+                } else {
+                    sideDistY += deltaDistY;
+                    mapY += stepY;
+                    side = 1;
+                }
+
+                if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT) {
+                    hit = true;
+                    distance = side === 0 ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
+                    break;
+                }
+
+                const tile = map[mapY * MAP_WIDTH + mapX];
+
+                if (tile === TYPE_WALL) {
+                    hit = true;
+                    hitType = TYPE_WALL;
+                    distance = side === 0 ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
+                    hitX = player.x + rdx * distance;
+                    hitY = player.y + rdy * distance;
+                    normalX = side === 0 ? -stepX : 0;
+                    normalY = side === 1 ? -stepY : 0;
+                } else if (tile === TYPE_CYLINDER) {
+                    // Intersección Rayo-Círculo dentro de la celda
+                    const cx = mapX + 0.5;
+                    const cy = mapY + 0.5;
+                    const r = 0.42; // Radio de la columna
+
+                    const ocX = player.x - cx;
+                    const ocY = player.y - cy;
+
+                    const b = 2 * (ocX * rdx + ocY * rdy);
+                    const c = (ocX * ocX + ocY * ocY) - r * r;
+                    const disc = b * b - 4 * c;
+
+                    if (disc >= 0) {
+                        const t = (-b - Math.sqrt(disc)) / 2;
+                        if (t > 0) {
+                            hit = true;
+                            hitType = TYPE_CYLINDER;
+                            distance = t;
+                            hitX = player.x + rdx * distance;
+                            hitY = player.y + rdy * distance;
+                            normalX = (hitX - cx) / r;
+                            normalY = (hitY - cy) / r;
+                        }
+                    }
+                }
+            }
+
+            return { distance, hitX, hitY, hitType, normalX, normalY, side };
+        }
+
+        // --- RENDERIZADO GENERAL ---
+        function render() {
+            updatePlayer();
+
+            const HALF_HEIGHT = HEIGHT / 2;
+            debugRays = [];
+
+            const raysToCast = Math.min(WIDTH, player.rayCount);
+            const columnWidth = WIDTH / raysToCast;
+
+            for (let i = 0; i < raysToCast; i++) {
+                const rayAngle = (player.angle - player.fov / 2) + (i / raysToCast) * player.fov;
+                const ray = castRay(rayAngle);
+
+                const correctedDist = Math.max(0.05, ray.distance * Math.cos(rayAngle - player.angle));
+
+                if (i % Math.ceil(raysToCast / 30) === 0) {
+                    debugRays.push({ hitX: ray.hitX, hitY: ray.hitY });
+                }
+
+                // CALCULO ACUMULATIVO DE ILUMINACIÓN DE TODAS LAS LUCES
+                let totalLight = 0;
+
+                // 1. Linterna del Player
+                if (player.hasLight) {
+                    const playerLightDist = ray.distance;
+                    if (playerLightDist < 10) {
+                        totalLight += Math.max(0, 1 - (playerLightDist / 10)) * 0.9;
+                    }
+                }
+
+                // 2. Múltiples fuentes de luz estáticas del mapa
+                for (let l of lights) {
+                    const ldx = ray.hitX - l.x;
+                    const ldy = ray.hitY - l.y;
+                    const distToLight = Math.hypot(ldx, ldy);
+
+                    if (distToLight < l.radius) {
+                        // Sombreado Lambert simple según la normal de la superficie
+                        let ndotl = 1.0;
+                        if (ray.hitType === TYPE_CYLINDER) {
+                            const lx = -ldx / distToLight;
+                            const ly = -ldy / distToLight;
+                            ndotl = Math.max(0.2, ray.normalX * lx + ray.normalY * ly);
+                        } else {
+                            ndotl = ray.side === 0 ? 1.0 : 0.7;
+                        }
+                        totalLight += Math.max(0, 1 - (distToLight / l.radius)) * ndotl;
+                    }
+                }
+
+                // Clamp de luz global
+                const shade = Math.min(1.0, Math.max(0.05, totalLight));
+
+                // Diferenciar color según el tipo de objeto
+                let baseR = 40, baseG = 180, baseB = 110;
+                if (ray.hitType === TYPE_CYLINDER) {
+                    baseR = 190; baseG = 110; baseB = 40; // Tono cálido para columnas
+                }
+
+                const wallR = Math.floor(baseR * shade);
+                const wallG = Math.floor(baseG * shade);
+                const wallB = Math.floor(baseB * shade);
+
+                const wallPixel = (255 << 24) | (wallB << 16) | (wallG << 8) | wallR;
+                const ceilingPixel = (255 << 24) | (20 << 16) | (15 << 8) | 10;
+                const floorPixel = (255 << 24) | (15 << 16) | (10 << 8) | 5;
+
+                const lineHeight = Math.min(HEIGHT * 2, Math.floor(HEIGHT / correctedDist));
+                const drawStart = Math.max(0, Math.floor(HALF_HEIGHT - lineHeight / 2));
+                const drawEnd = Math.min(HEIGHT - 1, Math.floor(HALF_HEIGHT + lineHeight / 2));
+
+                const startCol = Math.floor(i * columnWidth);
+                const endCol = Math.floor((i + 1) * columnWidth);
+
+                for (let x = startCol; x < endCol; x++) {
+                    for (let y = 0; y < HEIGHT; y++) {
+                        const pixelIndex = y * WIDTH + x;
+                        if (y < drawStart) pixelBuffer[pixelIndex] = ceilingPixel;
+                        else if (y <= drawEnd) pixelBuffer[pixelIndex] = wallPixel;
+                        else pixelBuffer[pixelIndex] = floorPixel;
+                    }
+                }
+            }
+
+            ctxRender.putImageData(imgData, 0, 0);
+            drawEditor();
+            requestAnimationFrame(render);
+        }
+
+        // --- DIBUJO DEL EDITOR 2D ---
+        function drawEditor() {
+            ctxEdit.fillStyle = '#121214';
+            ctxEdit.fillRect(0, 0, editorCanvas.width, editorCanvas.height);
+
+            // Celdas del mapa 32x32
+            for (let r = 0; r < MAP_HEIGHT; r++) {
+                for (let c = 0; c < MAP_WIDTH; c++) {
+                    const tile = map[r * MAP_WIDTH + c];
+                    if (tile === TYPE_WALL) {
+                        ctxEdit.fillStyle = '#2b8a3e';
+                        ctxEdit.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    } else if (tile === TYPE_CYLINDER) {
+                        ctxEdit.fillStyle = '#e67e22';
+                        ctxEdit.beginPath();
+                        ctxEdit.arc((c + 0.5) * CELL_SIZE, (r + 0.5) * CELL_SIZE, CELL_SIZE * 0.42, 0, Math.PI * 2);
+                        ctxEdit.fill();
+                    }
+                    ctxEdit.strokeStyle = '#1e1e28';
+                    ctxEdit.strokeRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                }
+            }
+
+            // Rayos trazados
+            ctxEdit.strokeStyle = 'rgba(82, 183, 136, 0.25)';
+            ctxEdit.lineWidth = 1;
+            for (let r of debugRays) {
+                ctxEdit.beginPath();
+                ctxEdit.moveTo(player.x * CELL_SIZE, player.y * CELL_SIZE);
+                ctxEdit.lineTo(r.hitX * CELL_SIZE, r.hitY * CELL_SIZE);
+                ctxEdit.stroke();
+            }
+
+            // Múltiples Fuentes de Luz
+            for (let l of lights) {
+                ctxEdit.fillStyle = '#ffd43b';
+                ctxEdit.beginPath();
+                ctxEdit.arc(l.x * CELL_SIZE, l.y * CELL_SIZE, 4, 0, Math.PI * 2);
+                ctxEdit.fill();
+
+                ctxEdit.strokeStyle = 'rgba(255, 212, 59, 0.15)';
+                ctxEdit.beginPath();
+                ctxEdit.arc(l.x * CELL_SIZE, l.y * CELL_SIZE, l.radius * CELL_SIZE, 0, Math.PI * 2);
+                ctxEdit.stroke();
+            }
+
+            // Jugador
+            ctxEdit.fillStyle = '#4d96ff';
+            ctxEdit.beginPath();
+            ctxEdit.arc(player.x * CELL_SIZE, player.y * CELL_SIZE, 4, 0, Math.PI * 2);
+            ctxEdit.fill();
+
+            // Dirección y Linterna del Player en 2D
+            ctxEdit.strokeStyle = player.hasLight ? '#ffd43b' : '#ff6b6b';
+            ctxEdit.lineWidth = 2;
+            ctxEdit.beginPath();
+            ctxEdit.moveTo(player.x * CELL_SIZE, player.y * CELL_SIZE);
+            ctxEdit.lineTo(
+                (player.x + Math.cos(player.angle) * 0.8) * CELL_SIZE,
+                (player.y + Math.sin(player.angle) * 0.8) * CELL_SIZE
+            );
+            ctxEdit.stroke();
+        }
+
+        render();
+    </script>
+</body>
+</html>
