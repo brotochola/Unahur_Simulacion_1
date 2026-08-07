@@ -1,730 +1,1669 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Terreno Destructible — Marching Cubes</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; overflow:hidden; background:#0a0e14; font-family: 'Segoe UI', system-ui, sans-serif; }
-  canvas { display:block; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terreno Destructible — Marching Cubes</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-  #hud { position:fixed; inset:0; pointer-events:none; color:#e8edf4; text-shadow:0 1px 3px rgba(0,0,0,.8); }
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0e14;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
 
-  #crosshair {
-    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-    width:8px; height:8px; border-radius:50%;
-    border:1.5px solid rgba(255,255,255,.85);
-    box-shadow:0 0 4px rgba(0,0,0,.6);
-  }
+    canvas {
+      display: block;
+    }
 
-  #topbar {
-    position:absolute; top:16px; left:16px; right:16px;
-    display:flex; justify-content:space-between; align-items:flex-start;
-    font-size:13px; letter-spacing:.02em;
-  }
-  #brandbox { display:flex; flex-direction:column; gap:2px; }
-  #brandbox .title { font-size:15px; font-weight:600; color:#8fd3ff; }
-  #brandbox .sub { opacity:.65; font-size:11px; }
+    #hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      color: #e8edf4;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, .8);
+    }
 
-  #brushpanel {
-    background:rgba(10,14,20,.55); border:1px solid rgba(143,211,255,.25);
-    border-radius:10px; padding:10px 14px; backdrop-filter:blur(6px);
-    min-width:190px;
-  }
-  #brushpanel .row { display:flex; justify-content:space-between; margin:3px 0; opacity:.9; }
-  #brushpanel .bar { height:4px; background:rgba(255,255,255,.15); border-radius:2px; margin-top:6px; overflow:hidden; }
-  #brushpanel .bar-fill { height:100%; background:linear-gradient(90deg,#54e6a4,#8fd3ff); transition:width .15s; }
-  #modeLabel.dig { color:#ff9d6b; }
-  #modeLabel.build { color:#54e6a4; }
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, .85);
+      box-shadow: 0 0 4px rgba(0, 0, 0, .6);
+    }
 
-  #helpbox {
-    position:absolute; bottom:16px; left:16px;
-    background:rgba(10,14,20,.55); border:1px solid rgba(143,211,255,.2);
-    border-radius:10px; padding:10px 14px; font-size:11.5px; line-height:1.7;
-    backdrop-filter:blur(6px); opacity:.85;
-  }
-  #helpbox b { color:#8fd3ff; }
+    #topbar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      font-size: 13px;
+      letter-spacing: .02em;
+    }
 
-  #stats {
-    position:absolute; bottom:16px; right:16px; font-size:11px; opacity:.55; text-align:right; line-height:1.6;
-  }
+    #brandbox {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
 
-  #startscreen {
-    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column;
-    background:radial-gradient(ellipse at 50% 40%, #1a2233 0%, #05070a 75%);
-    z-index:20; text-align:center; padding:20px;
-  }
-  #startscreen h1 { font-size:clamp(28px,5vw,44px); color:#e8edf4; font-weight:700; letter-spacing:-.02em; }
-  #startscreen h1 span { color:#54e6a4; }
-  #startscreen p { color:#93a2b8; margin-top:10px; max-width:460px; font-size:14px; line-height:1.6; }
-  #startBtn {
-    margin-top:28px; padding:14px 38px; font-size:15px; font-weight:600; letter-spacing:.03em;
-    background:linear-gradient(135deg,#54e6a4,#3ba8e0); color:#05070a; border:none; border-radius:999px;
-    cursor:pointer; transition:transform .15s, box-shadow .15s;
-    box-shadow:0 8px 24px rgba(84,230,164,.25);
-  }
-  #startBtn:hover { transform:translateY(-2px); box-shadow:0 12px 30px rgba(84,230,164,.35); }
-  #loadbar { width:280px; height:6px; background:rgba(255,255,255,.1); border-radius:3px; margin-top:26px; overflow:hidden; display:none; }
-  #loadbar-fill { height:100%; width:0%; background:linear-gradient(90deg,#54e6a4,#8fd3ff); transition:width .1s; }
-  #loadtext { margin-top:10px; font-size:12px; color:#93a2b8; display:none; }
+    #brandbox .title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #8fd3ff;
+    }
 
-  #pausehint {
-    position:fixed; inset:0; display:none; align-items:center; justify-content:center;
-    background:rgba(5,7,10,.55); z-index:15; color:#e8edf4; font-size:18px; letter-spacing:.03em;
-    cursor:pointer;
-  }
-</style>
+    #brandbox .sub {
+      opacity: .65;
+      font-size: 11px;
+    }
+
+    #brushpanel {
+      background: rgba(10, 14, 20, .55);
+      border: 1px solid rgba(143, 211, 255, .25);
+      border-radius: 10px;
+      padding: 10px 14px;
+      backdrop-filter: blur(6px);
+      min-width: 190px;
+    }
+
+    #brushpanel .row {
+      display: flex;
+      justify-content: space-between;
+      margin: 3px 0;
+      opacity: .9;
+    }
+
+    #brushpanel .bar {
+      height: 4px;
+      background: rgba(255, 255, 255, .15);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    #brushpanel .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #54e6a4, #8fd3ff);
+      transition: width .15s;
+    }
+
+    #modeLabel.dig {
+      color: #ff9d6b;
+    }
+
+    #modeLabel.build {
+      color: #54e6a4;
+    }
+
+    #helpbox {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: rgba(10, 14, 20, .55);
+      border: 1px solid rgba(143, 211, 255, .2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 11.5px;
+      line-height: 1.7;
+      backdrop-filter: blur(6px);
+      opacity: .85;
+    }
+
+    #helpbox b {
+      color: #8fd3ff;
+    }
+
+    #stats {
+      position: absolute;
+      bottom: 16px;
+      right: calc(min(380px, 100vw) + 16px);
+      font-size: 11px;
+      opacity: .55;
+      text-align: right;
+      line-height: 1.6;
+    }
+
+    #startscreen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      background: radial-gradient(ellipse at 50% 40%, #1a2233 0%, #05070a 75%);
+      z-index: 20;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #startscreen h1 {
+      font-size: clamp(28px, 5vw, 44px);
+      color: #e8edf4;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+
+    #startscreen h1 span {
+      color: #54e6a4;
+    }
+
+    #startscreen p {
+      color: #93a2b8;
+      margin-top: 10px;
+      max-width: 460px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    #startBtn {
+      margin-top: 28px;
+      padding: 14px 38px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: .03em;
+      background: linear-gradient(135deg, #54e6a4, #3ba8e0);
+      color: #05070a;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 8px 24px rgba(84, 230, 164, .25);
+    }
+
+    #startBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(84, 230, 164, .35);
+    }
+
+    #loadbar {
+      width: 280px;
+      height: 6px;
+      background: rgba(255, 255, 255, .1);
+      border-radius: 3px;
+      margin-top: 26px;
+      overflow: hidden;
+      display: none;
+    }
+
+    #loadbar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #54e6a4, #8fd3ff);
+      transition: width .1s;
+    }
+
+    #loadtext {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #93a2b8;
+      display: none;
+    }
+
+    #pausehint {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(5, 7, 10, .55);
+      z-index: 15;
+      color: #e8edf4;
+      font-size: 18px;
+      letter-spacing: .03em;
+      cursor: pointer;
+    }
+
+    #dbgPanel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(380px, 100vw);
+      z-index: 30;
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      background: rgba(8, 12, 18, .94);
+      border-left: 1px solid rgba(143, 211, 255, .22);
+      color: #d7e0ec;
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    #dbgPanel header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(143, 211, 255, .15);
+      flex-shrink: 0;
+    }
+
+    #dbgPanel header h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #8fd3ff;
+      letter-spacing: .03em;
+    }
+
+    #dbgScroll {
+      overflow-y: auto;
+      padding: 10px 14px 24px;
+      flex: 1;
+    }
+
+    #dbgScroll section {
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, .07);
+    }
+
+    #dbgScroll h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #54e6a4;
+      margin-bottom: 6px;
+    }
+
+    #dbgScroll .hint {
+      font-size: 10.5px;
+      line-height: 1.45;
+      color: #8b9bb0;
+      margin-bottom: 8px;
+    }
+
+    #dbgScroll label.ctrl {
+      display: block;
+      margin: 8px 0 2px;
+      color: #c5d0de;
+    }
+
+    #dbgScroll label.ctrl .val {
+      float: right;
+      color: #8fd3ff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #dbgScroll input[type=range] {
+      width: 100%;
+      accent-color: #54e6a4;
+      margin: 2px 0 4px;
+    }
+
+    #dbgScroll .tip {
+      font-size: 10px;
+      color: #6f7f94;
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+
+    #dbgScroll .check {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 6px 0;
+      cursor: pointer;
+      line-height: 1.35;
+    }
+
+    #dbgScroll .check input {
+      margin-top: 2px;
+      accent-color: #54e6a4;
+      flex-shrink: 0;
+    }
+
+    #dbgScroll .check span {
+      color: #c5d0de;
+    }
+
+    #dbgScroll .check small {
+      display: block;
+      color: #6f7f94;
+      font-size: 10px;
+      margin-top: 1px;
+    }
+
+    #dbgScroll button.action {
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid rgba(84, 230, 164, .35);
+      background: rgba(84, 230, 164, .12);
+      color: #54e6a4;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    #dbgScroll button.action:hover {
+      background: rgba(84, 230, 164, .22);
+    }
+
+    #dbgScroll .kv {
+      display: flex;
+      justify-content: space-between;
+      margin: 3px 0;
+      opacity: .85;
+    }
+
+    #dbgScroll .kv b {
+      color: #8fd3ff;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #sliceWrap {
+      position: fixed;
+      left: 16px;
+      bottom: 110px;
+      z-index: 22;
+      pointer-events: none;
+      display: none;
+      background: rgba(8, 12, 18, .85);
+      border: 1px solid rgba(143, 211, 255, .25);
+      border-radius: 10px;
+      padding: 8px;
+      backdrop-filter: blur(6px);
+    }
+
+    #sliceWrap.visible {
+      display: block;
+    }
+
+    #sliceWrap .cap {
+      font-size: 10px;
+      color: #8fd3ff;
+      margin-bottom: 4px;
+      letter-spacing: .04em;
+    }
+
+    #densitySlice {
+      display: block;
+      width: 180px;
+      height: 180px;
+      image-rendering: pixelated;
+      border-radius: 4px;
+    }
+
+    #hitInfo {
+      position: fixed;
+      top: 56px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 22;
+      pointer-events: none;
+      display: none;
+      background: rgba(8, 12, 18, .7);
+      border: 1px solid rgba(143, 211, 255, .2);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      color: #c5d0de;
+      text-align: center;
+      line-height: 1.5;
+      white-space: nowrap;
+    }
+
+    #hitInfo.visible {
+      display: block;
+    }
+  </style>
 </head>
 <body>
 
-<div id="startscreen">
-  <h1>Terreno <span>Destructible</span></h1>
-  <p>Grilla de densidad 3D + Marching Cubes, renderizado con Three.js. Excavá y construí el terreno en tiempo real, chunk por chunk.</p>
-  <button id="startBtn">Entrar</button>
-  <div id="loadbar"><div id="loadbar-fill"></div></div>
-  <div id="loadtext">Generando terreno...</div>
-</div>
-
-<div id="pausehint">Click para jugar</div>
-
-<div id="hud">
-  <div id="crosshair"></div>
-  <div id="topbar">
-    <div id="brandbox">
-      <div class="title">VOXEL TERRAIN</div>
-      <div class="sub">grilla · marching cubes · chunks dinámicos</div>
+  <div id="startscreen">
+    <h1>Terreno <span>Destructible</span></h1>
+    <p>Grilla de densidad 3D + Marching Cubes, renderizado con Three.js. Excavá y construí el terreno en tiempo real,
+      chunk por chunk.</p>
+    <button id="startBtn">Entrar</button>
+    <div id="loadbar">
+      <div id="loadbar-fill"></div>
     </div>
-    <div id="brushpanel">
-      <div class="row"><span>Modo</span><span id="modeLabel" class="dig">EXCAVAR</span></div>
-      <div class="row"><span>Radio de brocha</span><span id="brushVal">2.5</span></div>
-      <div class="bar"><div class="bar-fill" id="brushBar" style="width:35%"></div></div>
+    <div id="loadtext">Generando terreno...</div>
+  </div>
+
+  <div id="pausehint">Click para jugar</div>
+
+  <div id="hud">
+    <div id="crosshair"></div>
+    <div id="topbar">
+      <div id="brandbox">
+        <div class="title">VOXEL TERRAIN</div>
+        <div class="sub">grilla · marching cubes · chunks dinámicos</div>
+      </div>
+      <div id="brushpanel">
+        <div class="row"><span>Modo</span><span id="modeLabel" class="dig">EXCAVAR</span></div>
+        <div class="row"><span>Radio de brocha</span><span id="brushVal">2.5</span></div>
+        <div class="bar">
+          <div class="bar-fill" id="brushBar" style="width:35%"></div>
+        </div>
+      </div>
+    </div>
+    <div id="helpbox">
+      <div><b>Click izq</b> excavá &nbsp; <b>Click der</b> construí</div>
+      <div><b>Rueda</b> tamaño brocha &nbsp; <b>WASD</b> mover</div>
+      <div><b>Espacio / Ctrl</b> subir / bajar &nbsp; <b>Shift</b> sprint</div>
+      <div><b>Esc</b> soltar cursor · click canvas para jugar · panel debug siempre a la derecha</div>
+    </div>
+    <div id="stats">
+      <div id="fps">-- fps</div>
+      <div id="triCount">-- tris</div>
+      <div id="chunkCount">-- chunks</div>
     </div>
   </div>
-  <div id="helpbox">
-    <div><b>Click izq</b> excavar &nbsp; <b>Click der</b> construir</div>
-    <div><b>Rueda</b> tamaño de brocha &nbsp; <b>WASD</b> mover</div>
-    <div><b>Espacio / Ctrl</b> subir / bajar &nbsp; <b>Shift</b> sprint &nbsp; <b>Esc</b> soltar cursor</div>
+
+  <aside id="dbgPanel" aria-label="Panel de depuración">
+    <header>
+      <h2>Panel Debug · Marching Cubes</h2>
+    </header>
+    <div id="dbgScroll">
+
+      <section>
+        <h3>Qué es esto</h3>
+        <p class="hint">
+          El mundo vive en un <b>campo de densidad</b> 3D (valores 0–1 por esquina de celda).
+          <b>Marching Cubes</b> corta ese campo al <b>nivel iso</b> y genera triángulos.
+          Excavar / construir solo modifica densidades y vuelve a poligonizar los chunks sucios.
+        </p>
+        <div class="kv"><span>Celdas totales</span><b id="dbgGridInfo">—</b></div>
+        <div class="kv"><span>Puntos de grilla</span><b id="dbgPtsInfo">—</b></div>
+        <div class="kv"><span>Chunks (X×Y×Z)</span><b id="dbgChunkInfo">—</b></div>
+        <div class="kv"><span>Tamaño celda</span><b id="dbgCellInfo">—</b></div>
+      </section>
+
+      <section>
+        <h3>Modo de vista</h3>
+        <p class="hint">Capas independientes. Combinálas para comparar malla MC, iluminación y el campo escalar crudo.
+        </p>
+        <label class="check"><input type="checkbox" id="dbgTerrain" checked><span>Resultado final<small>Malla generada
+              por Marching Cubes (chunks).</small></span></label>
+        <label class="check"><input type="checkbox" id="dbgLighting" checked><span>Iluminación<small>On = sombreado
+              Standard + luces. Off = color de vértice plano (sin shading).</small></span></label>
+        <label class="check"><input type="checkbox" id="dbgWire"><span>Solo mesh (wireframe)<small>Aristas de la malla.
+              Útil para ver facetas y costuras entre chunks.</small></span></label>
+        <label class="check"><input type="checkbox" id="dbgDensityPts"><span>Puntos de densidad<small>Una esfera/punto
+              por esquina de la grilla 3D. Color según densidad vs umbral.</small></span></label>
+        <label class="ctrl">Tamaño puntos <span class="val" id="ptSizeVal">4</span></label>
+        <input type="range" id="ptSize" min="1" max="12" step="0.5" value="4">
+        <p class="tip">Solo afecta la capa de puntos de densidad.</p>
+      </section>
+
+      <section>
+        <h3>Extras debug</h3>
+        <label class="check"><input type="checkbox" id="dbgFlat"><span>Sombreado flat<small>Una normal por cara:
+              resalta facetas del MC.</small></span></label>
+        <label class="check"><input type="checkbox" id="dbgNormalsColor"><span>Colorear por normales<small>RGB =
+              (nx,ny,nz).</small></span></label>
+        <label class="check"><input type="checkbox" id="dbgChunks"><span>Límites de chunks</span></label>
+        <label class="check"><input type="checkbox" id="dbgAxes"><span>Ejes del mundo</span></label>
+        <label class="check"><input type="checkbox" id="dbgBrushGizmo"><span>Gizmo de brocha</span></label>
+        <label class="check"><input type="checkbox" id="dbgHitInfo"><span>Info de hit</span></label>
+        <label class="check"><input type="checkbox" id="dbgSlice"><span>Corte de densidad (XZ)</span></label>
+        <label class="check"><input type="checkbox" id="dbgFog" checked><span>Niebla</span></label>
+        <label class="check"><input type="checkbox" id="dbgShadows" checked><span>Sombras</span></label>
+      </section>
+
+      <section>
+        <h3>Corte de densidad</h3>
+        <p class="hint">Elige la altura (índice Y de la grilla) del plano XZ que se dibuja en la esquina.</p>
+        <label class="ctrl">Altura del corte Y <span class="val" id="sliceYVal">12</span></label>
+        <input type="range" id="sliceY" min="0" max="24" step="1" value="12">
+        <p class="tip">Y=0 es el piso de la grilla; Y alto es cielo. Donde densidad ≈ iso ves la silueta del terreno.
+        </p>
+      </section>
+
+      <section>
+        <h3>Brocha / edición</h3>
+        <p class="hint">La brocha suma o resta densidad en una esfera con falloff lineal. Fuerza se aplica por segundo.
+        </p>
+        <label class="ctrl">Radio (unidades mundo) <span class="val" id="brushSliderVal">2.5</span></label>
+        <input type="range" id="brushSlider" min="0.8" max="6.5" step="0.1" value="2.5">
+        <p class="tip">También con rueda del mouse en juego. Más radio = más chunks sucios por golpe.</p>
+        <label class="ctrl">Fuerza / segundo <span class="val" id="strengthVal">1.7</span></label>
+        <input type="range" id="strengthSlider" min="0.2" max="5" step="0.1" value="1.7">
+        <p class="tip">Excavar = fuerza negativa; construir = positiva. Valores altos deforman más rápido.</p>
+      </section>
+
+      <section>
+        <h3>Marching Cubes</h3>
+        <p class="hint">El umbral clasifica cada esquina como aire o sólido. Con interpolación, el vértice se coloca
+          donde densidad = umbral en la arista. En modo binario la grilla se trata como 0/1 y el vértice queda en el
+          medio de la arista (sin lerp).</p>
+        <label class="check"><input type="checkbox" id="dbgMcBinary"><span>Sin interpolación (binario)<small>Puntos
+              sólidos/aire según umbral; vértices de malla en midpoints. Compará con el resultado lerped.</small></span></label>
+        <label class="ctrl">Umbral / iso <span class="val" id="isoVal">0.50</span></label>
+        <input type="range" id="isoSlider" min="0.05" max="0.95" step="0.01" value="0.50">
+        <p class="tip">En lerp mueve la superficie. En binario solo cambia qué esquinas son sólidas (vértices siguen
+          en el medio). Reconstruye todos los chunks.</p>
+        <button type="button" class="action" id="btnRebuild">Reconstruir todos los chunks</button>
+      </section>
+
+      <section>
+        <h3>Generación procedural</h3>
+        <p class="hint">Al regenerar se sobrescribe todo el campo (perdés excavaciones). Usa ruido Perlin + cuevas.</p>
+        <label class="ctrl">Altura base (celdas) <span class="val" id="baseHVal">10.1</span></label>
+        <input type="range" id="baseH" min="4" max="20" step="0.1" value="10.1">
+        <p class="tip">Altura media del terreno antes del ruido. Default ≈ 42% de GRID_Y.</p>
+        <label class="ctrl">Amplitud de relieve <span class="val" id="ampHVal">7.2</span></label>
+        <input type="range" id="ampH" min="0" max="16" step="0.1" value="7.2">
+        <p class="tip">Cuánto sube/baja el FBM de altura. 0 = meseta plana.</p>
+        <label class="ctrl">Banda de superficie <span class="val" id="bandVal">2.4</span></label>
+        <input type="range" id="band" min="0.5" max="8" step="0.1" value="2.4">
+        <p class="tip">Grosor de la transición aire↔sólido en celdas. Más banda = superficie más suave/blanda.</p>
+        <label class="ctrl">Umbral de cuevas <span class="val" id="caveVal">0.42</span></label>
+        <input type="range" id="caveTh" min="0.2" max="0.8" step="0.01" value="0.42">
+        <p class="tip">Si el ruido de cueva supera esto, se ahueca el subsuelo. Más bajo = más cuevas.</p>
+        <label class="ctrl">Escala de altura (noise) <span class="val" id="hScaleVal">0.09</span></label>
+        <input type="range" id="hScale" min="0.02" max="0.25" step="0.005" value="0.09">
+        <p class="tip">Frecuencia espacial del relieve. Bajo = colinas grandes; alto = irregularidad fina.</p>
+        <button type="button" class="action" id="btnRegen">Regenerar terreno</button>
+      </section>
+
+      <section>
+        <h3>Iluminación / atmósfera</h3>
+        <label class="ctrl">Sol (intensidad) <span class="val" id="sunVal">1.35</span></label>
+        <input type="range" id="sunI" min="0" max="3" step="0.05" value="1.35">
+        <p class="tip">Luz direccional principal; proyecta sombras.</p>
+        <label class="ctrl">Hemisferio <span class="val" id="hemiVal">0.65</span></label>
+        <input type="range" id="hemiI" min="0" max="2" step="0.05" value="0.65">
+        <p class="tip">Luz ambiente cielo/suelo (sin sombras).</p>
+        <label class="ctrl">Niebla cerca <span class="val" id="fogNearVal">—</span></label>
+        <input type="range" id="fogNear" min="5" max="120" step="1" value="30">
+        <label class="ctrl">Niebla lejos <span class="val" id="fogFarVal">—</span></label>
+        <input type="range" id="fogFar" min="20" max="250" step="1" value="90">
+        <p class="tip">Distancia donde el fog empieza / termina de tapar el color de fondo.</p>
+      </section>
+
+      <section>
+        <h3>Material</h3>
+        <label class="ctrl">Rugosidad <span class="val" id="roughVal">0.92</span></label>
+        <input type="range" id="rough" min="0" max="1" step="0.01" value="0.92">
+        <p class="tip">0 = brillante/especular; 1 = mate (tierra/roca).</p>
+        <label class="ctrl">Metalness <span class="val" id="metalVal">0.02</span></label>
+        <input type="range" id="metal" min="0" max="1" step="0.01" value="0.02">
+        <p class="tip">Casi siempre 0 en terreno orgánico.</p>
+      </section>
+
+      <section>
+        <h3>Cámara / control</h3>
+        <label class="ctrl">Velocidad <span class="val" id="speedVal">9.5</span></label>
+        <input type="range" id="speed" min="2" max="40" step="0.5" value="9.5">
+        <p class="tip">Unidades/segundo en WASD (sin sprint).</p>
+        <label class="ctrl">Mult. sprint <span class="val" id="sprintVal">2.6</span></label>
+        <input type="range" id="sprint" min="1" max="6" step="0.1" value="2.6">
+        <label class="ctrl">Sensibilidad mouse <span class="val" id="sensVal">0.0022</span></label>
+        <input type="range" id="sens" min="0.0005" max="0.008" step="0.0001" value="0.0022">
+        <p class="tip">Radianes por píxel de movimiento con pointer lock.</p>
+        <label class="ctrl">FOV <span class="val" id="fovVal">70</span></label>
+        <input type="range" id="fov" min="40" max="110" step="1" value="70">
+      </section>
+
+      <section>
+        <h3>Rendimiento en vivo</h3>
+        <p class="hint">Contadores actualizados cada medio segundo. Tris = triángulos indexados de todos los chunks
+          visibles.</p>
+        <div class="kv"><span>FPS</span><b id="dbgFps">—</b></div>
+        <div class="kv"><span>Triángulos</span><b id="dbgTris">—</b></div>
+        <div class="kv"><span>Vértices</span><b id="dbgVerts">—</b></div>
+        <div class="kv"><span>Chunks con malla</span><b id="dbgMeshes">—</b></div>
+        <div class="kv"><span>Chunks sucios</span><b id="dbgDirty">—</b></div>
+        <div class="kv"><span>Draw calls (aprox.)</span><b id="dbgDraw">—</b></div>
+        <div class="kv"><span>Posición cámara</span><b id="dbgCam">—</b></div>
+      </section>
+
+    </div>
+  </aside>
+
+  <div id="sliceWrap">
+    <div class="cap">DENSIDAD · corte XZ</div>
+    <canvas id="densitySlice" width="128" height="128"></canvas>
   </div>
-  <div id="stats">
-    <div id="fps">-- fps</div>
-    <div id="triCount">-- tris</div>
-    <div id="chunkCount">-- chunks</div>
-  </div>
-</div>
+  <div id="hitInfo"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-(function(){
-"use strict";
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    (function () {
+      "use strict";
 
-/* ============================================================
-   CONFIGURACION DEL MUNDO
-   ============================================================ */
-const CELL_SIZE   = 1.2;   // tamaño de celda en unidades de mundo
-const CHUNK_SIZE  = 12;    // celdas por chunk, por eje
-const CHUNKS_X = 4, CHUNKS_Y = 2, CHUNKS_Z = 4;
+      /* ============================================================
+         CONFIGURACION DEL MUNDO
+         ============================================================ */
+      const CELL_SIZE = 1.2;   // tamaño de celda en unidades de mundo
+      const CHUNK_SIZE = 12;    // celdas por chunk, por eje
+      const CHUNKS_X = 4, CHUNKS_Y = 2, CHUNKS_Z = 4;
 
-const GRID_X = CHUNKS_X * CHUNK_SIZE; // celdas totales
-const GRID_Y = CHUNKS_Y * CHUNK_SIZE;
-const GRID_Z = CHUNKS_Z * CHUNK_SIZE;
+      const GRID_X = CHUNKS_X * CHUNK_SIZE; // celdas totales
+      const GRID_Y = CHUNKS_Y * CHUNK_SIZE;
+      const GRID_Z = CHUNKS_Z * CHUNK_SIZE;
 
-const PTS_X = GRID_X + 1; // puntos de la grilla (esquinas de celda)
-const PTS_Y = GRID_Y + 1;
-const PTS_Z = GRID_Z + 1;
+      const PTS_X = GRID_X + 1; // puntos de la grilla (esquinas de celda)
+      const PTS_Y = GRID_Y + 1;
+      const PTS_Z = GRID_Z + 1;
 
-const ISO_LEVEL = 0.5;
+      let isoLevel = 0.5;
+      let mcBinary = false;
 
-function ptIndex(x, y, z){ return x + y * PTS_X + z * PTS_X * PTS_Y; }
+      const terrainGen = {
+        baseHeight: GRID_Y * 0.42,
+        heightAmp: GRID_Y * 0.30,
+        band: 2.4,
+        caveThreshold: 0.42,
+        heightScale: 0.09
+      };
 
-/* ============================================================
-   RUIDO (Perlin 3D con permutación generada por seed)
-   ============================================================ */
-function mulberry32(seed){
-  return function(){
-    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+      const dbg = {
+        wire: false,
+        flat: false,
+        normalsColor: false,
+        chunks: false,
+        axes: false,
+        brushGizmo: false,
+        hitInfo: false,
+        slice: false,
+        fog: true,
+        shadows: true,
+        terrain: true,
+        lighting: true,
+        densityPts: false
+      };
 
-function buildPermutation(seed){
-  const rng = mulberry32(seed);
-  const p = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) p[i] = i;
-  for (let i = 255; i > 0; i--){
-    const j = Math.floor(rng() * (i + 1));
-    const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
-  }
-  const perm = new Uint8Array(512);
-  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
-  return perm;
-}
+      function ptIndex(x, y, z) { return x + y * PTS_X + z * PTS_X * PTS_Y; }
 
-const GRAD3 = [
-  [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
-  [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
-  [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
-];
-
-function makePerlin3(seed){
-  const perm = buildPermutation(seed);
-  function fade(t){ return t*t*t*(t*(t*6-15)+10); }
-  function lerp(a,b,t){ return a + t*(b-a); }
-  function grad(hash, x, y, z){
-    const g = GRAD3[hash % 12];
-    return g[0]*x + g[1]*y + g[2]*z;
-  }
-  return function perlin3(x, y, z){
-    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
-    const xf = x - Math.floor(x), yf = y - Math.floor(y), zf = z - Math.floor(z);
-    const u = fade(xf), v = fade(yf), w = fade(zf);
-    const A  = perm[X]+Y,  AA = perm[A]+Z,  AB = perm[A+1]+Z;
-    const B  = perm[X+1]+Y, BA = perm[B]+Z, BB = perm[B+1]+Z;
-    return lerp(
-      lerp(
-        lerp(grad(perm[AA],   xf,   yf,   zf), grad(perm[BA],   xf-1, yf,   zf), u),
-        lerp(grad(perm[AB],   xf,   yf-1, zf), grad(perm[BB],   xf-1, yf-1, zf), u), v),
-      lerp(
-        lerp(grad(perm[AA+1], xf,   yf,   zf-1), grad(perm[BA+1], xf-1, yf,   zf-1), u),
-        lerp(grad(perm[AB+1], xf,   yf-1, zf-1), grad(perm[BB+1], xf-1, yf-1, zf-1), u), v),
-      w
-    );
-  };
-}
-
-const noiseHeight = makePerlin3(1337);
-const noiseHeight2 = makePerlin3(9001);
-const noiseCave = makePerlin3(4242);
-
-function fbmHeight(x, z){
-  let amp = 1, freq = 1, sum = 0, norm = 0;
-  for (let o = 0; o < 4; o++){
-    sum += noiseHeight(x*freq, 0, z*freq) * amp;
-    norm += amp;
-    amp *= 0.5; freq *= 2.1;
-  }
-  const warp = noiseHeight2(x*0.015, 0, z*0.015) * 6.0;
-  return (sum / norm) + warp * 0.15;
-}
-
-/* ============================================================
-   CAMPO DE DENSIDAD
-   ============================================================ */
-const density = new Float32Array(PTS_X * PTS_Y * PTS_Z);
-
-function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
-
-function generateTerrain(){
-  const baseHeight = GRID_Y * 0.42;
-  const heightAmp = GRID_Y * 0.30;
-  const band = 2.4; // suavidad de la superficie (en celdas)
-
-  for (let gz = 0; gz < PTS_Z; gz++){
-    for (let gx = 0; gx < PTS_X; gx++){
-      const h = baseHeight + fbmHeight(gx*0.09, gz*0.09) * heightAmp;
-      for (let gy = 0; gy < PTS_Y; gy++){
-        let d = clamp01(0.5 + (h - gy) / band);
-        if (gy < h - 3.5){
-          const cave = noiseCave(gx*0.11, gy*0.11, gz*0.11);
-          const cave2 = noiseCave(gx*0.05 + 100, gy*0.05 + 100, gz*0.05 + 100);
-          const c = cave * 0.7 + cave2 * 0.3;
-          if (c > 0.42) d = Math.min(d, 0.12 + Math.max(0, 0.5 - gy*0.004));
-        }
-        density[ptIndex(gx, gy, gz)] = d;
+      /* ============================================================
+         RUIDO (Perlin 3D con permutación generada por seed)
+         ============================================================ */
+      function mulberry32(seed) {
+        return function () {
+          seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
       }
-    }
-  }
-}
-generateTerrain();
 
-/* ============================================================
-   TABLAS DE MARCHING CUBES (Lorensen & Cline, 1987 — dominio público,
-   forma estándar publicada por Paul Bourke)
-   ============================================================ */
-const EDGE_TABLE = new Int32Array([0,265,515,778,1030,1295,1541,1804,2060,2309,2575,2822,3082,3331,3593,3840,400,153,915,666,1430,1183,1941,1692,2460,2197,2975,2710,3482,3219,3993,3728,560,825,51,314,1590,1855,1077,1340,2620,2869,2111,2358,3642,3891,3129,3376,928,681,419,170,1958,1711,1445,1196,2988,2725,2479,2214,4010,3747,3497,3232,1120,1385,1635,1898,102,367,613,876,3180,3429,3695,3942,2154,2403,2665,2912,1520,1273,2035,1786,502,255,1013,764,3580,3317,4095,3830,2554,2291,3065,2800,1616,1881,1107,1370,598,863,85,348,3676,3925,3167,3414,2650,2899,2137,2384,1984,1737,1475,1226,966,719,453,204,4044,3781,3535,3270,3018,2755,2505,2240,2240,2505,2755,3018,3270,3535,3781,4044,204,453,719,966,1226,1475,1737,1984,2384,2137,2899,2650,3414,3167,3925,3676,348,85,863,598,1370,1107,1881,1616,2800,3065,2291,2554,3830,4095,3317,3580,764,1013,255,502,1786,2035,1273,1520,2912,2665,2403,2154,3942,3695,3429,3180,876,613,367,102,1898,1635,1385,1120,3232,3497,3747,4010,2214,2479,2725,2988,1196,1445,1711,1958,170,419,681,928,3376,3129,3891,3642,2358,2111,2869,2620,1340,1077,1855,1590,314,51,825,560,3728,3993,3219,3482,2710,2975,2197,2460,1692,1941,1183,1430,666,915,153,400,3840,3593,3331,3082,2822,2575,2309,2060,1804,1541,1295,1030,778,515,265,0]);
-const TRI_TABLE_FLAT = new Int32Array([-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,8,3,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,1,9,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,8,3,9,8,1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,2,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,8,3,1,2,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,9,2,10,0,2,9,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,2,8,3,2,10,8,10,9,8,-1,-1,-1,-1,-1,-1,-1,3,11,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,11,2,8,11,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,9,0,2,3,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,11,2,1,9,11,9,8,11,-1,-1,-1,-1,-1,-1,-1,3,10,1,11,10,3,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,10,1,0,8,10,8,11,10,-1,-1,-1,-1,-1,-1,-1,3,9,0,3,11,9,11,10,9,-1,-1,-1,-1,-1,-1,-1,9,8,10,10,8,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,7,8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,3,0,7,3,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,1,9,8,4,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,1,9,4,7,1,7,3,1,-1,-1,-1,-1,-1,-1,-1,1,2,10,8,4,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,3,4,7,3,0,4,1,2,10,-1,-1,-1,-1,-1,-1,-1,9,2,10,9,0,2,8,4,7,-1,-1,-1,-1,-1,-1,-1,2,10,9,2,9,7,2,7,3,7,9,4,-1,-1,-1,-1,8,4,7,3,11,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,4,7,11,2,4,2,0,4,-1,-1,-1,-1,-1,-1,-1,9,0,1,8,4,7,2,3,11,-1,-1,-1,-1,-1,-1,-1,4,7,11,9,4,11,9,11,2,9,2,1,-1,-1,-1,-1,3,10,1,3,11,10,7,8,4,-1,-1,-1,-1,-1,-1,-1,1,11,10,1,4,11,1,0,4,7,11,4,-1,-1,-1,-1,4,7,8,9,0,11,9,11,10,11,0,3,-1,-1,-1,-1,4,7,11,4,11,9,9,11,10,-1,-1,-1,-1,-1,-1,-1,9,5,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,9,5,4,0,8,3,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,5,4,1,5,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,8,5,4,8,3,5,3,1,5,-1,-1,-1,-1,-1,-1,-1,1,2,10,9,5,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,3,0,8,1,2,10,4,9,5,-1,-1,-1,-1,-1,-1,-1,5,2,10,5,4,2,4,0,2,-1,-1,-1,-1,-1,-1,-1,2,10,5,3,2,5,3,5,4,3,4,8,-1,-1,-1,-1,9,5,4,2,3,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,11,2,0,8,11,4,9,5,-1,-1,-1,-1,-1,-1,-1,0,5,4,0,1,5,2,3,11,-1,-1,-1,-1,-1,-1,-1,2,1,5,2,5,8,2,8,11,4,8,5,-1,-1,-1,-1,10,3,11,10,1,3,9,5,4,-1,-1,-1,-1,-1,-1,-1,4,9,5,0,8,1,8,10,1,8,11,10,-1,-1,-1,-1,5,4,0,5,0,11,5,11,10,11,0,3,-1,-1,-1,-1,5,4,8,5,8,10,10,8,11,-1,-1,-1,-1,-1,-1,-1,9,7,8,5,7,9,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,9,3,0,9,5,3,5,7,3,-1,-1,-1,-1,-1,-1,-1,0,7,8,0,1,7,1,5,7,-1,-1,-1,-1,-1,-1,-1,1,5,3,3,5,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,9,7,8,9,5,7,10,1,2,-1,-1,-1,-1,-1,-1,-1,10,1,2,9,5,0,5,3,0,5,7,3,-1,-1,-1,-1,8,0,2,8,2,5,8,5,7,10,5,2,-1,-1,-1,-1,2,10,5,2,5,3,3,5,7,-1,-1,-1,-1,-1,-1,-1,7,9,5,7,8,9,3,11,2,-1,-1,-1,-1,-1,-1,-1,9,5,7,9,7,2,9,2,0,2,7,11,-1,-1,-1,-1,2,3,11,0,1,8,1,7,8,1,5,7,-1,-1,-1,-1,11,2,1,11,1,7,7,1,5,-1,-1,-1,-1,-1,-1,-1,9,5,8,8,5,7,10,1,3,10,3,11,-1,-1,-1,-1,5,7,0,5,0,9,7,11,0,1,0,10,11,10,0,-1,11,10,0,11,0,3,10,5,0,8,0,7,5,7,0,-1,11,10,5,7,11,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,10,6,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,8,3,5,10,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,9,0,1,5,10,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,8,3,1,9,8,5,10,6,-1,-1,-1,-1,-1,-1,-1,1,6,5,2,6,1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,6,5,1,2,6,3,0,8,-1,-1,-1,-1,-1,-1,-1,9,6,5,9,0,6,0,2,6,-1,-1,-1,-1,-1,-1,-1,5,9,8,5,8,2,5,2,6,3,2,8,-1,-1,-1,-1,2,3,11,10,6,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,0,8,11,2,0,10,6,5,-1,-1,-1,-1,-1,-1,-1,0,1,9,2,3,11,5,10,6,-1,-1,-1,-1,-1,-1,-1,5,10,6,1,9,2,9,11,2,9,8,11,-1,-1,-1,-1,6,3,11,6,5,3,5,1,3,-1,-1,-1,-1,-1,-1,-1,0,8,11,0,11,5,0,5,1,5,11,6,-1,-1,-1,-1,3,11,6,0,3,6,0,6,5,0,5,9,-1,-1,-1,-1,6,5,9,6,9,11,11,9,8,-1,-1,-1,-1,-1,-1,-1,5,10,6,4,7,8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,3,0,4,7,3,6,5,10,-1,-1,-1,-1,-1,-1,-1,1,9,0,5,10,6,8,4,7,-1,-1,-1,-1,-1,-1,-1,10,6,5,1,9,7,1,7,3,7,9,4,-1,-1,-1,-1,6,1,2,6,5,1,4,7,8,-1,-1,-1,-1,-1,-1,-1,1,2,5,5,2,6,3,0,4,3,4,7,-1,-1,-1,-1,8,4,7,9,0,5,0,6,5,0,2,6,-1,-1,-1,-1,7,3,9,7,9,4,3,2,9,5,9,6,2,6,9,-1,3,11,2,7,8,4,10,6,5,-1,-1,-1,-1,-1,-1,-1,5,10,6,4,7,2,4,2,0,2,7,11,-1,-1,-1,-1,0,1,9,4,7,8,2,3,11,5,10,6,-1,-1,-1,-1,9,2,1,9,11,2,9,4,11,7,11,4,5,10,6,-1,8,4,7,3,11,5,3,5,1,5,11,6,-1,-1,-1,-1,5,1,11,5,11,6,1,0,11,7,11,4,0,4,11,-1,0,5,9,0,6,5,0,3,6,11,6,3,8,4,7,-1,6,5,9,6,9,11,4,7,9,7,11,9,-1,-1,-1,-1,10,4,9,6,4,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,10,6,4,9,10,0,8,3,-1,-1,-1,-1,-1,-1,-1,10,0,1,10,6,0,6,4,0,-1,-1,-1,-1,-1,-1,-1,8,3,1,8,1,6,8,6,4,6,1,10,-1,-1,-1,-1,1,4,9,1,2,4,2,6,4,-1,-1,-1,-1,-1,-1,-1,3,0,8,1,2,9,2,4,9,2,6,4,-1,-1,-1,-1,0,2,4,4,2,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,8,3,2,8,2,4,4,2,6,-1,-1,-1,-1,-1,-1,-1,10,4,9,10,6,4,11,2,3,-1,-1,-1,-1,-1,-1,-1,0,8,2,2,8,11,4,9,10,4,10,6,-1,-1,-1,-1,3,11,2,0,1,6,0,6,4,6,1,10,-1,-1,-1,-1,6,4,1,6,1,10,4,8,1,2,1,11,8,11,1,-1,9,6,4,9,3,6,9,1,3,11,6,3,-1,-1,-1,-1,8,11,1,8,1,0,11,6,1,9,1,4,6,4,1,-1,3,11,6,3,6,0,0,6,4,-1,-1,-1,-1,-1,-1,-1,6,4,8,11,6,8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,7,10,6,7,8,10,8,9,10,-1,-1,-1,-1,-1,-1,-1,0,7,3,0,10,7,0,9,10,6,7,10,-1,-1,-1,-1,10,6,7,1,10,7,1,7,8,1,8,0,-1,-1,-1,-1,10,6,7,10,7,1,1,7,3,-1,-1,-1,-1,-1,-1,-1,1,2,6,1,6,8,1,8,9,8,6,7,-1,-1,-1,-1,2,6,9,2,9,1,6,7,9,0,9,3,7,3,9,-1,7,8,0,7,0,6,6,0,2,-1,-1,-1,-1,-1,-1,-1,7,3,2,6,7,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,2,3,11,10,6,8,10,8,9,8,6,7,-1,-1,-1,-1,2,0,7,2,7,11,0,9,7,6,7,10,9,10,7,-1,1,8,0,1,7,8,1,10,7,6,7,10,2,3,11,-1,11,2,1,11,1,7,10,6,1,6,7,1,-1,-1,-1,-1,8,9,6,8,6,7,9,1,6,11,6,3,1,3,6,-1,0,9,1,11,6,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,7,8,0,7,0,6,3,11,0,11,6,0,-1,-1,-1,-1,7,11,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,7,6,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,3,0,8,11,7,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,1,9,11,7,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,8,1,9,8,3,1,11,7,6,-1,-1,-1,-1,-1,-1,-1,10,1,2,6,11,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,2,10,3,0,8,6,11,7,-1,-1,-1,-1,-1,-1,-1,2,9,0,2,10,9,6,11,7,-1,-1,-1,-1,-1,-1,-1,6,11,7,2,10,3,10,8,3,10,9,8,-1,-1,-1,-1,7,2,3,6,2,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,7,0,8,7,6,0,6,2,0,-1,-1,-1,-1,-1,-1,-1,2,7,6,2,3,7,0,1,9,-1,-1,-1,-1,-1,-1,-1,1,6,2,1,8,6,1,9,8,8,7,6,-1,-1,-1,-1,10,7,6,10,1,7,1,3,7,-1,-1,-1,-1,-1,-1,-1,10,7,6,1,7,10,1,8,7,1,0,8,-1,-1,-1,-1,0,3,7,0,7,10,0,10,9,6,10,7,-1,-1,-1,-1,7,6,10,7,10,8,8,10,9,-1,-1,-1,-1,-1,-1,-1,6,8,4,11,8,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,3,6,11,3,0,6,0,4,6,-1,-1,-1,-1,-1,-1,-1,8,6,11,8,4,6,9,0,1,-1,-1,-1,-1,-1,-1,-1,9,4,6,9,6,3,9,3,1,11,3,6,-1,-1,-1,-1,6,8,4,6,11,8,2,10,1,-1,-1,-1,-1,-1,-1,-1,1,2,10,3,0,11,0,6,11,0,4,6,-1,-1,-1,-1,4,11,8,4,6,11,0,2,9,2,10,9,-1,-1,-1,-1,10,9,3,10,3,2,9,4,3,11,3,6,4,6,3,-1,8,2,3,8,4,2,4,6,2,-1,-1,-1,-1,-1,-1,-1,0,4,2,4,6,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,9,0,2,3,4,2,4,6,4,3,8,-1,-1,-1,-1,1,9,4,1,4,2,2,4,6,-1,-1,-1,-1,-1,-1,-1,8,1,3,8,6,1,8,4,6,6,10,1,-1,-1,-1,-1,10,1,0,10,0,6,6,0,4,-1,-1,-1,-1,-1,-1,-1,4,6,3,4,3,8,6,10,3,0,3,9,10,9,3,-1,10,9,4,6,10,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,9,5,7,6,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,8,3,4,9,5,11,7,6,-1,-1,-1,-1,-1,-1,-1,5,0,1,5,4,0,7,6,11,-1,-1,-1,-1,-1,-1,-1,11,7,6,8,3,4,3,5,4,3,1,5,-1,-1,-1,-1,9,5,4,10,1,2,7,6,11,-1,-1,-1,-1,-1,-1,-1,6,11,7,1,2,10,0,8,3,4,9,5,-1,-1,-1,-1,7,6,11,5,4,10,4,2,10,4,0,2,-1,-1,-1,-1,3,4,8,3,5,4,3,2,5,10,5,2,11,7,6,-1,7,2,3,7,6,2,5,4,9,-1,-1,-1,-1,-1,-1,-1,9,5,4,0,8,6,0,6,2,6,8,7,-1,-1,-1,-1,3,6,2,3,7,6,1,5,0,5,4,0,-1,-1,-1,-1,6,2,8,6,8,7,2,1,8,4,8,5,1,5,8,-1,9,5,4,10,1,6,1,7,6,1,3,7,-1,-1,-1,-1,1,6,10,1,7,6,1,0,7,8,7,0,9,5,4,-1,4,0,10,4,10,5,0,3,10,6,10,7,3,7,10,-1,7,6,10,7,10,8,5,4,10,4,8,10,-1,-1,-1,-1,6,9,5,6,11,9,11,8,9,-1,-1,-1,-1,-1,-1,-1,3,6,11,0,6,3,0,5,6,0,9,5,-1,-1,-1,-1,0,11,8,0,5,11,0,1,5,5,6,11,-1,-1,-1,-1,6,11,3,6,3,5,5,3,1,-1,-1,-1,-1,-1,-1,-1,1,2,10,9,5,11,9,11,8,11,5,6,-1,-1,-1,-1,0,11,3,0,6,11,0,9,6,5,6,9,1,2,10,-1,11,8,5,11,5,6,8,0,5,10,5,2,0,2,5,-1,6,11,3,6,3,5,2,10,3,10,5,3,-1,-1,-1,-1,5,8,9,5,2,8,5,6,2,3,8,2,-1,-1,-1,-1,9,5,6,9,6,0,0,6,2,-1,-1,-1,-1,-1,-1,-1,1,5,8,1,8,0,5,6,8,3,8,2,6,2,8,-1,1,5,6,2,1,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,3,6,1,6,10,3,8,6,5,6,9,8,9,6,-1,10,1,0,10,0,6,9,5,0,5,6,0,-1,-1,-1,-1,0,3,8,5,6,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,10,5,6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,5,10,7,5,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,5,10,11,7,5,8,3,0,-1,-1,-1,-1,-1,-1,-1,5,11,7,5,10,11,1,9,0,-1,-1,-1,-1,-1,-1,-1,10,7,5,10,11,7,9,8,1,8,3,1,-1,-1,-1,-1,11,1,2,11,7,1,7,5,1,-1,-1,-1,-1,-1,-1,-1,0,8,3,1,2,7,1,7,5,7,2,11,-1,-1,-1,-1,9,7,5,9,2,7,9,0,2,2,11,7,-1,-1,-1,-1,7,5,2,7,2,11,5,9,2,3,2,8,9,8,2,-1,2,5,10,2,3,5,3,7,5,-1,-1,-1,-1,-1,-1,-1,8,2,0,8,5,2,8,7,5,10,2,5,-1,-1,-1,-1,9,0,1,5,10,3,5,3,7,3,10,2,-1,-1,-1,-1,9,8,2,9,2,1,8,7,2,10,2,5,7,5,2,-1,1,3,5,3,7,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,8,7,0,7,1,1,7,5,-1,-1,-1,-1,-1,-1,-1,9,0,3,9,3,5,5,3,7,-1,-1,-1,-1,-1,-1,-1,9,8,7,5,9,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,5,8,4,5,10,8,10,11,8,-1,-1,-1,-1,-1,-1,-1,5,0,4,5,11,0,5,10,11,11,3,0,-1,-1,-1,-1,0,1,9,8,4,10,8,10,11,10,4,5,-1,-1,-1,-1,10,11,4,10,4,5,11,3,4,9,4,1,3,1,4,-1,2,5,1,2,8,5,2,11,8,4,5,8,-1,-1,-1,-1,0,4,11,0,11,3,4,5,11,2,11,1,5,1,11,-1,0,2,5,0,5,9,2,11,5,4,5,8,11,8,5,-1,9,4,5,2,11,3,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,2,5,10,3,5,2,3,4,5,3,8,4,-1,-1,-1,-1,5,10,2,5,2,4,4,2,0,-1,-1,-1,-1,-1,-1,-1,3,10,2,3,5,10,3,8,5,4,5,8,0,1,9,-1,5,10,2,5,2,4,1,9,2,9,4,2,-1,-1,-1,-1,8,4,5,8,5,3,3,5,1,-1,-1,-1,-1,-1,-1,-1,0,4,5,1,0,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,8,4,5,8,5,3,9,0,5,0,3,5,-1,-1,-1,-1,9,4,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,11,7,4,9,11,9,10,11,-1,-1,-1,-1,-1,-1,-1,0,8,3,4,9,7,9,11,7,9,10,11,-1,-1,-1,-1,1,10,11,1,11,4,1,4,0,7,4,11,-1,-1,-1,-1,3,1,4,3,4,8,1,10,4,7,4,11,10,11,4,-1,4,11,7,9,11,4,9,2,11,9,1,2,-1,-1,-1,-1,9,7,4,9,11,7,9,1,11,2,11,1,0,8,3,-1,11,7,4,11,4,2,2,4,0,-1,-1,-1,-1,-1,-1,-1,11,7,4,11,4,2,8,3,4,3,2,4,-1,-1,-1,-1,2,9,10,2,7,9,2,3,7,7,4,9,-1,-1,-1,-1,9,10,7,9,7,4,10,2,7,8,7,0,2,0,7,-1,3,7,10,3,10,2,7,4,10,1,10,0,4,0,10,-1,1,10,2,8,7,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,9,1,4,1,7,7,1,3,-1,-1,-1,-1,-1,-1,-1,4,9,1,4,1,7,0,8,1,8,7,1,-1,-1,-1,-1,4,0,3,7,4,3,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,4,8,7,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,9,10,8,10,11,8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,3,0,9,3,9,11,11,9,10,-1,-1,-1,-1,-1,-1,-1,0,1,10,0,10,8,8,10,11,-1,-1,-1,-1,-1,-1,-1,3,1,10,11,3,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,2,11,1,11,9,9,11,8,-1,-1,-1,-1,-1,-1,-1,3,0,9,3,9,11,1,2,9,2,11,9,-1,-1,-1,-1,0,2,11,8,0,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,3,2,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,2,3,8,2,8,10,10,8,9,-1,-1,-1,-1,-1,-1,-1,9,10,2,0,9,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,2,3,8,2,8,10,0,1,8,1,10,8,-1,-1,-1,-1,1,10,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,3,8,9,1,8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,9,1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,3,8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]);
-function triTableAt(cubeIndex, i){ return TRI_TABLE_FLAT[cubeIndex*16 + i]; }
-
-const CORNER_OFFSETS = [
-  [0,0,0],[1,0,0],[1,0,1],[0,0,1],
-  [0,1,0],[1,1,0],[1,1,1],[0,1,1]
-];
-const EDGE_CORNERS = [
-  [0,1],[1,2],[2,3],[3,0],
-  [4,5],[5,6],[6,7],[7,4],
-  [0,4],[1,5],[2,6],[3,7]
-];
-
-/* ============================================================
-   COLORES DE TERRENO (por pendiente)
-   ============================================================ */
-const COL_GRASS = new THREE.Color(0x5fb35a);
-const COL_DIRT  = new THREE.Color(0x7a5a3c);
-const COL_ROCK  = new THREE.Color(0x8a8a86);
-const tmpColA = new THREE.Color();
-
-function colorForNormalY(ny, worldY){
-  let c;
-  if (ny > 0.72){
-    c = tmpColA.copy(COL_DIRT).lerp(COL_GRASS, (ny-0.72)/0.28);
-  } else {
-    c = tmpColA.copy(COL_ROCK).lerp(COL_DIRT, THREE.MathUtils.clamp(ny/0.72,0,1));
-  }
-  return c;
-}
-
-/* ============================================================
-   POLIGONIZACION POR CHUNK
-   ============================================================ */
-function buildChunkGeometry(cx, cy, cz){
-  const x0 = cx*CHUNK_SIZE, x1 = x0 + CHUNK_SIZE;
-  const y0 = cy*CHUNK_SIZE, y1 = y0 + CHUNK_SIZE;
-  const z0 = cz*CHUNK_SIZE, z1 = z0 + CHUNK_SIZE;
-
-  const positions = [];
-  const indices = [];
-  const cache = new Map();
-  const cornerVal = new Float32Array(8);
-  const cornerIdx = new Int32Array(8);
-
-  function getVertex(edge, gx, gy, gz){
-    const c1 = EDGE_CORNERS[edge][0], c2 = EDGE_CORNERS[edge][1];
-    const o1 = CORNER_OFFSETS[c1], o2 = CORNER_OFFSETS[c2];
-    const p1x = gx+o1[0], p1y = gy+o1[1], p1z = gz+o1[2];
-    const p2x = gx+o2[0], p2y = gy+o2[1], p2z = gz+o2[2];
-    const i1 = ptIndex(p1x,p1y,p1z), i2 = ptIndex(p2x,p2y,p2z);
-    const key = i1 < i2 ? (i1*1000003 + i2) : (i2*1000003 + i1);
-    let vi = cache.get(key);
-    if (vi !== undefined) return vi;
-
-    const v1 = density[i1], v2 = density[i2];
-    let mu = 0.5;
-    const denom = v2 - v1;
-    if (Math.abs(denom) > 1e-6) mu = (ISO_LEVEL - v1) / denom;
-    mu = THREE.MathUtils.clamp(mu, 0, 1);
-
-    const wx = (p1x + (p2x-p1x)*mu) * CELL_SIZE;
-    const wy = (p1y + (p2y-p1y)*mu) * CELL_SIZE;
-    const wz = (p1z + (p2z-p1z)*mu) * CELL_SIZE;
-
-    vi = positions.length / 3;
-    positions.push(wx, wy, wz);
-    cache.set(key, vi);
-    return vi;
-  }
-
-  for (let gz = z0; gz < z1; gz++){
-    for (let gy = y0; gy < y1; gy++){
-      for (let gx = x0; gx < x1; gx++){
-        let cubeIndex = 0;
-        for (let c = 0; c < 8; c++){
-          const o = CORNER_OFFSETS[c];
-          const v = density[ptIndex(gx+o[0], gy+o[1], gz+o[2])];
-          cornerVal[c] = v;
-          if (v < ISO_LEVEL) cubeIndex |= (1 << c);
+      function buildPermutation(seed) {
+        const rng = mulberry32(seed);
+        const p = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) p[i] = i;
+        for (let i = 255; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
         }
-        const edgeMask = EDGE_TABLE[cubeIndex];
-        if (edgeMask === 0) continue;
+        const perm = new Uint8Array(512);
+        for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+        return perm;
+      }
 
-        const edgeVerts = new Int32Array(12).fill(-1);
-        for (let e = 0; e < 12; e++){
-          if (edgeMask & (1 << e)) edgeVerts[e] = getVertex(e, gx, gy, gz);
+      const GRAD3 = [
+        [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+        [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+        [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]
+      ];
+
+      function makePerlin3(seed) {
+        const perm = buildPermutation(seed);
+        function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+        function lerp(a, b, t) { return a + t * (b - a); }
+        function grad(hash, x, y, z) {
+          const g = GRAD3[hash % 12];
+          return g[0] * x + g[1] * y + g[2] * z;
         }
+        return function perlin3(x, y, z) {
+          const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+          const xf = x - Math.floor(x), yf = y - Math.floor(y), zf = z - Math.floor(z);
+          const u = fade(xf), v = fade(yf), w = fade(zf);
+          const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z;
+          const B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z;
+          return lerp(
+            lerp(
+              lerp(grad(perm[AA], xf, yf, zf), grad(perm[BA], xf - 1, yf, zf), u),
+              lerp(grad(perm[AB], xf, yf - 1, zf), grad(perm[BB], xf - 1, yf - 1, zf), u), v),
+            lerp(
+              lerp(grad(perm[AA + 1], xf, yf, zf - 1), grad(perm[BA + 1], xf - 1, yf, zf - 1), u),
+              lerp(grad(perm[AB + 1], xf, yf - 1, zf - 1), grad(perm[BB + 1], xf - 1, yf - 1, zf - 1), u), v),
+            w
+          );
+        };
+      }
 
-        for (let i = 0; triTableAt(cubeIndex, i) !== -1; i += 3){
-          const a = edgeVerts[triTableAt(cubeIndex, i)];
-          const b = edgeVerts[triTableAt(cubeIndex, i+2)];
-          const c = edgeVerts[triTableAt(cubeIndex, i+1)];
-          indices.push(a, b, c);
+      const noiseHeight = makePerlin3(1337);
+      const noiseHeight2 = makePerlin3(9001);
+      const noiseCave = makePerlin3(4242);
+
+      function fbmHeight(x, z) {
+        let amp = 1, freq = 1, sum = 0, norm = 0;
+        for (let o = 0; o < 4; o++) {
+          sum += noiseHeight(x * freq, 0, z * freq) * amp;
+          norm += amp;
+          amp *= 0.5; freq *= 2.1;
+        }
+        const warp = noiseHeight2(x * 0.015, 0, z * 0.015) * 6.0;
+        return (sum / norm) + warp * 0.15;
+      }
+
+      /* ============================================================
+         CAMPO DE DENSIDAD
+         ============================================================ */
+      const density = new Float32Array(PTS_X * PTS_Y * PTS_Z);
+
+      function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+      function generateTerrain() {
+        const baseHeight = terrainGen.baseHeight;
+        const heightAmp = terrainGen.heightAmp;
+        const band = terrainGen.band;
+        const caveTh = terrainGen.caveThreshold;
+        const hs = terrainGen.heightScale;
+
+        for (let gz = 0; gz < PTS_Z; gz++) {
+          for (let gx = 0; gx < PTS_X; gx++) {
+            const h = baseHeight + fbmHeight(gx * hs, gz * hs) * heightAmp;
+            for (let gy = 0; gy < PTS_Y; gy++) {
+              let d = clamp01(0.5 + (h - gy) / band);
+              if (gy < h - 3.5) {
+                const cave = noiseCave(gx * 0.11, gy * 0.11, gz * 0.11);
+                const cave2 = noiseCave(gx * 0.05 + 100, gy * 0.05 + 100, gz * 0.05 + 100);
+                const c = cave * 0.7 + cave2 * 0.3;
+                if (c > caveTh) d = Math.min(d, 0.12 + Math.max(0, 0.5 - gy * 0.004));
+              }
+              density[ptIndex(gx, gy, gz)] = d;
+            }
+          }
         }
       }
-    }
-  }
+      generateTerrain();
 
-  if (positions.length === 0) return null;
+      /* ============================================================
+         TABLAS DE MARCHING CUBES (Lorensen & Cline, 1987 — dominio público,
+         forma estándar publicada por Paul Bourke)
+         ============================================================ */
+      const EDGE_TABLE = new Int32Array([0, 265, 515, 778, 1030, 1295, 1541, 1804, 2060, 2309, 2575, 2822, 3082, 3331, 3593, 3840, 400, 153, 915, 666, 1430, 1183, 1941, 1692, 2460, 2197, 2975, 2710, 3482, 3219, 3993, 3728, 560, 825, 51, 314, 1590, 1855, 1077, 1340, 2620, 2869, 2111, 2358, 3642, 3891, 3129, 3376, 928, 681, 419, 170, 1958, 1711, 1445, 1196, 2988, 2725, 2479, 2214, 4010, 3747, 3497, 3232, 1120, 1385, 1635, 1898, 102, 367, 613, 876, 3180, 3429, 3695, 3942, 2154, 2403, 2665, 2912, 1520, 1273, 2035, 1786, 502, 255, 1013, 764, 3580, 3317, 4095, 3830, 2554, 2291, 3065, 2800, 1616, 1881, 1107, 1370, 598, 863, 85, 348, 3676, 3925, 3167, 3414, 2650, 2899, 2137, 2384, 1984, 1737, 1475, 1226, 966, 719, 453, 204, 4044, 3781, 3535, 3270, 3018, 2755, 2505, 2240, 2240, 2505, 2755, 3018, 3270, 3535, 3781, 4044, 204, 453, 719, 966, 1226, 1475, 1737, 1984, 2384, 2137, 2899, 2650, 3414, 3167, 3925, 3676, 348, 85, 863, 598, 1370, 1107, 1881, 1616, 2800, 3065, 2291, 2554, 3830, 4095, 3317, 3580, 764, 1013, 255, 502, 1786, 2035, 1273, 1520, 2912, 2665, 2403, 2154, 3942, 3695, 3429, 3180, 876, 613, 367, 102, 1898, 1635, 1385, 1120, 3232, 3497, 3747, 4010, 2214, 2479, 2725, 2988, 1196, 1445, 1711, 1958, 170, 419, 681, 928, 3376, 3129, 3891, 3642, 2358, 2111, 2869, 2620, 1340, 1077, 1855, 1590, 314, 51, 825, 560, 3728, 3993, 3219, 3482, 2710, 2975, 2197, 2460, 1692, 1941, 1183, 1430, 666, 915, 153, 400, 3840, 3593, 3331, 3082, 2822, 2575, 2309, 2060, 1804, 1541, 1295, 1030, 778, 515, 265, 0]);
+      const TRI_TABLE_FLAT = new Int32Array([-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 1, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 8, 3, 9, 8, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 8, 3, 1, 2, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 2, 10, 0, 2, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 8, 3, 2, 10, 8, 10, 9, 8, -1, -1, -1, -1, -1, -1, -1, 3, 11, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 11, 2, 8, 11, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 9, 0, 2, 3, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 11, 2, 1, 9, 11, 9, 8, 11, -1, -1, -1, -1, -1, -1, -1, 3, 10, 1, 11, 10, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 10, 1, 0, 8, 10, 8, 11, 10, -1, -1, -1, -1, -1, -1, -1, 3, 9, 0, 3, 11, 9, 11, 10, 9, -1, -1, -1, -1, -1, -1, -1, 9, 8, 10, 10, 8, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 7, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 3, 0, 7, 3, 4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 1, 9, 8, 4, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 1, 9, 4, 7, 1, 7, 3, 1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 10, 8, 4, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 4, 7, 3, 0, 4, 1, 2, 10, -1, -1, -1, -1, -1, -1, -1, 9, 2, 10, 9, 0, 2, 8, 4, 7, -1, -1, -1, -1, -1, -1, -1, 2, 10, 9, 2, 9, 7, 2, 7, 3, 7, 9, 4, -1, -1, -1, -1, 8, 4, 7, 3, 11, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 11, 4, 7, 11, 2, 4, 2, 0, 4, -1, -1, -1, -1, -1, -1, -1, 9, 0, 1, 8, 4, 7, 2, 3, 11, -1, -1, -1, -1, -1, -1, -1, 4, 7, 11, 9, 4, 11, 9, 11, 2, 9, 2, 1, -1, -1, -1, -1, 3, 10, 1, 3, 11, 10, 7, 8, 4, -1, -1, -1, -1, -1, -1, -1, 1, 11, 10, 1, 4, 11, 1, 0, 4, 7, 11, 4, -1, -1, -1, -1, 4, 7, 8, 9, 0, 11, 9, 11, 10, 11, 0, 3, -1, -1, -1, -1, 4, 7, 11, 4, 11, 9, 9, 11, 10, -1, -1, -1, -1, -1, -1, -1, 9, 5, 4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 5, 4, 0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 5, 4, 1, 5, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 8, 5, 4, 8, 3, 5, 3, 1, 5, -1, -1, -1, -1, -1, -1, -1, 1, 2, 10, 9, 5, 4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 0, 8, 1, 2, 10, 4, 9, 5, -1, -1, -1, -1, -1, -1, -1, 5, 2, 10, 5, 4, 2, 4, 0, 2, -1, -1, -1, -1, -1, -1, -1, 2, 10, 5, 3, 2, 5, 3, 5, 4, 3, 4, 8, -1, -1, -1, -1, 9, 5, 4, 2, 3, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 11, 2, 0, 8, 11, 4, 9, 5, -1, -1, -1, -1, -1, -1, -1, 0, 5, 4, 0, 1, 5, 2, 3, 11, -1, -1, -1, -1, -1, -1, -1, 2, 1, 5, 2, 5, 8, 2, 8, 11, 4, 8, 5, -1, -1, -1, -1, 10, 3, 11, 10, 1, 3, 9, 5, 4, -1, -1, -1, -1, -1, -1, -1, 4, 9, 5, 0, 8, 1, 8, 10, 1, 8, 11, 10, -1, -1, -1, -1, 5, 4, 0, 5, 0, 11, 5, 11, 10, 11, 0, 3, -1, -1, -1, -1, 5, 4, 8, 5, 8, 10, 10, 8, 11, -1, -1, -1, -1, -1, -1, -1, 9, 7, 8, 5, 7, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 3, 0, 9, 5, 3, 5, 7, 3, -1, -1, -1, -1, -1, -1, -1, 0, 7, 8, 0, 1, 7, 1, 5, 7, -1, -1, -1, -1, -1, -1, -1, 1, 5, 3, 3, 5, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 7, 8, 9, 5, 7, 10, 1, 2, -1, -1, -1, -1, -1, -1, -1, 10, 1, 2, 9, 5, 0, 5, 3, 0, 5, 7, 3, -1, -1, -1, -1, 8, 0, 2, 8, 2, 5, 8, 5, 7, 10, 5, 2, -1, -1, -1, -1, 2, 10, 5, 2, 5, 3, 3, 5, 7, -1, -1, -1, -1, -1, -1, -1, 7, 9, 5, 7, 8, 9, 3, 11, 2, -1, -1, -1, -1, -1, -1, -1, 9, 5, 7, 9, 7, 2, 9, 2, 0, 2, 7, 11, -1, -1, -1, -1, 2, 3, 11, 0, 1, 8, 1, 7, 8, 1, 5, 7, -1, -1, -1, -1, 11, 2, 1, 11, 1, 7, 7, 1, 5, -1, -1, -1, -1, -1, -1, -1, 9, 5, 8, 8, 5, 7, 10, 1, 3, 10, 3, 11, -1, -1, -1, -1, 5, 7, 0, 5, 0, 9, 7, 11, 0, 1, 0, 10, 11, 10, 0, -1, 11, 10, 0, 11, 0, 3, 10, 5, 0, 8, 0, 7, 5, 7, 0, -1, 11, 10, 5, 7, 11, 5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10, 6, 5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 8, 3, 5, 10, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 0, 1, 5, 10, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 8, 3, 1, 9, 8, 5, 10, 6, -1, -1, -1, -1, -1, -1, -1, 1, 6, 5, 2, 6, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 6, 5, 1, 2, 6, 3, 0, 8, -1, -1, -1, -1, -1, -1, -1, 9, 6, 5, 9, 0, 6, 0, 2, 6, -1, -1, -1, -1, -1, -1, -1, 5, 9, 8, 5, 8, 2, 5, 2, 6, 3, 2, 8, -1, -1, -1, -1, 2, 3, 11, 10, 6, 5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 11, 0, 8, 11, 2, 0, 10, 6, 5, -1, -1, -1, -1, -1, -1, -1, 0, 1, 9, 2, 3, 11, 5, 10, 6, -1, -1, -1, -1, -1, -1, -1, 5, 10, 6, 1, 9, 2, 9, 11, 2, 9, 8, 11, -1, -1, -1, -1, 6, 3, 11, 6, 5, 3, 5, 1, 3, -1, -1, -1, -1, -1, -1, -1, 0, 8, 11, 0, 11, 5, 0, 5, 1, 5, 11, 6, -1, -1, -1, -1, 3, 11, 6, 0, 3, 6, 0, 6, 5, 0, 5, 9, -1, -1, -1, -1, 6, 5, 9, 6, 9, 11, 11, 9, 8, -1, -1, -1, -1, -1, -1, -1, 5, 10, 6, 4, 7, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 3, 0, 4, 7, 3, 6, 5, 10, -1, -1, -1, -1, -1, -1, -1, 1, 9, 0, 5, 10, 6, 8, 4, 7, -1, -1, -1, -1, -1, -1, -1, 10, 6, 5, 1, 9, 7, 1, 7, 3, 7, 9, 4, -1, -1, -1, -1, 6, 1, 2, 6, 5, 1, 4, 7, 8, -1, -1, -1, -1, -1, -1, -1, 1, 2, 5, 5, 2, 6, 3, 0, 4, 3, 4, 7, -1, -1, -1, -1, 8, 4, 7, 9, 0, 5, 0, 6, 5, 0, 2, 6, -1, -1, -1, -1, 7, 3, 9, 7, 9, 4, 3, 2, 9, 5, 9, 6, 2, 6, 9, -1, 3, 11, 2, 7, 8, 4, 10, 6, 5, -1, -1, -1, -1, -1, -1, -1, 5, 10, 6, 4, 7, 2, 4, 2, 0, 2, 7, 11, -1, -1, -1, -1, 0, 1, 9, 4, 7, 8, 2, 3, 11, 5, 10, 6, -1, -1, -1, -1, 9, 2, 1, 9, 11, 2, 9, 4, 11, 7, 11, 4, 5, 10, 6, -1, 8, 4, 7, 3, 11, 5, 3, 5, 1, 5, 11, 6, -1, -1, -1, -1, 5, 1, 11, 5, 11, 6, 1, 0, 11, 7, 11, 4, 0, 4, 11, -1, 0, 5, 9, 0, 6, 5, 0, 3, 6, 11, 6, 3, 8, 4, 7, -1, 6, 5, 9, 6, 9, 11, 4, 7, 9, 7, 11, 9, -1, -1, -1, -1, 10, 4, 9, 6, 4, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 10, 6, 4, 9, 10, 0, 8, 3, -1, -1, -1, -1, -1, -1, -1, 10, 0, 1, 10, 6, 0, 6, 4, 0, -1, -1, -1, -1, -1, -1, -1, 8, 3, 1, 8, 1, 6, 8, 6, 4, 6, 1, 10, -1, -1, -1, -1, 1, 4, 9, 1, 2, 4, 2, 6, 4, -1, -1, -1, -1, -1, -1, -1, 3, 0, 8, 1, 2, 9, 2, 4, 9, 2, 6, 4, -1, -1, -1, -1, 0, 2, 4, 4, 2, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 8, 3, 2, 8, 2, 4, 4, 2, 6, -1, -1, -1, -1, -1, -1, -1, 10, 4, 9, 10, 6, 4, 11, 2, 3, -1, -1, -1, -1, -1, -1, -1, 0, 8, 2, 2, 8, 11, 4, 9, 10, 4, 10, 6, -1, -1, -1, -1, 3, 11, 2, 0, 1, 6, 0, 6, 4, 6, 1, 10, -1, -1, -1, -1, 6, 4, 1, 6, 1, 10, 4, 8, 1, 2, 1, 11, 8, 11, 1, -1, 9, 6, 4, 9, 3, 6, 9, 1, 3, 11, 6, 3, -1, -1, -1, -1, 8, 11, 1, 8, 1, 0, 11, 6, 1, 9, 1, 4, 6, 4, 1, -1, 3, 11, 6, 3, 6, 0, 0, 6, 4, -1, -1, -1, -1, -1, -1, -1, 6, 4, 8, 11, 6, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 7, 10, 6, 7, 8, 10, 8, 9, 10, -1, -1, -1, -1, -1, -1, -1, 0, 7, 3, 0, 10, 7, 0, 9, 10, 6, 7, 10, -1, -1, -1, -1, 10, 6, 7, 1, 10, 7, 1, 7, 8, 1, 8, 0, -1, -1, -1, -1, 10, 6, 7, 10, 7, 1, 1, 7, 3, -1, -1, -1, -1, -1, -1, -1, 1, 2, 6, 1, 6, 8, 1, 8, 9, 8, 6, 7, -1, -1, -1, -1, 2, 6, 9, 2, 9, 1, 6, 7, 9, 0, 9, 3, 7, 3, 9, -1, 7, 8, 0, 7, 0, 6, 6, 0, 2, -1, -1, -1, -1, -1, -1, -1, 7, 3, 2, 6, 7, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 3, 11, 10, 6, 8, 10, 8, 9, 8, 6, 7, -1, -1, -1, -1, 2, 0, 7, 2, 7, 11, 0, 9, 7, 6, 7, 10, 9, 10, 7, -1, 1, 8, 0, 1, 7, 8, 1, 10, 7, 6, 7, 10, 2, 3, 11, -1, 11, 2, 1, 11, 1, 7, 10, 6, 1, 6, 7, 1, -1, -1, -1, -1, 8, 9, 6, 8, 6, 7, 9, 1, 6, 11, 6, 3, 1, 3, 6, -1, 0, 9, 1, 11, 6, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 7, 8, 0, 7, 0, 6, 3, 11, 0, 11, 6, 0, -1, -1, -1, -1, 7, 11, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 7, 6, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 0, 8, 11, 7, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 1, 9, 11, 7, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 8, 1, 9, 8, 3, 1, 11, 7, 6, -1, -1, -1, -1, -1, -1, -1, 10, 1, 2, 6, 11, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 10, 3, 0, 8, 6, 11, 7, -1, -1, -1, -1, -1, -1, -1, 2, 9, 0, 2, 10, 9, 6, 11, 7, -1, -1, -1, -1, -1, -1, -1, 6, 11, 7, 2, 10, 3, 10, 8, 3, 10, 9, 8, -1, -1, -1, -1, 7, 2, 3, 6, 2, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 7, 0, 8, 7, 6, 0, 6, 2, 0, -1, -1, -1, -1, -1, -1, -1, 2, 7, 6, 2, 3, 7, 0, 1, 9, -1, -1, -1, -1, -1, -1, -1, 1, 6, 2, 1, 8, 6, 1, 9, 8, 8, 7, 6, -1, -1, -1, -1, 10, 7, 6, 10, 1, 7, 1, 3, 7, -1, -1, -1, -1, -1, -1, -1, 10, 7, 6, 1, 7, 10, 1, 8, 7, 1, 0, 8, -1, -1, -1, -1, 0, 3, 7, 0, 7, 10, 0, 10, 9, 6, 10, 7, -1, -1, -1, -1, 7, 6, 10, 7, 10, 8, 8, 10, 9, -1, -1, -1, -1, -1, -1, -1, 6, 8, 4, 11, 8, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 6, 11, 3, 0, 6, 0, 4, 6, -1, -1, -1, -1, -1, -1, -1, 8, 6, 11, 8, 4, 6, 9, 0, 1, -1, -1, -1, -1, -1, -1, -1, 9, 4, 6, 9, 6, 3, 9, 3, 1, 11, 3, 6, -1, -1, -1, -1, 6, 8, 4, 6, 11, 8, 2, 10, 1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 10, 3, 0, 11, 0, 6, 11, 0, 4, 6, -1, -1, -1, -1, 4, 11, 8, 4, 6, 11, 0, 2, 9, 2, 10, 9, -1, -1, -1, -1, 10, 9, 3, 10, 3, 2, 9, 4, 3, 11, 3, 6, 4, 6, 3, -1, 8, 2, 3, 8, 4, 2, 4, 6, 2, -1, -1, -1, -1, -1, -1, -1, 0, 4, 2, 4, 6, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 9, 0, 2, 3, 4, 2, 4, 6, 4, 3, 8, -1, -1, -1, -1, 1, 9, 4, 1, 4, 2, 2, 4, 6, -1, -1, -1, -1, -1, -1, -1, 8, 1, 3, 8, 6, 1, 8, 4, 6, 6, 10, 1, -1, -1, -1, -1, 10, 1, 0, 10, 0, 6, 6, 0, 4, -1, -1, -1, -1, -1, -1, -1, 4, 6, 3, 4, 3, 8, 6, 10, 3, 0, 3, 9, 10, 9, 3, -1, 10, 9, 4, 6, 10, 4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 9, 5, 7, 6, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 8, 3, 4, 9, 5, 11, 7, 6, -1, -1, -1, -1, -1, -1, -1, 5, 0, 1, 5, 4, 0, 7, 6, 11, -1, -1, -1, -1, -1, -1, -1, 11, 7, 6, 8, 3, 4, 3, 5, 4, 3, 1, 5, -1, -1, -1, -1, 9, 5, 4, 10, 1, 2, 7, 6, 11, -1, -1, -1, -1, -1, -1, -1, 6, 11, 7, 1, 2, 10, 0, 8, 3, 4, 9, 5, -1, -1, -1, -1, 7, 6, 11, 5, 4, 10, 4, 2, 10, 4, 0, 2, -1, -1, -1, -1, 3, 4, 8, 3, 5, 4, 3, 2, 5, 10, 5, 2, 11, 7, 6, -1, 7, 2, 3, 7, 6, 2, 5, 4, 9, -1, -1, -1, -1, -1, -1, -1, 9, 5, 4, 0, 8, 6, 0, 6, 2, 6, 8, 7, -1, -1, -1, -1, 3, 6, 2, 3, 7, 6, 1, 5, 0, 5, 4, 0, -1, -1, -1, -1, 6, 2, 8, 6, 8, 7, 2, 1, 8, 4, 8, 5, 1, 5, 8, -1, 9, 5, 4, 10, 1, 6, 1, 7, 6, 1, 3, 7, -1, -1, -1, -1, 1, 6, 10, 1, 7, 6, 1, 0, 7, 8, 7, 0, 9, 5, 4, -1, 4, 0, 10, 4, 10, 5, 0, 3, 10, 6, 10, 7, 3, 7, 10, -1, 7, 6, 10, 7, 10, 8, 5, 4, 10, 4, 8, 10, -1, -1, -1, -1, 6, 9, 5, 6, 11, 9, 11, 8, 9, -1, -1, -1, -1, -1, -1, -1, 3, 6, 11, 0, 6, 3, 0, 5, 6, 0, 9, 5, -1, -1, -1, -1, 0, 11, 8, 0, 5, 11, 0, 1, 5, 5, 6, 11, -1, -1, -1, -1, 6, 11, 3, 6, 3, 5, 5, 3, 1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 10, 9, 5, 11, 9, 11, 8, 11, 5, 6, -1, -1, -1, -1, 0, 11, 3, 0, 6, 11, 0, 9, 6, 5, 6, 9, 1, 2, 10, -1, 11, 8, 5, 11, 5, 6, 8, 0, 5, 10, 5, 2, 0, 2, 5, -1, 6, 11, 3, 6, 3, 5, 2, 10, 3, 10, 5, 3, -1, -1, -1, -1, 5, 8, 9, 5, 2, 8, 5, 6, 2, 3, 8, 2, -1, -1, -1, -1, 9, 5, 6, 9, 6, 0, 0, 6, 2, -1, -1, -1, -1, -1, -1, -1, 1, 5, 8, 1, 8, 0, 5, 6, 8, 3, 8, 2, 6, 2, 8, -1, 1, 5, 6, 2, 1, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 3, 6, 1, 6, 10, 3, 8, 6, 5, 6, 9, 8, 9, 6, -1, 10, 1, 0, 10, 0, 6, 9, 5, 0, 5, 6, 0, -1, -1, -1, -1, 0, 3, 8, 5, 6, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10, 5, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 11, 5, 10, 7, 5, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 11, 5, 10, 11, 7, 5, 8, 3, 0, -1, -1, -1, -1, -1, -1, -1, 5, 11, 7, 5, 10, 11, 1, 9, 0, -1, -1, -1, -1, -1, -1, -1, 10, 7, 5, 10, 11, 7, 9, 8, 1, 8, 3, 1, -1, -1, -1, -1, 11, 1, 2, 11, 7, 1, 7, 5, 1, -1, -1, -1, -1, -1, -1, -1, 0, 8, 3, 1, 2, 7, 1, 7, 5, 7, 2, 11, -1, -1, -1, -1, 9, 7, 5, 9, 2, 7, 9, 0, 2, 2, 11, 7, -1, -1, -1, -1, 7, 5, 2, 7, 2, 11, 5, 9, 2, 3, 2, 8, 9, 8, 2, -1, 2, 5, 10, 2, 3, 5, 3, 7, 5, -1, -1, -1, -1, -1, -1, -1, 8, 2, 0, 8, 5, 2, 8, 7, 5, 10, 2, 5, -1, -1, -1, -1, 9, 0, 1, 5, 10, 3, 5, 3, 7, 3, 10, 2, -1, -1, -1, -1, 9, 8, 2, 9, 2, 1, 8, 7, 2, 10, 2, 5, 7, 5, 2, -1, 1, 3, 5, 3, 7, 5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 8, 7, 0, 7, 1, 1, 7, 5, -1, -1, -1, -1, -1, -1, -1, 9, 0, 3, 9, 3, 5, 5, 3, 7, -1, -1, -1, -1, -1, -1, -1, 9, 8, 7, 5, 9, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5, 8, 4, 5, 10, 8, 10, 11, 8, -1, -1, -1, -1, -1, -1, -1, 5, 0, 4, 5, 11, 0, 5, 10, 11, 11, 3, 0, -1, -1, -1, -1, 0, 1, 9, 8, 4, 10, 8, 10, 11, 10, 4, 5, -1, -1, -1, -1, 10, 11, 4, 10, 4, 5, 11, 3, 4, 9, 4, 1, 3, 1, 4, -1, 2, 5, 1, 2, 8, 5, 2, 11, 8, 4, 5, 8, -1, -1, -1, -1, 0, 4, 11, 0, 11, 3, 4, 5, 11, 2, 11, 1, 5, 1, 11, -1, 0, 2, 5, 0, 5, 9, 2, 11, 5, 4, 5, 8, 11, 8, 5, -1, 9, 4, 5, 2, 11, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 5, 10, 3, 5, 2, 3, 4, 5, 3, 8, 4, -1, -1, -1, -1, 5, 10, 2, 5, 2, 4, 4, 2, 0, -1, -1, -1, -1, -1, -1, -1, 3, 10, 2, 3, 5, 10, 3, 8, 5, 4, 5, 8, 0, 1, 9, -1, 5, 10, 2, 5, 2, 4, 1, 9, 2, 9, 4, 2, -1, -1, -1, -1, 8, 4, 5, 8, 5, 3, 3, 5, 1, -1, -1, -1, -1, -1, -1, -1, 0, 4, 5, 1, 0, 5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 8, 4, 5, 8, 5, 3, 9, 0, 5, 0, 3, 5, -1, -1, -1, -1, 9, 4, 5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 11, 7, 4, 9, 11, 9, 10, 11, -1, -1, -1, -1, -1, -1, -1, 0, 8, 3, 4, 9, 7, 9, 11, 7, 9, 10, 11, -1, -1, -1, -1, 1, 10, 11, 1, 11, 4, 1, 4, 0, 7, 4, 11, -1, -1, -1, -1, 3, 1, 4, 3, 4, 8, 1, 10, 4, 7, 4, 11, 10, 11, 4, -1, 4, 11, 7, 9, 11, 4, 9, 2, 11, 9, 1, 2, -1, -1, -1, -1, 9, 7, 4, 9, 11, 7, 9, 1, 11, 2, 11, 1, 0, 8, 3, -1, 11, 7, 4, 11, 4, 2, 2, 4, 0, -1, -1, -1, -1, -1, -1, -1, 11, 7, 4, 11, 4, 2, 8, 3, 4, 3, 2, 4, -1, -1, -1, -1, 2, 9, 10, 2, 7, 9, 2, 3, 7, 7, 4, 9, -1, -1, -1, -1, 9, 10, 7, 9, 7, 4, 10, 2, 7, 8, 7, 0, 2, 0, 7, -1, 3, 7, 10, 3, 10, 2, 7, 4, 10, 1, 10, 0, 4, 0, 10, -1, 1, 10, 2, 8, 7, 4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 9, 1, 4, 1, 7, 7, 1, 3, -1, -1, -1, -1, -1, -1, -1, 4, 9, 1, 4, 1, 7, 0, 8, 1, 8, 7, 1, -1, -1, -1, -1, 4, 0, 3, 7, 4, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 8, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 10, 8, 10, 11, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 0, 9, 3, 9, 11, 11, 9, 10, -1, -1, -1, -1, -1, -1, -1, 0, 1, 10, 0, 10, 8, 8, 10, 11, -1, -1, -1, -1, -1, -1, -1, 3, 1, 10, 11, 3, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 11, 1, 11, 9, 9, 11, 8, -1, -1, -1, -1, -1, -1, -1, 3, 0, 9, 3, 9, 11, 1, 2, 9, 2, 11, 9, -1, -1, -1, -1, 0, 2, 11, 8, 0, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 2, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 3, 8, 2, 8, 10, 10, 8, 9, -1, -1, -1, -1, -1, -1, -1, 9, 10, 2, 0, 9, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 3, 8, 2, 8, 10, 0, 1, 8, 1, 10, 8, -1, -1, -1, -1, 1, 10, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 3, 8, 9, 1, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]);
+      function triTableAt(cubeIndex, i) { return TRI_TABLE_FLAT[cubeIndex * 16 + i]; }
 
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
+      const CORNER_OFFSETS = [
+        [0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1],
+        [0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]
+      ];
+      const EDGE_CORNERS = [
+        [0, 1], [1, 2], [2, 3], [3, 0],
+        [4, 5], [5, 6], [6, 7], [7, 4],
+        [0, 4], [1, 5], [2, 6], [3, 7]
+      ];
 
-  const normalAttr = geo.attributes.normal;
-  const posAttr = geo.attributes.position;
-  const colors = new Float32Array(posAttr.count * 3);
-  for (let i = 0; i < posAttr.count; i++){
-    const ny = normalAttr.getY(i);
-    const col = colorForNormalY(ny, posAttr.getY(i));
-    colors[i*3] = col.r; colors[i*3+1] = col.g; colors[i*3+2] = col.b;
-  }
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.computeBoundingSphere();
-  return geo;
-}
+      /* ============================================================
+         COLORES DE TERRENO (por pendiente)
+         ============================================================ */
+      const COL_GRASS = new THREE.Color(0x5fb35a);
+      const COL_DIRT = new THREE.Color(0x7a5a3c);
+      const COL_ROCK = new THREE.Color(0x8a8a86);
+      const tmpColA = new THREE.Color();
 
-/* ============================================================
-   ESCENA THREE.JS
-   ============================================================ */
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-document.body.appendChild(renderer.domElement);
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0e14);
-scene.fog = new THREE.Fog(0x0a0e14, GRID_X*CELL_SIZE*0.55, GRID_X*CELL_SIZE*1.55);
-
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.05, 500);
-
-const hemi = new THREE.HemisphereLight(0x9fd3ff, 0x3a2f22, 0.65);
-scene.add(hemi);
-
-const sun = new THREE.DirectionalLight(0xfff2d8, 1.35);
-sun.position.set(GRID_X*CELL_SIZE*0.4, GRID_Y*CELL_SIZE*1.6, GRID_Z*CELL_SIZE*0.25);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-const shadowExtent = Math.max(GRID_X, GRID_Z) * CELL_SIZE * 0.75;
-sun.shadow.camera.left = -shadowExtent;
-sun.shadow.camera.right = shadowExtent;
-sun.shadow.camera.top = shadowExtent;
-sun.shadow.camera.bottom = -shadowExtent;
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far = GRID_Y*CELL_SIZE*4;
-sun.shadow.bias = -0.0015;
-scene.add(sun);
-scene.add(sun.target);
-
-const worldGroup = new THREE.Group();
-worldGroup.position.set(-GRID_X*CELL_SIZE/2, 0, -GRID_Z*CELL_SIZE/2);
-scene.add(worldGroup);
-
-const terrainMaterial = new THREE.MeshStandardMaterial({
-  vertexColors: true,
-  roughness: 0.92,
-  metalness: 0.02,
-  flatShading: false
-});
-
-const chunkMeshes = new Array(CHUNKS_X);
-for (let cx = 0; cx < CHUNKS_X; cx++){
-  chunkMeshes[cx] = new Array(CHUNKS_Y);
-  for (let cy = 0; cy < CHUNKS_Y; cy++){
-    chunkMeshes[cx][cy] = new Array(CHUNKS_Z).fill(null);
-  }
-}
-const meshList = []; // para raycasting rápido
-
-function rebuildChunk(cx, cy, cz){
-  const existing = chunkMeshes[cx][cy][cz];
-  if (existing){
-    worldGroup.remove(existing);
-    existing.geometry.dispose();
-    const li = meshList.indexOf(existing);
-    if (li !== -1) meshList.splice(li, 1);
-    chunkMeshes[cx][cy][cz] = null;
-  }
-  const geo = buildChunkGeometry(cx, cy, cz);
-  if (!geo) return;
-  const mesh = new THREE.Mesh(geo, terrainMaterial);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.userData.chunk = [cx, cy, cz];
-  worldGroup.add(mesh);
-  chunkMeshes[cx][cy][cz] = mesh;
-  meshList.push(mesh);
-}
-
-/* ============================================================
-   CARGA PROGRESIVA DE CHUNKS
-   ============================================================ */
-const buildQueue = [];
-for (let cx = 0; cx < CHUNKS_X; cx++)
-  for (let cy = 0; cy < CHUNKS_Y; cy++)
-    for (let cz = 0; cz < CHUNKS_Z; cz++)
-      buildQueue.push([cx, cy, cz]);
-
-const totalChunks = buildQueue.length;
-const loadbar = document.getElementById('loadbar');
-const loadbarFill = document.getElementById('loadbar-fill');
-const loadtext = document.getElementById('loadtext');
-
-function processBuildQueue(){
-  const perFrame = 3;
-  for (let i = 0; i < perFrame && buildQueue.length; i++){
-    const [cx, cy, cz] = buildQueue.shift();
-    rebuildChunk(cx, cy, cz);
-  }
-  const done = totalChunks - buildQueue.length;
-  loadbarFill.style.width = (done/totalChunks*100).toFixed(0) + '%';
-  if (buildQueue.length){
-    requestAnimationFrame(processBuildQueue);
-  } else {
-    // Ocultamos la pantalla de inicio y pedimos un click nuevo del usuario:
-    // requestPointerLock() debe llamarse dentro de un gesto de click síncrono,
-    // y el click original que arrancó la carga ya "caducó" tras varios frames.
-    startScreen.style.display = 'none';
-    pauseHint.style.display = 'flex';
-    updateStatsPanel();
-  }
-}
-
-/* ============================================================
-   EDICION DE TERRENO (excavar / construir)
-   ============================================================ */
-const dirtyChunks = new Set();
-
-function editSphere(localPoint, radiusCells, strength){
-  const gcx = localPoint.x / CELL_SIZE;
-  const gcy = localPoint.y / CELL_SIZE;
-  const gcz = localPoint.z / CELL_SIZE;
-  const r = radiusCells;
-  const minX = Math.max(0, Math.floor(gcx - r - 1));
-  const maxX = Math.min(PTS_X - 1, Math.ceil(gcx + r + 1));
-  const minY = Math.max(0, Math.floor(gcy - r - 1));
-  const maxY = Math.min(PTS_Y - 1, Math.ceil(gcy + r + 1));
-  const minZ = Math.max(0, Math.floor(gcz - r - 1));
-  const maxZ = Math.min(PTS_Z - 1, Math.ceil(gcz + r + 1));
-
-  for (let gz = minZ; gz <= maxZ; gz++){
-    for (let gy = minY; gy <= maxY; gy++){
-      for (let gx = minX; gx <= maxX; gx++){
-        const dx = gx - gcx, dy = gy - gcy, dz = gz - gcz;
-        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        if (dist > r) continue;
-        const falloff = 1 - dist / r;
-        const i = ptIndex(gx, gy, gz);
-        density[i] = clamp01(density[i] + strength * falloff);
+      function colorForNormalY(ny, worldY) {
+        let c;
+        if (ny > 0.72) {
+          c = tmpColA.copy(COL_DIRT).lerp(COL_GRASS, (ny - 0.72) / 0.28);
+        } else {
+          c = tmpColA.copy(COL_ROCK).lerp(COL_DIRT, THREE.MathUtils.clamp(ny / 0.72, 0, 1));
+        }
+        return c;
       }
-    }
-  }
 
-  const cxMin = Math.max(0, Math.floor((minX-1)/CHUNK_SIZE));
-  const cxMax = Math.min(CHUNKS_X-1, Math.floor(maxX/CHUNK_SIZE));
-  const cyMin = Math.max(0, Math.floor((minY-1)/CHUNK_SIZE));
-  const cyMax = Math.min(CHUNKS_Y-1, Math.floor(maxY/CHUNK_SIZE));
-  const czMin = Math.max(0, Math.floor((minZ-1)/CHUNK_SIZE));
-  const czMax = Math.min(CHUNKS_Z-1, Math.floor(maxZ/CHUNK_SIZE));
+      function applyVertexColors(geo) {
+        const normalAttr = geo.attributes.normal;
+        const posAttr = geo.attributes.position;
+        let colors = geo.attributes.color ? geo.attributes.color.array : new Float32Array(posAttr.count * 3);
+        for (let i = 0; i < posAttr.count; i++) {
+          if (dbg.normalsColor) {
+            const nx = normalAttr.getX(i), ny = normalAttr.getY(i), nz = normalAttr.getZ(i);
+            colors[i * 3] = nx * 0.5 + 0.5;
+            colors[i * 3 + 1] = ny * 0.5 + 0.5;
+            colors[i * 3 + 2] = nz * 0.5 + 0.5;
+          } else {
+            const col = colorForNormalY(normalAttr.getY(i), posAttr.getY(i));
+            colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
+          }
+        }
+        if (geo.attributes.color) {
+          geo.attributes.color.needsUpdate = true;
+        } else {
+          geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        }
+      }
 
-  for (let cx = cxMin; cx <= cxMax; cx++)
-    for (let cy = cyMin; cy <= cyMax; cy++)
-      for (let cz = czMin; cz <= czMax; cz++)
-        dirtyChunks.add(cx + '_' + cy + '_' + cz);
-}
+      /* ============================================================
+         POLIGONIZACION POR CHUNK
+         Halo de 1 celda: se poligonizan celdas vecinas solo para que
+         computeVertexNormals promedie caras del otro lado del borde;
+         después se descartan esos tris y se compactan vértices.
+         ============================================================ */
+      function buildChunkGeometry(cx, cy, cz) {
+        const x0 = cx * CHUNK_SIZE, x1 = x0 + CHUNK_SIZE;
+        const y0 = cy * CHUNK_SIZE, y1 = y0 + CHUNK_SIZE;
+        const z0 = cz * CHUNK_SIZE, z1 = z0 + CHUNK_SIZE;
 
-function flushDirtyChunks(){
-  if (dirtyChunks.size === 0) return;
-  dirtyChunks.forEach(key => {
-    const [cx, cy, cz] = key.split('_').map(Number);
-    rebuildChunk(cx, cy, cz);
-  });
-  dirtyChunks.clear();
-  updateStatsPanel();
-}
+        // rango con halo (celdas), clamp a la grilla
+        const px0 = Math.max(0, x0 - 1), px1 = Math.min(GRID_X, x1 + 1);
+        const py0 = Math.max(0, y0 - 1), py1 = Math.min(GRID_Y, y1 + 1);
+        const pz0 = Math.max(0, z0 - 1), pz1 = Math.min(GRID_Z, z1 + 1);
 
-/* ============================================================
-   CAMARA VOLADORA (pointer lock)
-   ============================================================ */
-camera.position.set(0, GRID_Y*CELL_SIZE*0.55, GRID_Z*CELL_SIZE*0.62);
-camera.lookAt(0, GRID_Y*CELL_SIZE*0.35, 0);
+        const positions = [];
+        const allIndices = [];
+        const coreIndices = [];
+        const cache = new Map();
 
-let yaw = 0, pitch = -0.25;
-{
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  yaw = Math.atan2(-dir.x, -dir.z);
-  pitch = Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1));
-}
+        function getVertex(edge, gx, gy, gz) {
+          const c1 = EDGE_CORNERS[edge][0], c2 = EDGE_CORNERS[edge][1];
+          const o1 = CORNER_OFFSETS[c1], o2 = CORNER_OFFSETS[c2];
+          const p1x = gx + o1[0], p1y = gy + o1[1], p1z = gz + o1[2];
+          const p2x = gx + o2[0], p2y = gy + o2[1], p2z = gz + o2[2];
+          const i1 = ptIndex(p1x, p1y, p1z), i2 = ptIndex(p2x, p2y, p2z);
+          const key = i1 < i2 ? (i1 * 1000003 + i2) : (i2 * 1000003 + i1);
+          let vi = cache.get(key);
+          if (vi !== undefined) return vi;
 
-const keys = {};
-let digging = false, building = false;
-let brushRadius = 2.5;
-const BRUSH_MIN = 0.8, BRUSH_MAX = 6.5;
-const MOVE_SPEED = 9.5, SPRINT_MULT = 2.6;
-const EDIT_STRENGTH = 1.7; // por segundo
+          const v1 = density[i1], v2 = density[i2];
+          let mu = 0.5;
+          if (!mcBinary) {
+            const denom = v2 - v1;
+            if (Math.abs(denom) > 1e-6) mu = (isoLevel - v1) / denom;
+            mu = THREE.MathUtils.clamp(mu, 0, 1);
+          }
 
-const raycaster = new THREE.Raycaster();
-raycaster.far = GRID_X * CELL_SIZE * 1.3;
-const screenCenter = new THREE.Vector2(0, 0);
+          const wx = (p1x + (p2x - p1x) * mu) * CELL_SIZE;
+          const wy = (p1y + (p2y - p1y) * mu) * CELL_SIZE;
+          const wz = (p1z + (p2z - p1z) * mu) * CELL_SIZE;
 
-const domEl = renderer.domElement;
-const startBtn = document.getElementById('startBtn');
-const startScreen = document.getElementById('startscreen');
-const pauseHint = document.getElementById('pausehint');
+          vi = positions.length / 3;
+          positions.push(wx, wy, wz);
+          cache.set(key, vi);
+          return vi;
+        }
 
-startBtn.addEventListener('click', () => {
-  startBtn.disabled = true;
-  startBtn.textContent = 'Generando...';
-  loadbar.style.display = 'block';
-  loadtext.style.display = 'block';
-  requestAnimationFrame(processBuildQueue);
-});
+        for (let gz = pz0; gz < pz1; gz++) {
+          for (let gy = py0; gy < py1; gy++) {
+            for (let gx = px0; gx < px1; gx++) {
+              const inCore = gx >= x0 && gx < x1 && gy >= y0 && gy < y1 && gz >= z0 && gz < z1;
 
-function tryLock(){
-  domEl.requestPointerLock = domEl.requestPointerLock || domEl.mozRequestPointerLock;
-  domEl.requestPointerLock();
-}
+              let cubeIndex = 0;
+              for (let c = 0; c < 8; c++) {
+                const o = CORNER_OFFSETS[c];
+                const v = density[ptIndex(gx + o[0], gy + o[1], gz + o[2])];
+                if (v < isoLevel) cubeIndex |= (1 << c);
+              }
+              const edgeMask = EDGE_TABLE[cubeIndex];
+              if (edgeMask === 0) continue;
 
-document.addEventListener('pointerlockchange', () => {
-  const locked = document.pointerLockElement === domEl;
-  if (locked){
-    startScreen.style.display = 'none';
-    pauseHint.style.display = 'none';
-  } else if (buildQueue.length === 0 && chunkAnyBuilt()){
-    pauseHint.style.display = 'flex';
-  }
-});
+              const edgeVerts = new Int32Array(12).fill(-1);
+              for (let e = 0; e < 12; e++) {
+                if (edgeMask & (1 << e)) edgeVerts[e] = getVertex(e, gx, gy, gz);
+              }
 
-function chunkAnyBuilt(){ return meshList.length >= 0 && startScreen.style.display === 'none'; }
+              for (let i = 0; triTableAt(cubeIndex, i) !== -1; i += 3) {
+                const a = edgeVerts[triTableAt(cubeIndex, i)];
+                const b = edgeVerts[triTableAt(cubeIndex, i + 2)];
+                const c = edgeVerts[triTableAt(cubeIndex, i + 1)];
+                allIndices.push(a, b, c);
+                if (inCore) coreIndices.push(a, b, c);
+              }
+            }
+          }
+        }
 
-document.addEventListener('click', () => {
-  if (startScreen.style.display === 'none' && document.pointerLockElement !== domEl){
-    tryLock();
-  }
-});
+        if (coreIndices.length === 0) return null;
 
-document.addEventListener('mousemove', (e) => {
-  if (document.pointerLockElement !== domEl) return;
-  const sensitivity = 0.0022;
-  yaw -= e.movementX * sensitivity;
-  pitch -= e.movementY * sensitivity;
-  pitch = THREE.MathUtils.clamp(pitch, -Math.PI/2 + 0.05, Math.PI/2 - 0.05);
-});
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        // normales con halo (caras vecinas entran al promedio)
+        geo.setIndex(allIndices);
+        geo.computeVertexNormals();
 
-document.addEventListener('mousedown', (e) => {
-  if (document.pointerLockElement !== domEl) return;
-  if (e.button === 0) digging = true;
-  if (e.button === 2) building = true;
-});
-document.addEventListener('mouseup', (e) => {
-  if (e.button === 0) digging = false;
-  if (e.button === 2) building = false;
-});
-domEl.addEventListener('contextmenu', (e) => e.preventDefault());
+        // quedarse solo con tris del chunk; compactar vértices usados
+        const nAttr = geo.attributes.normal;
+        const used = new Int32Array(positions.length / 3).fill(-1);
+        const newPos = [];
+        const newNor = [];
+        const newIdx = [];
+        let next = 0;
+        for (let i = 0; i < coreIndices.length; i++) {
+          const old = coreIndices[i];
+          let mapped = used[old];
+          if (mapped < 0) {
+            mapped = next++;
+            used[old] = mapped;
+            const o3 = old * 3;
+            newPos.push(positions[o3], positions[o3 + 1], positions[o3 + 2]);
+            newNor.push(nAttr.getX(old), nAttr.getY(old), nAttr.getZ(old));
+          }
+          newIdx.push(mapped);
+        }
 
-document.addEventListener('wheel', (e) => {
-  if (document.pointerLockElement !== domEl) return;
-  brushRadius = THREE.MathUtils.clamp(brushRadius - e.deltaY * 0.0035, BRUSH_MIN, BRUSH_MAX);
-  updateBrushHud();
-}, { passive: true });
+        const out = new THREE.BufferGeometry();
+        out.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+        out.setAttribute('normal', new THREE.Float32BufferAttribute(newNor, 3));
+        out.setIndex(newIdx);
+        applyVertexColors(out);
+        out.computeBoundingSphere();
+        geo.dispose();
+        return out;
+      }
 
-document.addEventListener('keydown', (e) => { keys[e.code] = true; });
-document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+      /* ============================================================
+         ESCENA THREE.JS
+         ============================================================ */
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
 
-function updateBrushHud(){
-  document.getElementById('brushVal').textContent = brushRadius.toFixed(1);
-  const pct = (brushRadius - BRUSH_MIN) / (BRUSH_MAX - BRUSH_MIN) * 100;
-  document.getElementById('brushBar').style.width = pct + '%';
-}
-updateBrushHud();
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0e14);
+      scene.fog = new THREE.Fog(0x0a0e14, GRID_X * CELL_SIZE * 0.55, GRID_X * CELL_SIZE * 1.55);
 
-const modeLabel = document.getElementById('modeLabel');
-function updateModeHud(){
-  if (building){ modeLabel.textContent = 'CONSTRUIR'; modeLabel.className = 'build'; }
-  else { modeLabel.textContent = 'EXCAVAR'; modeLabel.className = 'dig'; }
-}
+      const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 500);
 
-/* ============================================================
-   LOOP PRINCIPAL
-   ============================================================ */
-const forward = new THREE.Vector3();
-const right = new THREE.Vector3();
-const up = new THREE.Vector3(0, 1, 0);
-const moveVec = new THREE.Vector3();
+      const hemi = new THREE.HemisphereLight(0x9fd3ff, 0x3a2f22, 0.65);
+      scene.add(hemi);
 
-let editAccumulator = 0;
-const EDIT_INTERVAL = 1/30;
+      const sun = new THREE.DirectionalLight(0xfff2d8, 1.35);
+      sun.position.set(GRID_X * CELL_SIZE * 0.4, GRID_Y * CELL_SIZE * 1.6, GRID_Z * CELL_SIZE * 0.25);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      const shadowExtent = Math.max(GRID_X, GRID_Z) * CELL_SIZE * 0.75;
+      sun.shadow.camera.left = -shadowExtent;
+      sun.shadow.camera.right = shadowExtent;
+      sun.shadow.camera.top = shadowExtent;
+      sun.shadow.camera.bottom = -shadowExtent;
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = GRID_Y * CELL_SIZE * 4;
+      sun.shadow.bias = -0.0015;
+      scene.add(sun);
+      scene.add(sun.target);
 
-const clock = new THREE.Clock();
-let fpsAccum = 0, fpsFrames = 0, fpsTimer = 0;
+      const worldGroup = new THREE.Group();
+      worldGroup.position.set(-GRID_X * CELL_SIZE / 2, 0, -GRID_Z * CELL_SIZE / 2);
+      scene.add(worldGroup);
 
-function updateStatsPanel(){
-  let tris = 0;
-  for (const m of meshList) tris += m.geometry.index.count / 3;
-  document.getElementById('triCount').textContent = Math.round(tris).toLocaleString() + ' tris';
-  document.getElementById('chunkCount').textContent = meshList.length + ' / ' + totalChunks + ' chunks';
-}
+      const terrainMaterialLit = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.92,
+        metalness: 0.02,
+        flatShading: false
+      });
+      const terrainMaterialUnlit = new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        wireframe: false
+      });
+      let terrainMaterial = terrainMaterialLit;
 
-function animate(){
-  requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
+      function applyTerrainMaterialStyle() {
+        terrainMaterialLit.wireframe = dbg.wire;
+        terrainMaterialUnlit.wireframe = dbg.wire;
+        terrainMaterialLit.flatShading = dbg.flat;
+        terrainMaterialLit.needsUpdate = true;
+        terrainMaterialUnlit.needsUpdate = true;
+        terrainMaterial = dbg.lighting ? terrainMaterialLit : terrainMaterialUnlit;
+        for (const m of meshList) m.material = terrainMaterial;
+      }
 
-  // camara
-  camera.rotation.order = 'YXZ';
-  camera.rotation.set(pitch, yaw, 0);
+      const chunkMeshes = new Array(CHUNKS_X);
+      for (let cx = 0; cx < CHUNKS_X; cx++) {
+        chunkMeshes[cx] = new Array(CHUNKS_Y);
+        for (let cy = 0; cy < CHUNKS_Y; cy++) {
+          chunkMeshes[cx][cy] = new Array(CHUNKS_Z).fill(null);
+        }
+      }
+      const meshList = []; // para raycasting rápido
 
-  if (document.pointerLockElement === domEl){
-    camera.getWorldDirection(forward);
-    right.crossVectors(forward, up).normalize();
+      /* ---- puntos de densidad (grilla 3D) ---- */
+      const densityPtCount = PTS_X * PTS_Y * PTS_Z;
+      const densityPtPos = new Float32Array(densityPtCount * 3);
+      const densityPtCol = new Float32Array(densityPtCount * 3);
+      {
+        let i = 0;
+        for (let gz = 0; gz < PTS_Z; gz++)
+          for (let gy = 0; gy < PTS_Y; gy++)
+            for (let gx = 0; gx < PTS_X; gx++) {
+              densityPtPos[i] = gx * CELL_SIZE;
+              densityPtPos[i + 1] = gy * CELL_SIZE;
+              densityPtPos[i + 2] = gz * CELL_SIZE;
+              i += 3;
+            }
+      }
+      const densityPtGeo = new THREE.BufferGeometry();
+      densityPtGeo.setAttribute('position', new THREE.BufferAttribute(densityPtPos, 3));
+      densityPtGeo.setAttribute('color', new THREE.BufferAttribute(densityPtCol, 3));
+      const densityPtMat = new THREE.PointsMaterial({
+        size: 4,
+        sizeAttenuation: false,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false
+      });
+      const densityPoints = new THREE.Points(densityPtGeo, densityPtMat);
+      densityPoints.visible = false;
+      worldGroup.add(densityPoints);
 
-    moveVec.set(0,0,0);
-    if (keys['KeyW']) moveVec.add(forward);
-    if (keys['KeyS']) moveVec.addScaledVector(forward, -1);
-    if (keys['KeyD']) moveVec.add(right);
-    if (keys['KeyA']) moveVec.addScaledVector(right, -1);
-    if (keys['Space']) moveVec.addScaledVector(up, 1);
-    if (keys['ControlLeft'] || keys['ControlRight']) moveVec.addScaledVector(up, -1);
+      function updateDensityPointColors() {
+        for (let i = 0; i < densityPtCount; i++) {
+          const d = density[i];
+          const o = i * 3;
+          if (d < isoLevel) {
+            const t = d / Math.max(isoLevel, 1e-6);
+            densityPtCol[o] = 0.15 + t * 0.25;
+            densityPtCol[o + 1] = 0.2 + t * 0.3;
+            densityPtCol[o + 2] = 0.45 + t * 0.4;
+          } else {
+            const t = (d - isoLevel) / Math.max(1e-6, 1 - isoLevel);
+            densityPtCol[o] = 0.35 + t * 0.55;
+            densityPtCol[o + 1] = 0.75 - t * 0.2;
+            densityPtCol[o + 2] = 0.35 + t * 0.15;
+          }
+        }
+        densityPtGeo.attributes.color.needsUpdate = true;
+      }
+      updateDensityPointColors();
 
-    if (moveVec.lengthSq() > 0){
-      moveVec.normalize();
-      const sprint = keys['ShiftLeft'] || keys['ShiftRight'] ? SPRINT_MULT : 1;
-      camera.position.addScaledVector(moveVec, MOVE_SPEED * sprint * dt);
-    }
+      function rebuildChunk(cx, cy, cz) {
+        const existing = chunkMeshes[cx][cy][cz];
+        if (existing) {
+          worldGroup.remove(existing);
+          existing.geometry.dispose();
+          const li = meshList.indexOf(existing);
+          if (li !== -1) meshList.splice(li, 1);
+          chunkMeshes[cx][cy][cz] = null;
+        }
+        const geo = buildChunkGeometry(cx, cy, cz);
+        if (!geo) return;
+        const mesh = new THREE.Mesh(geo, terrainMaterial);
+        mesh.castShadow = dbg.shadows;
+        mesh.receiveShadow = dbg.shadows;
+        mesh.visible = dbg.terrain;
+        mesh.userData.chunk = [cx, cy, cz];
+        worldGroup.add(mesh);
+        chunkMeshes[cx][cy][cz] = mesh;
+        meshList.push(mesh);
+      }
 
-    // limites blandos del mundo
-    const half = Math.max(GRID_X, GRID_Z) * CELL_SIZE * 0.9;
-    camera.position.x = THREE.MathUtils.clamp(camera.position.x, -half, half);
-    camera.position.z = THREE.MathUtils.clamp(camera.position.z, -half, half);
-    camera.position.y = THREE.MathUtils.clamp(camera.position.y, -10, GRID_Y*CELL_SIZE*2.2);
+      function rebuildAllChunks() {
+        for (let cx = 0; cx < CHUNKS_X; cx++)
+          for (let cy = 0; cy < CHUNKS_Y; cy++)
+            for (let cz = 0; cz < CHUNKS_Z; cz++)
+              rebuildChunk(cx, cy, cz);
+        refreshChunkHelpers();
+        updateDensitySlice();
+        updateDensityPointColors();
+        updateStatsPanel();
+      }
 
-    updateModeHud();
+      function recolorAllMeshes() {
+        for (const m of meshList) applyVertexColors(m.geometry);
+      }
 
-    // excavar / construir
-    if (digging || building){
-      editAccumulator += dt;
-      if (editAccumulator >= EDIT_INTERVAL){
+      /* ============================================================
+         CARGA PROGRESIVA DE CHUNKS
+         ============================================================ */
+      const buildQueue = [];
+      for (let cx = 0; cx < CHUNKS_X; cx++)
+        for (let cy = 0; cy < CHUNKS_Y; cy++)
+          for (let cz = 0; cz < CHUNKS_Z; cz++)
+            buildQueue.push([cx, cy, cz]);
+
+      const totalChunks = buildQueue.length;
+      const loadbar = document.getElementById('loadbar');
+      const loadbarFill = document.getElementById('loadbar-fill');
+      const loadtext = document.getElementById('loadtext');
+
+      function processBuildQueue() {
+        const perFrame = 3;
+        for (let i = 0; i < perFrame && buildQueue.length; i++) {
+          const [cx, cy, cz] = buildQueue.shift();
+          rebuildChunk(cx, cy, cz);
+        }
+        const done = totalChunks - buildQueue.length;
+        loadbarFill.style.width = (done / totalChunks * 100).toFixed(0) + '%';
+        if (buildQueue.length) {
+          requestAnimationFrame(processBuildQueue);
+        } else {
+          // Ocultamos la pantalla de inicio y pedimos un click nuevo del usuario:
+          // requestPointerLock() debe llamarse dentro de un gesto de click síncrono,
+          // y el click original que arrancó la carga ya "caducó" tras varios frames.
+          startScreen.style.display = 'none';
+          pauseHint.style.display = 'flex';
+          updateDensityPointColors();
+          updateStatsPanel();
+        }
+      }
+
+      /* ============================================================
+         EDICION DE TERRENO (excavar / construir)
+         ============================================================ */
+      const dirtyChunks = new Set();
+
+      function editSphere(localPoint, radiusCells, strength) {
+        const gcx = localPoint.x / CELL_SIZE;
+        const gcy = localPoint.y / CELL_SIZE;
+        const gcz = localPoint.z / CELL_SIZE;
+        const r = radiusCells;
+        const minX = Math.max(0, Math.floor(gcx - r - 1));
+        const maxX = Math.min(PTS_X - 1, Math.ceil(gcx + r + 1));
+        const minY = Math.max(0, Math.floor(gcy - r - 1));
+        const maxY = Math.min(PTS_Y - 1, Math.ceil(gcy + r + 1));
+        const minZ = Math.max(0, Math.floor(gcz - r - 1));
+        const maxZ = Math.min(PTS_Z - 1, Math.ceil(gcz + r + 1));
+
+        for (let gz = minZ; gz <= maxZ; gz++) {
+          for (let gy = minY; gy <= maxY; gy++) {
+            for (let gx = minX; gx <= maxX; gx++) {
+              const dx = gx - gcx, dy = gy - gcy, dz = gz - gcz;
+              const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+              if (dist > r) continue;
+              const falloff = 1 - dist / r;
+              const i = ptIndex(gx, gy, gz);
+              density[i] = clamp01(density[i] + strength * falloff);
+            }
+          }
+        }
+
+        const cxMin = Math.max(0, Math.floor((minX - 1) / CHUNK_SIZE));
+        const cxMax = Math.min(CHUNKS_X - 1, Math.floor(maxX / CHUNK_SIZE));
+        const cyMin = Math.max(0, Math.floor((minY - 1) / CHUNK_SIZE));
+        const cyMax = Math.min(CHUNKS_Y - 1, Math.floor(maxY / CHUNK_SIZE));
+        const czMin = Math.max(0, Math.floor((minZ - 1) / CHUNK_SIZE));
+        const czMax = Math.min(CHUNKS_Z - 1, Math.floor(maxZ / CHUNK_SIZE));
+
+        for (let cx = cxMin; cx <= cxMax; cx++)
+          for (let cy = cyMin; cy <= cyMax; cy++)
+            for (let cz = czMin; cz <= czMax; cz++)
+              dirtyChunks.add(cx + '_' + cy + '_' + cz);
+      }
+
+      function flushDirtyChunks() {
+        if (dirtyChunks.size === 0) return;
+        dirtyChunks.forEach(key => {
+          const [cx, cy, cz] = key.split('_').map(Number);
+          rebuildChunk(cx, cy, cz);
+        });
+        dirtyChunks.clear();
+        updateDensityPointColors();
+        updateStatsPanel();
+      }
+
+      /* ============================================================
+         CAMARA VOLADORA (pointer lock)
+         ============================================================ */
+      camera.position.set(0, GRID_Y * CELL_SIZE * 0.55, GRID_Z * CELL_SIZE * 0.62);
+      camera.lookAt(0, GRID_Y * CELL_SIZE * 0.35, 0);
+
+      let yaw = 0, pitch = -0.25;
+      {
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        yaw = Math.atan2(-dir.x, -dir.z);
+        pitch = Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1));
+      }
+
+      const keys = {};
+      let digging = false, building = false;
+      let brushRadius = 2.5;
+      const BRUSH_MIN = 0.8, BRUSH_MAX = 6.5;
+      let moveSpeed = 9.5, sprintMult = 2.6;
+      let editStrength = 1.7;
+      let mouseSens = 0.0022;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.far = GRID_X * CELL_SIZE * 1.3;
+      const screenCenter = new THREE.Vector2(0, 0);
+
+      const domEl = renderer.domElement;
+      const startBtn = document.getElementById('startBtn');
+      const startScreen = document.getElementById('startscreen');
+      const pauseHint = document.getElementById('pausehint');
+
+      const axesHelper = new THREE.AxesHelper(CELL_SIZE * 8);
+      axesHelper.visible = false;
+      worldGroup.add(axesHelper);
+
+      const chunkHelperGroup = new THREE.Group();
+      chunkHelperGroup.visible = false;
+      worldGroup.add(chunkHelperGroup);
+
+      function refreshChunkHelpers() {
+        while (chunkHelperGroup.children.length) {
+          chunkHelperGroup.remove(chunkHelperGroup.children[0]);
+        }
+        const s = CHUNK_SIZE * CELL_SIZE;
+        const mat = new THREE.MeshBasicMaterial({ color: 0x8fd3ff, wireframe: true, transparent: true, opacity: 0.35 });
+        for (let cx = 0; cx < CHUNKS_X; cx++)
+          for (let cy = 0; cy < CHUNKS_Y; cy++)
+            for (let cz = 0; cz < CHUNKS_Z; cz++) {
+              const box = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), mat);
+              box.position.set((cx + 0.5) * s, (cy + 0.5) * s, (cz + 0.5) * s);
+              chunkHelperGroup.add(box);
+            }
+      }
+
+      const brushGizmo = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 20, 16),
+        new THREE.MeshBasicMaterial({ color: 0xff9d6b, wireframe: true, transparent: true, opacity: 0.7 })
+      );
+      brushGizmo.visible = false;
+      scene.add(brushGizmo);
+
+      const sliceCanvas = document.getElementById('densitySlice');
+      const sliceCtx = sliceCanvas.getContext('2d');
+      const sliceImg = sliceCtx.createImageData(sliceCanvas.width, sliceCanvas.height);
+
+      function updateDensitySlice() {
+        if (!dbg.slice) return;
+        const y = +document.getElementById('sliceY').value | 0;
+        const w = sliceCanvas.width, h = sliceCanvas.height;
+        const data = sliceImg.data;
+        for (let py = 0; py < h; py++) {
+          for (let px = 0; px < w; px++) {
+            const gx = Math.floor(px / w * (PTS_X - 1));
+            const gz = Math.floor(py / h * (PTS_Z - 1));
+            const d = density[ptIndex(gx, y, gz)];
+            const i = (py * w + px) * 4;
+            if (d < isoLevel) {
+              const t = d / isoLevel;
+              data[i] = 20 + t * 40; data[i + 1] = 30 + t * 50; data[i + 2] = 50 + t * 80; data[i + 3] = 255;
+            } else {
+              const t = (d - isoLevel) / Math.max(1e-6, 1 - isoLevel);
+              data[i] = 80 + t * 175; data[i + 1] = 120 + t * 100; data[i + 2] = 90 + t * 60; data[i + 3] = 255;
+            }
+          }
+        }
+        sliceCtx.putImageData(sliceImg, 0, 0);
+        sliceCtx.strokeStyle = 'rgba(143,211,255,.7)';
+        sliceCtx.strokeRect(0.5, 0.5, w - 1, h - 1);
+      }
+
+      startBtn.addEventListener('click', () => {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Generando...';
+        loadbar.style.display = 'block';
+        loadtext.style.display = 'block';
+        requestAnimationFrame(processBuildQueue);
+      });
+
+      function tryLock() {
+        domEl.requestPointerLock = domEl.requestPointerLock || domEl.mozRequestPointerLock;
+        domEl.requestPointerLock();
+      }
+
+      document.addEventListener('pointerlockchange', () => {
+        const locked = document.pointerLockElement === domEl;
+        if (locked) {
+          startScreen.style.display = 'none';
+          pauseHint.style.display = 'none';
+        } else if (buildQueue.length === 0 && chunkAnyBuilt()) {
+          pauseHint.style.display = 'flex';
+        }
+      });
+
+      function chunkAnyBuilt() { return meshList.length >= 0 && startScreen.style.display === 'none'; }
+
+      document.addEventListener('click', (e) => {
+        if (e.target.closest && e.target.closest('#dbgPanel')) return;
+        if (startScreen.style.display === 'none' && document.pointerLockElement !== domEl) {
+          tryLock();
+        }
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement !== domEl) return;
+        yaw -= e.movementX * mouseSens;
+        pitch -= e.movementY * mouseSens;
+        pitch = THREE.MathUtils.clamp(pitch, -Math.PI / 2 + 0.05, Math.PI / 2 - 0.05);
+      });
+
+      document.addEventListener('mousedown', (e) => {
+        if (document.pointerLockElement !== domEl) return;
+        if (e.button === 0) digging = true;
+        if (e.button === 2) building = true;
+      });
+      document.addEventListener('mouseup', (e) => {
+        if (e.button === 0) digging = false;
+        if (e.button === 2) building = false;
+      });
+      domEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      document.addEventListener('wheel', (e) => {
+        if (document.pointerLockElement !== domEl) return;
+        brushRadius = THREE.MathUtils.clamp(brushRadius - e.deltaY * 0.0035, BRUSH_MIN, BRUSH_MAX);
+        updateBrushHud();
+        const bs = document.getElementById('brushSlider');
+        if (bs) { bs.value = brushRadius; document.getElementById('brushSliderVal').textContent = brushRadius.toFixed(1); }
+      }, { passive: true });
+
+      document.addEventListener('keydown', (e) => { keys[e.code] = true; });
+      document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+      function updateBrushHud() {
+        document.getElementById('brushVal').textContent = brushRadius.toFixed(1);
+        const pct = (brushRadius - BRUSH_MIN) / (BRUSH_MAX - BRUSH_MIN) * 100;
+        document.getElementById('brushBar').style.width = pct + '%';
+      }
+      updateBrushHud();
+
+      const modeLabel = document.getElementById('modeLabel');
+      function updateModeHud() {
+        if (building) { modeLabel.textContent = 'CONSTRUIR'; modeLabel.className = 'build'; }
+        else { modeLabel.textContent = 'EXCAVAR'; modeLabel.className = 'dig'; }
+      }
+
+      /* ============================================================
+         PANEL DEBUG UI (siempre visible)
+         ============================================================ */
+      const dbgPanel = document.getElementById('dbgPanel');
+      dbgPanel.addEventListener('click', (e) => e.stopPropagation());
+      dbgPanel.addEventListener('mousedown', (e) => e.stopPropagation());
+      // tocar el panel suelta el cursor para poder usar sliders
+      dbgPanel.addEventListener('pointerdown', () => {
+        if (document.pointerLockElement) document.exitPointerLock();
+      });
+
+      function syncDebugLabels() {
+        document.getElementById('dbgGridInfo').textContent = GRID_X + '×' + GRID_Y + '×' + GRID_Z;
+        document.getElementById('dbgPtsInfo').textContent = PTS_X + '×' + PTS_Y + '×' + PTS_Z;
+        document.getElementById('dbgChunkInfo').textContent = CHUNKS_X + '×' + CHUNKS_Y + '×' + CHUNKS_Z;
+        document.getElementById('dbgCellInfo').textContent = CELL_SIZE.toFixed(2);
+        document.getElementById('sliceY').max = String(PTS_Y - 1);
+      }
+
+      function bindCheck(id, key, onChange) {
+        const el = document.getElementById(id);
+        el.checked = !!dbg[key];
+        el.addEventListener('change', () => {
+          dbg[key] = el.checked;
+          if (onChange) onChange(dbg[key]);
+        });
+      }
+
+      let savedSun = sun.intensity;
+      let savedHemi = hemi.intensity;
+
+      bindCheck('dbgWire', 'wire', () => applyTerrainMaterialStyle());
+      bindCheck('dbgFlat', 'flat', () => applyTerrainMaterialStyle());
+      bindCheck('dbgNormalsColor', 'normalsColor', () => recolorAllMeshes());
+      bindCheck('dbgChunks', 'chunks', (v) => {
+        chunkHelperGroup.visible = v;
+        if (v && chunkHelperGroup.children.length === 0) refreshChunkHelpers();
+      });
+      bindCheck('dbgAxes', 'axes', (v) => { axesHelper.visible = v; });
+      bindCheck('dbgBrushGizmo', 'brushGizmo', (v) => { if (!v) brushGizmo.visible = false; });
+      bindCheck('dbgHitInfo', 'hitInfo', (v) => {
+        document.getElementById('hitInfo').classList.toggle('visible', v);
+      });
+      bindCheck('dbgSlice', 'slice', (v) => {
+        document.getElementById('sliceWrap').classList.toggle('visible', v);
+        if (v) updateDensitySlice();
+      });
+      bindCheck('dbgFog', 'fog', (v) => { scene.fog = v ? makeFog() : null; });
+      bindCheck('dbgShadows', 'shadows', (v) => {
+        renderer.shadowMap.enabled = v;
+        sun.castShadow = v && dbg.lighting;
+        for (const m of meshList) { m.castShadow = v; m.receiveShadow = v; }
+      });
+      bindCheck('dbgTerrain', 'terrain', (v) => { for (const m of meshList) m.visible = v; });
+      bindCheck('dbgLighting', 'lighting', (v) => {
+        hemi.intensity = v ? savedHemi : 0;
+        sun.intensity = v ? savedSun : 0;
+        sun.castShadow = v && dbg.shadows;
+        applyTerrainMaterialStyle();
+      });
+      bindCheck('dbgDensityPts', 'densityPts', (v) => {
+        densityPoints.visible = v;
+        if (v) updateDensityPointColors();
+      });
+
+      const mcBinaryEl = document.getElementById('dbgMcBinary');
+      mcBinaryEl.checked = mcBinary;
+      mcBinaryEl.addEventListener('change', () => {
+        mcBinary = mcBinaryEl.checked;
+        rebuildAllChunks();
+      });
+
+      function makeFog() {
+        const near = +document.getElementById('fogNear').value;
+        const far = +document.getElementById('fogFar').value;
+        return new THREE.Fog(0x0a0e14, near, Math.max(near + 1, far));
+      }
+
+      function bindSlider(id, valId, decimals, apply) {
+        const el = document.getElementById(id);
+        const lab = document.getElementById(valId);
+        const fmt = (v) => decimals <= 0 ? String(Math.round(v)) : (+v).toFixed(decimals);
+        lab.textContent = fmt(el.value);
+        el.addEventListener('input', () => {
+          lab.textContent = fmt(el.value);
+          apply(+el.value);
+        });
+      }
+
+      bindSlider('brushSlider', 'brushSliderVal', 1, (v) => { brushRadius = v; updateBrushHud(); });
+      bindSlider('strengthSlider', 'strengthVal', 1, (v) => { editStrength = v; });
+      bindSlider('isoSlider', 'isoVal', 2, (v) => {
+        isoLevel = v;
+        rebuildAllChunks();
+      });
+      bindSlider('sliceY', 'sliceYVal', 0, () => updateDensitySlice());
+      bindSlider('ptSize', 'ptSizeVal', 1, (v) => { densityPtMat.size = v; });
+      bindSlider('baseH', 'baseHVal', 1, (v) => { terrainGen.baseHeight = v; });
+      bindSlider('ampH', 'ampHVal', 1, (v) => { terrainGen.heightAmp = v; });
+      bindSlider('band', 'bandVal', 1, (v) => { terrainGen.band = v; });
+      bindSlider('caveTh', 'caveVal', 2, (v) => { terrainGen.caveThreshold = v; });
+      bindSlider('hScale', 'hScaleVal', 3, (v) => { terrainGen.heightScale = v; });
+      bindSlider('sunI', 'sunVal', 2, (v) => {
+        savedSun = v;
+        if (dbg.lighting) sun.intensity = v;
+      });
+      bindSlider('hemiI', 'hemiVal', 2, (v) => {
+        savedHemi = v;
+        if (dbg.lighting) hemi.intensity = v;
+      });
+      bindSlider('fogNear', 'fogNearVal', 0, () => { if (dbg.fog) scene.fog = makeFog(); });
+      bindSlider('fogFar', 'fogFarVal', 0, () => { if (dbg.fog) scene.fog = makeFog(); });
+      bindSlider('rough', 'roughVal', 2, (v) => { terrainMaterialLit.roughness = v; });
+      bindSlider('metal', 'metalVal', 2, (v) => { terrainMaterialLit.metalness = v; });
+      bindSlider('speed', 'speedVal', 1, (v) => { moveSpeed = v; });
+      bindSlider('sprint', 'sprintVal', 1, (v) => { sprintMult = v; });
+      bindSlider('sens', 'sensVal', 4, (v) => { mouseSens = v; });
+      bindSlider('fov', 'fovVal', 0, (v) => { camera.fov = v; camera.updateProjectionMatrix(); });
+
+      {
+        const fn = GRID_X * CELL_SIZE * 0.55;
+        const ff = GRID_X * CELL_SIZE * 1.55;
+        document.getElementById('fogNear').value = Math.round(fn);
+        document.getElementById('fogFar').value = Math.round(ff);
+        document.getElementById('fogNearVal').textContent = String(Math.round(fn));
+        document.getElementById('fogFarVal').textContent = String(Math.round(ff));
+        document.getElementById('baseH').value = terrainGen.baseHeight;
+        document.getElementById('baseHVal').textContent = terrainGen.baseHeight.toFixed(1);
+        document.getElementById('ampH').value = terrainGen.heightAmp;
+        document.getElementById('ampHVal').textContent = terrainGen.heightAmp.toFixed(1);
+        document.getElementById('sliceY').value = Math.floor(PTS_Y * 0.42);
+        document.getElementById('sliceYVal').textContent = String(Math.floor(PTS_Y * 0.42));
+      }
+      syncDebugLabels();
+
+      document.getElementById('btnRebuild').addEventListener('click', () => rebuildAllChunks());
+      document.getElementById('btnRegen').addEventListener('click', () => {
+        generateTerrain();
+        rebuildAllChunks();
+      });
+
+      /* ============================================================
+         LOOP PRINCIPAL
+         ============================================================ */
+      const forward = new THREE.Vector3();
+      const right = new THREE.Vector3();
+      const up = new THREE.Vector3(0, 1, 0);
+      const moveVec = new THREE.Vector3();
+
+      let editAccumulator = 0;
+      const EDIT_INTERVAL = 1 / 30;
+      let lastHit = null;
+
+      const clock = new THREE.Clock();
+      let fpsFrames = 0, fpsTimer = 0;
+      let lastFps = 0;
+
+      function updateStatsPanel() {
+        let tris = 0, verts = 0;
+        for (const m of meshList) {
+          tris += m.geometry.index.count / 3;
+          verts += m.geometry.attributes.position.count;
+        }
+        document.getElementById('triCount').textContent = Math.round(tris).toLocaleString() + ' tris';
+        document.getElementById('chunkCount').textContent = meshList.length + ' / ' + totalChunks + ' chunks';
+        document.getElementById('dbgTris').textContent = Math.round(tris).toLocaleString();
+        document.getElementById('dbgVerts').textContent = verts.toLocaleString();
+        document.getElementById('dbgMeshes').textContent = meshList.length + ' / ' + totalChunks;
+        document.getElementById('dbgDirty').textContent = String(dirtyChunks.size);
+        document.getElementById('dbgDraw').textContent = String(
+          meshList.filter(m => m.visible).length + (chunkHelperGroup.visible ? chunkHelperGroup.children.length : 0)
+        );
+      }
+
+      function updateHitDebug() {
+        const hitEl = document.getElementById('hitInfo');
+        if (!dbg.hitInfo && !dbg.brushGizmo) {
+          brushGizmo.visible = false;
+          return;
+        }
         raycaster.setFromCamera(screenCenter, camera);
         const hits = raycaster.intersectObjects(meshList, false);
-        if (hits.length){
-          const worldPt = hits[0].point;
-          const localPt = worldGroup.worldToLocal(worldPt.clone());
-          const strength = (building ? 1 : -1) * EDIT_STRENGTH * editAccumulator;
-          editSphere(localPt, brushRadius / CELL_SIZE, strength);
+        if (!hits.length) {
+          lastHit = null;
+          brushGizmo.visible = false;
+          if (dbg.hitInfo) hitEl.textContent = 'Sin hit · mirá hacia el terreno';
+          return;
         }
-        editAccumulator = 0;
+        lastHit = hits[0];
+        const worldPt = lastHit.point;
+        const localPt = worldGroup.worldToLocal(worldPt.clone());
+        if (dbg.brushGizmo) {
+          brushGizmo.visible = true;
+          brushGizmo.position.copy(worldPt);
+          brushGizmo.scale.setScalar(brushRadius);
+          brushGizmo.material.color.set(building ? 0x54e6a4 : 0xff9d6b);
+        } else {
+          brushGizmo.visible = false;
+        }
+        if (dbg.hitInfo) {
+          const ch = lastHit.object.userData.chunk;
+          hitEl.textContent =
+            'dist ' + lastHit.distance.toFixed(1) +
+            ' · local (' + localPt.x.toFixed(1) + ', ' + localPt.y.toFixed(1) + ', ' + localPt.z.toFixed(1) + ')' +
+            (ch ? ' · chunk ' + ch.join(',') : '');
+        }
       }
-    } else {
-      editAccumulator = 0;
-    }
 
-    flushDirtyChunks();
-  }
+      function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.05);
 
-  // sol sigue a la camara para sombras consistentes sin recalcular todo el mundo
-  sun.position.set(camera.position.x + GRID_X*CELL_SIZE*0.4, GRID_Y*CELL_SIZE*1.6, camera.position.z + GRID_Z*CELL_SIZE*0.25);
-  sun.target.position.set(camera.position.x, 0, camera.position.z);
-  sun.target.updateMatrixWorld();
+        camera.rotation.order = 'YXZ';
+        camera.rotation.set(pitch, yaw, 0);
 
-  renderer.render(scene, camera);
+        if (document.pointerLockElement === domEl) {
+          camera.getWorldDirection(forward);
+          right.crossVectors(forward, up).normalize();
 
-  fpsFrames++; fpsTimer += dt;
-  if (fpsTimer >= 0.5){
-    document.getElementById('fps').textContent = Math.round(fpsFrames/fpsTimer) + ' fps';
-    fpsFrames = 0; fpsTimer = 0;
-  }
-}
-animate();
+          moveVec.set(0, 0, 0);
+          if (keys['KeyW']) moveVec.add(forward);
+          if (keys['KeyS']) moveVec.addScaledVector(forward, -1);
+          if (keys['KeyD']) moveVec.add(right);
+          if (keys['KeyA']) moveVec.addScaledVector(right, -1);
+          if (keys['Space']) moveVec.addScaledVector(up, 1);
+          if (keys['ControlLeft'] || keys['ControlRight']) moveVec.addScaledVector(up, -1);
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+          if (moveVec.lengthSq() > 0) {
+            moveVec.normalize();
+            const sprint = keys['ShiftLeft'] || keys['ShiftRight'] ? sprintMult : 1;
+            camera.position.addScaledVector(moveVec, moveSpeed * sprint * dt);
+          }
 
-})();
-</script>
+          const half = Math.max(GRID_X, GRID_Z) * CELL_SIZE * 0.9;
+          camera.position.x = THREE.MathUtils.clamp(camera.position.x, -half, half);
+          camera.position.z = THREE.MathUtils.clamp(camera.position.z, -half, half);
+          camera.position.y = THREE.MathUtils.clamp(camera.position.y, -10, GRID_Y * CELL_SIZE * 2.2);
+
+          updateModeHud();
+
+          if (digging || building) {
+            editAccumulator += dt;
+            if (editAccumulator >= EDIT_INTERVAL) {
+              raycaster.setFromCamera(screenCenter, camera);
+              const hits = raycaster.intersectObjects(meshList, false);
+              if (hits.length) {
+                const worldPt = hits[0].point;
+                const localPt = worldGroup.worldToLocal(worldPt.clone());
+                const strength = (building ? 1 : -1) * editStrength * editAccumulator;
+                editSphere(localPt, brushRadius / CELL_SIZE, strength);
+                if (dbg.slice) updateDensitySlice();
+              }
+              editAccumulator = 0;
+            }
+          } else {
+            editAccumulator = 0;
+          }
+
+          flushDirtyChunks();
+        }
+
+        if (dbg.hitInfo || dbg.brushGizmo) updateHitDebug();
+
+        sun.position.set(camera.position.x + GRID_X * CELL_SIZE * 0.4, GRID_Y * CELL_SIZE * 1.6, camera.position.z + GRID_Z * CELL_SIZE * 0.25);
+        sun.target.position.set(camera.position.x, 0, camera.position.z);
+        sun.target.updateMatrixWorld();
+
+        renderer.render(scene, camera);
+
+        fpsFrames++; fpsTimer += dt;
+        if (fpsTimer >= 0.5) {
+          lastFps = Math.round(fpsFrames / fpsTimer);
+          document.getElementById('fps').textContent = lastFps + ' fps';
+          document.getElementById('dbgFps').textContent = String(lastFps);
+          document.getElementById('dbgCam').textContent =
+            camera.position.x.toFixed(1) + ', ' + camera.position.y.toFixed(1) + ', ' + camera.position.z.toFixed(1);
+          document.getElementById('dbgDirty').textContent = String(dirtyChunks.size);
+          fpsFrames = 0; fpsTimer = 0;
+        }
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+    })();
+  </script>
 </body>
 </html>
