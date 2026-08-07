@@ -404,7 +404,8 @@
                     <li><code>A/D</code>: mover horizontal.</li>
                     <li><code>W</code>/↑/Espacio: jetpack continuo (empuje débil arriba). <code>S</code>/↓: empuje
                         abajo.</li>
-                    <li>Modo UI <b>Disparar</b> + click izq: ray DDA sobre grilla (primera celda density &gt; 0) → kernel daño.</li>
+                    <li>Modo UI <b>Disparar</b> + click izq: ray DDA sobre grilla (primera celda density &gt; 0) →
+                        kernel daño.</li>
                     <li>Body dynamic, <code>fixedRotation</code>, rect sin girar. Caer fuera → respawn.</li>
                 </ul>
             </details>
@@ -471,7 +472,7 @@
         let worldW = COLS * CELL_SIZE;
         let worldH = ROWS * CELL_SIZE;
 
-        const ISO = 0.5;
+        const ISO = 0.1;
         const BRUSH_STRENGTH = 0.35;
         const FIXED_DT = 1 / 60;
         const GRAVITY = 400;
