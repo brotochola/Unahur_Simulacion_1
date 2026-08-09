@@ -251,32 +251,66 @@
 
     let width, height;
     let points = [];
-    let scale = 2; // Factor de escala para optimizar rendimiento renderizando a menor resolución
+    let scale = 2;
+    let dirty = true;
 
-    // Clase para representar cada Semilla (Sitio Voronoi)
+    let cachedImgData = null;
+    let cachedU32 = null;
+    let cachedImgW = 0;
+    let cachedImgH = 0;
+
+    const offscreen = document.createElement('canvas');
+    const offCtx = offscreen.getContext('2d');
+    let offW = 0;
+    let offH = 0;
+
+    function markDirty() {
+        dirty = true;
+    }
+
+    function getImageData(w, h) {
+        if (!cachedImgData || cachedImgW !== w || cachedImgH !== h) {
+            cachedImgData = ctx.createImageData(w, h);
+            cachedU32 = new Uint32Array(cachedImgData.data.buffer);
+            cachedImgW = w;
+            cachedImgH = h;
+        }
+        return cachedImgData;
+    }
+
+    function ensureOffscreen(w, h) {
+        if (offW !== w || offH !== h) {
+            offscreen.width = w;
+            offscreen.height = h;
+            offW = w;
+            offH = h;
+        }
+    }
+
+    // Pack RGBA bytes as little-endian Uint32 (R | G<<8 | B<<16 | A<<24)
+    function packColor32(r, g, b) {
+        return (255 << 24) | (b << 16) | (g << 8) | r;
+    }
+
     class Point {
         constructor(x, y) {
             this.x = x;
             this.y = y;
-            // Velocidad aleatoria para animación
             this.vx = (Math.random() - 0.5) * 2;
             this.vy = (Math.random() - 0.5) * 2;
-            // Color HSL aleatorio pero vibrante
             this.color = `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`;
-            // Color RGB precalculado para pintar en el ImageData
-            this.rgb = this.hslToRgb(Math.random(), 0.7, 0.4);
+            const rgb = this.hslToRgb(Math.random(), 0.7, 0.4);
+            this.rgb = rgb;
+            this.color32 = packColor32(rgb[0], rgb[1], rgb[2]);
         }
 
         update(speed) {
             this.x += this.vx * speed;
             this.y += this.vy * speed;
-
-            // Rebote en las paredes
             if (this.x < 0 || this.x > width) this.vx *= -1;
             if (this.y < 0 || this.y > height) this.vy *= -1;
         }
 
-        // Helper para convertir HSL a RGB para manipular píxeles directamente
         hslToRgb(h, s, l) {
             let r, g, b;
             if (s === 0) {
@@ -300,12 +334,10 @@
         }
     }
 
-    // Distancia para comparar cercanía (no hace falta valor real).
-    // Euclidiana: dist² — sqrt monótono, mismo argmin, sin Math.sqrt.
+    // Euclidiana: dist² — mismo argmin, sin Math.sqrt.
     function getDistance(x1, y1, x2, y2, metric) {
         const dx = x1 - x2;
         const dy = y1 - y2;
-
         switch (metric) {
             case 'manhattan':
                 return Math.abs(dx) + Math.abs(dy);
@@ -317,12 +349,86 @@
         }
     }
 
+    function buildSpatialGrid(cellSize) {
+        const cols = Math.max(1, Math.ceil(width / cellSize));
+        const rows = Math.max(1, Math.ceil(height / cellSize));
+        const cells = new Array(cols * rows);
+        for (let i = 0; i < cells.length; i++) cells[i] = [];
+
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            let cx = (p.x / cellSize) | 0;
+            let cy = (p.y / cellSize) | 0;
+            if (cx < 0) cx = 0;
+            else if (cx >= cols) cx = cols - 1;
+            if (cy < 0) cy = 0;
+            else if (cy >= rows) cy = rows - 1;
+            cells[cy * cols + cx].push(p);
+        }
+        return { cols, rows, cellSize, cells };
+    }
+
+    function findNearestColor(realX, realY, metric, grid) {
+        const { cols, rows, cellSize, cells } = grid;
+        let gx = (realX / cellSize) | 0;
+        let gy = (realY / cellSize) | 0;
+        if (gx < 0) gx = 0;
+        else if (gx >= cols) gx = cols - 1;
+        if (gy < 0) gy = 0;
+        else if (gy >= rows) gy = rows - 1;
+
+        let minDist = Infinity;
+        let bestColor = 0;
+        const maxRing = cols > rows ? cols : rows;
+
+        for (let ring = 0; ring <= maxRing; ring++) {
+            const x0 = gx - ring;
+            const x1 = gx + ring;
+            const y0 = gy - ring;
+            const y1 = gy + ring;
+
+            for (let cy = y0; cy <= y1; cy++) {
+                if (cy < 0 || cy >= rows) continue;
+                const rowBase = cy * cols;
+                const onlyEdges = ring > 0 && cy !== y0 && cy !== y1;
+
+                for (let cx = x0; cx <= x1; cx++) {
+                    if (cx < 0 || cx >= cols) continue;
+                    if (onlyEdges && cx !== x0 && cx !== x1) continue;
+
+                    const bucket = cells[rowBase + cx];
+                    for (let i = 0; i < bucket.length; i++) {
+                        const p = bucket[i];
+                        const dist = getDistance(realX, realY, p.x, p.y, metric);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            bestColor = p.color32;
+                        }
+                    }
+                }
+            }
+
+            if (minDist === Infinity) continue;
+
+            // Bound: cualquier semilla fuera del anillo ring está al menos a ring*cellSize
+            const bound = ring * cellSize;
+            if (metric === 'euclidean') {
+                if (bound * bound >= minDist) break;
+            } else if (bound >= minDist) {
+                break;
+            }
+        }
+
+        return bestColor;
+    }
+
     function resize() {
         const container = document.getElementById('canvas-container');
         width = container.clientWidth;
         height = container.clientHeight;
         canvas.width = width;
         canvas.height = height;
+        markDirty();
     }
 
     function generateRandomPoints(count) {
@@ -332,71 +438,51 @@
                 Math.random() * height
             ));
         }
+        markDirty();
     }
 
-    // Renderizado por "Fuerza Bruta" a nivel de píxel
     function renderVoronoi() {
         const startTime = performance.now();
-        scale = parseInt(resolutionSelect.value);
+        scale = parseInt(resolutionSelect.value, 10);
 
         const scaledW = Math.floor(width / scale);
         const scaledH = Math.floor(height / scale);
 
-        // Crear búfer de imagen
-        const imgData = ctx.createImageData(scaledW, scaledH);
-        const data = imgData.data;
+        const imgData = getImageData(scaledW, scaledH);
+        const u32 = cachedU32;
         const metric = metricSelect.value;
 
         if (points.length > 0) {
+            const n = points.length;
+            const cellSize = Math.max(32, Math.floor(Math.max(width, height) / Math.sqrt(n)));
+            const grid = buildSpatialGrid(cellSize);
+
             for (let y = 0; y < scaledH; y++) {
+                const realY = y * scale;
+                const row = y * scaledW;
                 for (let x = 0; x < scaledW; x++) {
-                    // Mapear coordenadas de resolución reducida a la real
-                    const realX = x * scale;
-                    const realY = y * scale;
-
-                    let minDist = Infinity;
-                    let closestPoint = null;
-
-                    // Encontrar la semilla más cercana
-                    for (let i = 0; i < points.length; i++) {
-                        const p = points[i];
-                        const dist = getDistance(realX, realY, p.x, p.y, metric);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            closestPoint = p;
-                        }
-                    }
-
-                    // Pintar el píxel con el color de la semilla más cercana
-                    const index = (y * scaledW + x) * 4;
-                    if (closestPoint) {
-                        data[index] = closestPoint.rgb[0];     // Red
-                        data[index + 1] = closestPoint.rgb[1]; // Green
-                        data[index + 2] = closestPoint.rgb[2]; // Blue
-                        data[index + 3] = 255;                // Alpha
-                    }
+                    u32[row + x] = findNearestColor(x * scale, realY, metric, grid);
                 }
             }
         } else {
-            // Fondo negro si no hay puntos
-            data.fill(0);
+            u32.fill(0);
         }
 
-        // Renderizar la imagen escalada en el canvas principal
-        createImageBitmap(imgData).then(bitmap => {
-            ctx.drawImage(bitmap, 0, 0, width, height);
+        ensureOffscreen(scaledW, scaledH);
+        offCtx.putImageData(imgData, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(offscreen, 0, 0, width, height);
 
-            // Dibujar los puntos/semillas por encima si está activo
-            if (showPointsCheckbox.checked) {
-                drawPoints();
-            }
+        if (showPointsCheckbox.checked) {
+            drawPoints();
+        }
 
-            renderTimeEl.textContent = (performance.now() - startTime).toFixed(1);
-        });
+        renderTimeEl.textContent = (performance.now() - startTime).toFixed(1);
     }
 
     function drawPoints() {
-        for (let p of points) {
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
             ctx.beginPath();
             ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
@@ -410,37 +496,46 @@
     function update() {
         const speed = parseFloat(speedRange.value);
         if (speed > 0) {
-            for (let p of points) {
-                p.update(speed);
+            for (let i = 0; i < points.length; i++) {
+                points[i].update(speed);
             }
+            dirty = true;
         }
-        renderVoronoi();
+
+        if (dirty) {
+            renderVoronoi();
+            if (speed === 0) dirty = false;
+        }
+
         requestAnimationFrame(update);
     }
 
-    // Event Listeners
     window.addEventListener('resize', () => {
         resize();
     });
 
     canvas.addEventListener('click', (e) => {
         const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        points.push(new Point(x, y));
+        points.push(new Point(e.clientX - rect.left, e.clientY - rect.top));
+        markDirty();
     });
 
     addPointsBtn.addEventListener('click', () => generateRandomPoints(5));
-    
+
     clearBtn.addEventListener('click', () => {
         points = [];
+        markDirty();
     });
 
     speedRange.addEventListener('input', (e) => {
         speedVal.textContent = e.target.value;
+        markDirty();
     });
 
-    // Inicialización
+    metricSelect.addEventListener('change', markDirty);
+    resolutionSelect.addEventListener('change', markDirty);
+    showPointsCheckbox.addEventListener('change', markDirty);
+
     resize();
     generateRandomPoints(8);
     requestAnimationFrame(update);

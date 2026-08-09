@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador Interactivo de Raycasting y Algoritmo DDA</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-green: #4ade80;
+            --accent-orange: #fb923c;
+            --grid-line: #334155;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid var(--panel-bg);
+            padding-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--accent-blue);
+            margin-bottom: 5px;
+        }
+
+        h2 {
+            color: var(--accent-blue);
+            border-bottom: 1px solid var(--grid-line);
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+
+        h3 {
+            color: var(--accent-green);
+        }
+
+        .app-layout {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        @media (max-width: 900px) {
+            .app-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .canvas-container {
+            background-color: var(--panel-bg);
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        canvas {
+            background-color: #020617;
+            border: 2px solid var(--grid-line);
+            border-radius: 4px;
+            cursor: crosshair;
+            max-width: 100%;
+        }
+
+        .controls {
+            width: 100%;
+            margin-top: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-blue);
+        }
+
+        .sidebar {
+            background-color: var(--panel-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            max-height: 600px;
+        }
+
+        .telemetry-box {
+            background-color: #020617;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            border-left: 4px solid var(--accent-blue);
+        }
+
+        .step-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            background-color: #020617;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .step-item {
+            padding: 6px;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .step-item.x-step {
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        .step-item.y-step {
+            border-left: 3px solid var(--accent-green);
+        }
+
+        .academic-section {
+            background-color: var(--panel-bg);
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        code {
+            background-color: #020617;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #f43f5e;
+        }
+
+        pre {
+            background-color: #020617;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border-left: 4px solid var(--accent-green);
+        }
+
+        pre code {
+            color: var(--text-color);
+            padding: 0;
+            background: none;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: #020617;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--grid-line);
+        }
+
+        .comparison-table th {
+            background-color: #1e293b;
+            color: var(--accent-blue);
+        }
+
+        .instruction-tip {
+            font-size: 0.85rem;
+            color: var(--accent-orange);
+            margin-bottom: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Guía Interactiva Avanzada: Algoritmo DDA</h1>
+            <p>Entiende visual y matemáticamente cómo un rayo avanza de a una celda por vez sin perder precisión.</p>
+        </header>
+
+        <div class="app-layout">
+            <!-- Panel Izquierdo: Grilla Interactiva -->
+            <div class="canvas-container">
+                <div class="instruction-tip">💡 Haz Click o Arrastra dentro de la grilla para cambiar el origen del rayo
+                </div>
+                <canvas id="rayCanvas" width="550" height="550"></canvas>
+
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="angleSlider">Ángulo del Rayo: <span id="angleVal">0</span>°</label>
+                        <input type="range" id="angleSlider" min="0" max="360" value="35">
+                    </div>
+                    <div class="control-group">
+                        <label for="zoomSlider">Zoom (Tamaño Celda): <span id="zoomVal">40</span>px</label>
+                        <input type="range" id="zoomSlider" min="25" max="80" value="45">
+                    </div>
+                    <div class="control-group">
+                        <label for="rangeSlider">Rango Máximo: <span id="rangeVal">15</span> celdas</label>
+                        <input type="range" id="rangeSlider" min="5" max="30" value="14">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Derecho: Telemetría en Tiempo Real -->
+            <div class="sidebar">
+                <h3 style="margin-top:0; color:var(--accent-blue);">Variables Globales</h3>
+                <div class="telemetry-box" id="globalVariables">
+                    dx: 0.00 | dy: 0.00<br>
+                    deltaDistX: 0.00<br>
+                    deltaDistY: 0.00
+                </div>
+
+                <h3 style="color:var(--accent-green); margin-bottom: 5px;">Traza del Bucle DDA</h3>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">Muestra la decisión en cada
+                    celda</div>
+                <div class="step-list" id="stepLog">
+                    <!-- Se llena dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección Académica Completa -->
+        <div class="academic-section">
+            <h2>1. El Origen Histórico: ¿Cuándo y por qué apareció?</h2>
+            <p>El algoritmo <strong>DDA (Digital Differential Analysis)</strong> nació en la década de
+                <strong>1960</strong> en los albores de la computación gráfica y el diseño asistido por computadora
+                (CAD). Originalmente, fue diseñado para interpolar líneas en pantallas de vectores y rasterizar
+                segmentos de recta en grillas de píxeles con hardware extremadamente limitado.</p>
+
+            <h3>El Problema de la Época</h3>
+            <p>En los años 60 y 70, las computadoras no tenían unidades de punto flotante (FPU) dedicadas. Realizar
+                multiplicaciones o divisiones con decimales dentro de un bucle de renderizado era increíblemente lento.
+                El DDA solucionó esto al transformar ecuaciones diferenciales continuas de líneas en <strong>sumas
+                    iterativas simples (diferenciales discretas)</strong>, usando únicamente adiciones dentro del ciclo
+                principal.</p>
+            <p>En 1992, John Carmack (id Software) adaptó este principio de interpolación en grillas para el motor de
+                <strong>Wolfenstein 3D</strong>. En lugar de dibujar una línea en la pantalla, el algoritmo se utilizó a
+                la inversa: lanzar un rayo desde la posición del jugador a través de un mapa de celdas cuadradas para
+                detectar colisiones con los muros en un espacio pseudotridimensional (2.5D).</p>
+
+            <h2>2. El Método Naïve (Muestreo Fijo) vs. DDA</h2>
+            <p>Para entender la genialidad del DDA, primero debemos analizar el método intuitivo o
+                <strong>Naïve</strong>, que suele ser el primer intento de cualquier estudiante al codificar Raycasting.
+            </p>
+
+            <p>El método Naïve consiste en avanzar el rayo en pasos constantes muy pequeños (pequeños diferenciales
+                discontinuos) a lo largo de su vector de dirección:</p>
+            <pre><code>// Estructura conceptual del método ineficiente (Naive)
+while(distancia < maximo) {
+    x_continuo += cos(angulo) * paso_fijo;
+    y_continuo += sin(angulo) * paso_fijo;
+    
+    int celdaX = floor(x_continuo);
+    int celdaY = floor(y_continuo);
+    
+    if (mapa[celdaX][celdaY] == PARED) dectectar_colision();
+}</code></pre>
+
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Problema del Método Naïve</th>
+                        <th>Solución con Algoritmo DDA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Efecto Túnel:</strong> Si el <code>paso_fijo</code> es muy grande, el rayo puede
+                            saltarse esquinas del mapa y atravesar paredes sin colisionar.</td>
+                        <td><strong>Precisión Absoluta:</strong> El avance calcula de forma exacta la intersección
+                            geométrica de las líneas de la grilla. Es imposible saltarse una celda.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Muestreo Redundante:</strong> Si el paso es muy pequeño para ser seguro, el
+                            procesador evalúa la misma celda decenas de veces de forma innecesaria.</td>
+                        <td><strong>Eficiencia Máxima:</strong> El algoritmo realiza exactamente <strong>un único ciclo
+                                por cada celda cruzada</strong>. No procesa la misma celda dos veces.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Aliasing de Texturas:</strong> Al golpear la pared con un paso fijo, la posición
+                            exacta del impacto en el eje del muro no es exacta, estirando las texturas.</td>
+                        <td><strong>Mapeo de Textura Perfecto:</strong> Al conocer con precisión decimal dónde impactó
+                            la línea vertical u horizontal, el cálculo de textura es exacto.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>3. Explicación de las Variables Matemáticas</h2>
+            <p>El estado del algoritmo DDA se compone de tres grupos esenciales de variables que puedes ver reflejados
+                en el panel de control interactivo de arriba:</p>
+
+            <ul>
+                <li><strong>La Posición Discreta (<code>mapX</code>, <code>mapY</code>):</strong> Representan los
+                    índices enteros de la celda de la grilla donde se encuentra la punta de prueba del rayo en la
+                    iteración actual.</li>
+                <li><strong>Las Proporciones Fijas (<code>deltaDistX</code>, <code>deltaDistY</code>):</strong> Es la
+                    distancia total que el rayo debe avanzar sobre su propia trayectoria para recorrer una unidad
+                    completa en el eje X o en el eje Y. Se calculan usando las componentes del vector unitario:
+                    <br><code>deltaDistX = abs(1 / dx)</code> y <code>deltaDistY = abs(1 / dy)</code>
+                </li>
+                <li><strong>Los Acumuladores Dinámicos (<code>sideDistX</code>, <code>sideDistY</code>):</strong>
+                    Almacenan la distancia acumulada que el rayo ha recorrido desde su origen para alcanzar el
+                    <em>próximo</em> borde de celda (borde vertical para X, horizontal para Y).</li>
+            </ul>
+
+            <h2>4. El Bucle de Decisión paso a paso</h2>
+            <p>En cada ciclo, el DDA no hace cálculos trigonométricos complejos. Solo realiza una comparación lógica
+                extremadamente eficiente:</p>
+            <pre><code>if (sideDistX < sideDistY) {
+    sideDistX += deltaDistX; // Acumula distancia para la próxima línea vertical
+    mapX += stepX;           // Avanza una celda en el eje X (izquierda o derecha)
+} else {
+    sideDistY += deltaDistY; // Acumula distancia para la próxima línea horizontal
+    mapY += stepY;           // Avanza una celda en el eje Y (arriba o abajo)
+}</code></pre>
+            <p>Observa el panel de <strong>Traza del Bucle DDA</strong> mientras mueves el rayo arriba: el algoritmo
+                evalúa cuál de las dos distancias acumuladas es menor, toma el camino más corto, salta a esa celda
+                exacta y actualiza el acumulador de ese eje sumando su valor <code>deltaDist</code> correspondiente.</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('rayCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Deslizadores de la UI
+        const angleSlider = document.getElementById('angleSlider');
+        const zoomSlider = document.getElementById('zoomSlider');
+        const rangeSlider = document.getElementById('rangeSlider');
+
+        const angleVal = document.getElementById('angleVal');
+        const zoomVal = document.getElementById('zoomVal');
+        const rangeVal = document.getElementById('rangeVal');
+
+        const globalVariablesBox = document.getElementById('globalVariables');
+        const stepLog = document.getElementById('stepLog');
+
+        // Origen inicial del rayo (coordenadas continuas en celdas de la grilla)
+        let rayOrigin = { x: 3.4, y: 4.2 };
+        let isDragging = false;
+
+        // Escuchar interacciones de sliders
+        angleSlider.addEventListener('input', () => { angleVal.textContent = angleSlider.value; render(); });
+        zoomSlider.addEventListener('input', () => { zoomVal.textContent = zoomSlider.value; render(); });
+        rangeSlider.addEventListener('input', () => { rangeVal.textContent = rangeSlider.value; render(); });
+
+        // Interacción con el mouse para reubicar el origen
+        canvas.addEventListener('mousedown', (e) => { isDragging = true; updateOrigin(e); });
+        canvas.addEventListener('mousemove', (e) => { if (isDragging) updateOrigin(e); });
+        window.addEventListener('mouseup', () => { isDragging = false; });
+
+        function updateOrigin(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const cellSize = parseInt(zoomSlider.value);
+
+            // Convertir posición de píxeles a unidades de celda continuas
+            rayOrigin.x = mouseX / cellSize;
+            rayOrigin.y = mouseY / cellSize;
+
+            // Limitar dentro de la grilla visible
+            const maxCells = Math.floor(canvas.width / cellSize);
+            if (rayOrigin.x < 0.1) rayOrigin.x = 0.1;
+            if (rayOrigin.y < 0.1) rayOrigin.y = 0.1;
+            if (rayOrigin.x > maxCells - 0.1) rayOrigin.x = maxCells - 0.1;
+            if (rayOrigin.y > maxCells - 0.1) rayOrigin.y = maxCells - 0.1;
+
+            render();
+        }
+
+        function render() {
+            const cellSize = parseInt(zoomSlider.value);
+            const angleDeg = parseInt(angleSlider.value);
+            const maxSteps = parseInt(rangeSlider.value);
+
+            const angleRad = (angleDeg * Math.PI) / 180;
+
+            // Limpiar lienzo
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Vector de dirección normalizado
+            const dx = Math.cos(angleRad);
+            const dy = Math.sin(angleRad);
+
+            // 1. Calcular deltaDist (Distancia fija para avanzar una celda entera)
+            const deltaDistX = (dx === 0) ? Infinity : Math.abs(1 / dx);
+            const deltaDistY = (dy === 0) ? Infinity : Math.abs(1 / dy);
+
+            // Actualizar variables globales en el HTML
+            globalVariablesBox.innerHTML = `
+            <strong>dx:</strong> ${dx.toFixed(3)} | <strong>dy:</strong> ${dy.toFixed(3)}<br>
+            <strong>deltaDistX [abs(1/dx)]:</strong> ${deltaDistX === Infinity ? '∞' : deltaDistX.toFixed(3)}<br>
+            <strong>deltaDistY [abs(1/dy)]:</strong> ${deltaDistY === Infinity ? '∞' : deltaDistY.toFixed(3)}
+        `;
+
+            // Inicializar DDA
+            let mapX = Math.floor(rayOrigin.x);
+            let mapY = Math.floor(rayOrigin.y);
+
+            let sideDistX, sideDistY;
+            let stepX, stepY;
+
+            // Determinar dirección del paso e inicializar sideDist inicial
+            if (dx < 0) {
+                stepX = -1;
+                sideDistX = (rayOrigin.x - mapX) * deltaDistX;
+            } else {
+                stepX = 1;
+                sideDistX = (mapX + 1.0 - rayOrigin.x) * deltaDistX;
+            }
+
+            if (dy < 0) {
+                stepY = -1;
+                sideDistY = (rayOrigin.y - mapY) * deltaDistY;
+            } else {
+                stepY = 1;
+                sideDistY = (mapY + 1.0 - rayOrigin.y) * deltaDistY;
+            }
+
+            // Ejecutar simulación DDA y guardar el historial de celdas visitadas
+            let visitedCells = [];
+            let logHTML = '';
+
+            // Agregar celda de inicio
+            visitedCells.push({ x: mapX, y: mapY, sX: sideDistX, sY: sideDistY, axis: 'START' });
+            logHTML += `
+            <div class="step-item" style="border-left: 3px solid var(--accent-orange)">
+                <strong>[Origen] Celda [${mapX}, ${mapY}]</strong><br>
+                Inicializado: sDistX=${sideDistX.toFixed(2)}, sDistY=${sideDistY.toFixed(2)}
+            </div>
+        `;
+
+            let currentSideDistX = sideDistX;
+            let currentSideDistY = sideDistY;
+
+            for (let i = 0; i < maxSteps; i++) {
+                let chosenAxis = '';
+
+                if (currentSideDistX < currentSideDistY) {
+                    currentSideDistX += deltaDistX;
+                    mapX += stepX;
+                    chosenAxis = 'X';
+
+                    logHTML += `
+                    <div class="step-item x-step">
+                        <strong>Paso ${i + 1}: Celda [${mapX}, ${mapY}]</strong>
+                        <span>Condición: sideDistX (${(currentSideDistX - deltaDistX).toFixed(2)}) &lt; sideDistY (${currentSideDistY.toFixed(2)})</span>
+                        <span style="color:var(--accent-blue)">Acción: Avanza X &rarr; Siguiente borde vertical</span>
+                    </div>
+                `;
+                } else {
+                    currentSideDistY += deltaDistY;
+                    mapY += stepY;
+                    chosenAxis = 'Y';
+
+                    logHTML += `
+                    <div class="step-item y-step">
+                        <strong>Paso ${i + 1}: Celda [${mapX}, ${mapY}]</strong>
+                        <span>Condición: sideDistY (${(currentSideDistY - deltaDistY).toFixed(2)}) &le; sideDistX (${currentSideDistX.toFixed(2)})</span>
+                        <span style="color:var(--accent-green)">Acción: Avanza Y &rarr; Siguiente borde horizontal</span>
+                    </div>
+                `;
+                }
+
+                visitedCells.push({
+                    x: mapX,
+                    y: mapY,
+                    sX: currentSideDistX,
+                    sY: currentSideDistY,
+                    axis: chosenAxis
+                });
+            }
+
+            stepLog.innerHTML = logHTML;
+
+            // --- DIBUJO EN CANVAS ---
+
+            // 1. Dibujar Celdas Evaluadas (Fondo iluminado)
+            visitedCells.forEach((cell, idx) => {
+                if (idx === 0) {
+                    ctx.fillStyle = 'rgba(251, 146, 60, 0.25)'; // Origen naranja
+                } else {
+                    ctx.fillStyle = cell.axis === 'X' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(74, 222, 128, 0.15)';
+                }
+                ctx.fillRect(cell.x * cellSize, cell.y * cellSize, cellSize, cellSize);
+
+                // Bordes resaltados para el recorrido visitado
+                ctx.strokeStyle = cell.axis === 'X' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(74, 222, 128, 0.4)';
+                if (idx === 0) ctx.strokeStyle = 'rgba(251, 146, 60, 0.5)';
+                ctx.strokeRect(cell.x * cellSize, cell.y * cellSize, cellSize, cellSize);
+            });
+
+            // 2. Dibujar Grilla General de Líneas
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            const totalGridLines = Math.ceil(canvas.width / cellSize);
+
+            for (let i = 0; i <= totalGridLines; i++) {
+                // Líneas verticales
+                ctx.beginPath();
+                ctx.moveTo(i * cellSize, 0);
+                ctx.lineTo(i * cellSize, canvas.height);
+                ctx.stroke();
+
+                // Líneas horizontales
+                ctx.beginPath();
+                ctx.moveTo(0, i * cellSize);
+                ctx.lineTo(canvas.width, i * cellSize);
+                ctx.stroke();
+            }
+
+            // 3. Escribir Coordenadas e Información sDist en las celdas (Si el zoom lo permite)
+            if (cellSize >= 35) {
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'center';
+
+                for (let x = 0; x <= totalGridLines; x++) {
+                    for (let y = 0; y <= totalGridLines; y++) {
+                        // Solo dibujar texto básico de coordenada
+                        ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+                        ctx.fillText(`[${x},${y}]`, x * cellSize + cellSize / 2, y * cellSize + 15);
+                    }
+                }
+
+                // Resaltar los valores específicos sX y sY en el camino recorrido del DDA
+                visitedCells.forEach((cell) => {
+                    ctx.font = 'bold 9px monospace';
+                    ctx.fillStyle = 'var(--accent-blue)';
+                    ctx.fillText(`sX:${cell.sX.toFixed(1)}`, cell.x * cellSize + cellSize / 2, cell.y * cellSize + cellSize - 14);
+                    ctx.fillStyle = 'var(--accent-green)';
+                    ctx.fillText(`sY:${cell.sY.toFixed(1)}`, cell.x * cellSize + cellSize / 2, cell.y * cellSize + cellSize - 4);
+                });
+            }
+
+            // 4. Dibujar la Línea Real del Rayo Continuo
+            const totalDistanceRay = maxSteps * 0.85; // Factor visual aproximado para renderizar la línea
+            ctx.beginPath();
+            ctx.moveTo(rayOrigin.x * cellSize, rayOrigin.y * cellSize);
+            ctx.lineTo((rayOrigin.x + dx * totalDistanceRay) * cellSize, (rayOrigin.y + dy * totalDistanceRay) * cellSize);
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = 'var(--accent-orange)';
+            ctx.shadowBlur = 4;
+            ctx.stroke();
+            ctx.shadowBlur = 0; // Resetear sombra
+
+            // 5. Dibujar Punto del Origen
+            ctx.beginPath();
+            ctx.arc(rayOrigin.x * cellSize, rayOrigin.y * cellSize, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = 'var(--accent-orange)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // Inicializar el renderizado al cargar la página
+        render();
+    </script>
+
+</body>
+</html>

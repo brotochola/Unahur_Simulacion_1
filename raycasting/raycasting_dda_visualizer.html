@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador Didáctico de Raycasting DDA</title>
+    <style>
+        :root {
+            --bg-color: #1e1e24;
+            --card-bg: #2a2a35;
+            --text-color: #f5f5fa;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --border-color: #444455;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1100px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        h1 { margin: 0 0 10px 0; color: var(--text-color); }
+        p { margin: 0; color: #b0b0c5; line-height: 1.5; }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 1fr; }
+        }
+
+        .canvas-container {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        canvas {
+            border: 2px solid #555;
+            background-color: #111116;
+            cursor: crosshair;
+            max-width: 100%;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            width: 100%;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label { font-size: 0.9rem; font-weight: bold; }
+        input[type="range"] { cursor: pointer; }
+
+        .panel {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            height: fit-content;
+        }
+
+        .panel-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 8px;
+            margin-bottom: 5px;
+            color: var(--accent-blue);
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+
+        .data-item {
+            background: rgba(0,0,0,0.15);
+            padding: 8px;
+            border-radius: 6px;
+            border-left: 3px solid var(--border-color);
+        }
+
+        .data-item.highlight-blue { border-left-color: var(--accent-blue); }
+        .data-item.highlight-green { border-left-color: var(--accent-green); }
+        .data-item.highlight-orange { border-left-color: var(--accent-orange); }
+
+        .data-label { color: #8888a0; font-size: 0.8rem; block-size: auto; }
+        .data-value { font-size: 1.05rem; font-weight: bold; margin-top: 2px; }
+
+        .step-list-container {
+            max-height: 280px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: #15151c;
+        }
+
+        .step-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-family: monospace;
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .step-item:last-child { border-bottom: none; }
+        .step-item.active-step { background: rgba(59, 130, 246, 0.15); }
+        .step-header { display: flex; justify-content: space-between; font-weight: bold; }
+
+        .instructions {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .instructions h2 { margin-top: 0; color: var(--accent-blue); font-size: 1.3rem;}
+        .instructions ul { padding-left: 20px; margin: 10px 0 0 0; }
+        .instructions li { margin-bottom: 8px; line-height: 1.5; color: #d0d0e0; }
+
+        .math-badge {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #ff79c6;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Simulador DDA Paso a Paso (Raycasting)</h1>
+        <p>Arrastra el origen con el mouse, rota el ángulo y mira los valores exactos calculados dentro de cada celda.</p>
+    </header>
+
+    <div class="layout">
+        <!-- ÁREA DEL CANVAS -->
+        <div class="canvas-container">
+            <canvas id="ddaCanvas" width="600" height="600"></canvas>
+            
+            <div class="controls">
+                <div class="control-group">
+                    <label for="angleSlider">Ángulo:</label>
+                    <input type="range" id="angleSlider" min="0" max="360" value="35">
+                    <span id="angleVal" style="font-family:monospace; min-width:35px;">35°</span>
+                </div>
+                <div class="control-group">
+                    <label for="zoomSlider">Zoom (Tamaño Celda):</label>
+                    <input type="range" id="zoomSlider" min="30" max="100" value="60">
+                    <span id="zoomVal" style="font-family:monospace;">60px</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL LATERAL DE TELEMETRÍA Y CONTROL -->
+        <div class="panel">
+            <div class="panel-title">Constantes del Rayo</div>
+            <div class="data-grid">
+                <div class="data-item"><div class="data-label">Dir X (dx)</div><div class="data-value" id="valDx">0.00</div></div>
+                <div class="data-item"><div class="data-label">Dir Y (dy)</div><div class="data-value" id="valDy">0.00</div></div>
+                <div class="data-item highlight-blue"><div class="data-label">deltaDistX</div><div class="data-value" id="valDdx">0.00</div></div>
+                <div class="data-item highlight-green"><div class="data-label">deltaDistY</div><div class="data-value" id="valDdy">0.00</div></div>
+            </div>
+
+            <div class="panel-title">Toma de Decisiones DDA</div>
+            <p style="font-size:0.85rem; margin-bottom: 5px;">Se compara continuamente <span style="color:#3b82f6;font-weight:bold;">sideDistX</span> contra <span style="color:#10b981;font-weight:bold;">sideDistY</span>. El menor indica la siguiente intersección física.</p>
+            
+            <div class="step-list-container" id="stepList">
+                <!-- Se poblará dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <!-- DOCUMENTACIÓN EDUCATIVA -->
+    <div class="instructions">
+        <h2>¿Cómo decide el DDA cuánto avanzar sin saltearse celdas?</h2>
+        <ul>
+            <li><strong>Las distancias Delta (<span style="color:#3b82f6">deltaDist</span>):</strong> Representan cuánta distancia total debe recorrer el rayo sobre su propia trayectoria para atravesar una unidad entera de grilla en <span class="math-badge">X</span> o en <span class="math-badge">Y</span>. Se calculan como <span class="math-badge">abs(1 / dx)</span> y <span class="math-badge">abs(1 / dy)</span>.</li>
+            <li><strong>Las distancias Laterales (<span style="color:#10b981">sideDist</span>):</strong> Son las distancias acumuladas desde el origen del rayo hasta el <em>próximo</em> borde de celda vertical u horizontal. En la grilla interactiva, estos valores se renderizan dinámicamente en tiempo real sobre las celdas evaluadas.</li>
+            <li><strong>La Regla de Oro del Paso Único:</strong> En cada iteración, el algoritmo mira cuál es menor. Si <span class="math-badge">sideDistX &lt; sideDistY</span>, significa que el rayo chocará primero contra una línea vertical. Por ende, avanzamos exactamente 1 celda en <span class="math-badge">X</span>, y le sumamos <span class="math-badge">deltaDistX</span> a <span class="math-badge">sideDistX</span> para calcular el siguiente borde vertical.</li>
+            <li><strong>Visualización en la Grilla:</strong> Las flechas rojas y verdes en las celdas indican la distancia que le falta al rayo para salir de esa celda por la derecha/izquierda (<span style="color:#3b82f6">X</span>) o por arriba/abajo (<span style="color:#10b981">Y</span>). ¡El algoritmo siempre elige el camino más corto!</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('ddaCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Controles UI
+    const angleSlider = document.getElementById('angleSlider');
+    const angleVal = document.getElementById('angleVal');
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomVal = document.getElementById('zoomVal');
+    
+    const valDx = document.getElementById('valDx');
+    const valDy = document.getElementById('valDy');
+    const valDdx = document.getElementById('valDdx');
+    const valDdy = document.getElementById('valDdy');
+    const stepList = document.getElementById('stepList');
+
+    // Configuración inicial de la posición del rayo (en espacio de celdas continuo)
+    let rayOrigin = { x: 2.3, y: 2.7 }; 
+    let isDragging = false;
+
+    // Capturar clicks y arrastre para reposicionar el rayo
+    function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const cellSize = parseInt(zoomSlider.value);
+        return {
+            x: ((e.clientX - rect.left) * scaleX) / cellSize,
+            y: ((e.clientY - rect.top) * scaleY) / cellSize
+        };
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        const pos = getMousePos(e);
+        if(pos.x >= 0 && pos.y >= 0) {
+            rayOrigin = pos;
+            draw();
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const pos = getMousePos(e);
+        if(pos.x >= 0 && pos.y >= 0) {
+            rayOrigin = pos;
+            draw();
+        }
+    });
+
+    window.addEventListener('mouseup', () => isDragging = false);
+
+    // Escuchadores de Sliders
+    angleSlider.addEventListener('input', () => {
+        angleVal.innerText = angleSlider.value + '°';
+        draw();
+    });
+    zoomSlider.addEventListener('input', () => {
+        zoomVal.innerText = zoomSlider.value + 'px';
+        draw();
+    });
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const cellSize = parseInt(zoomSlider.value);
+        const angleRad = (parseInt(angleSlider.value) * Math.PI) / 180;
+        
+        // Componentes vectoriales de dirección
+        const dx = Math.cos(angleRad);
+        const dy = Math.sin(angleRad);
+        
+        valDx.innerText = dx.toFixed(3);
+        valDy.innerText = dy.toFixed(3);
+
+        // Dibujar Grilla Básica de Fondo
+        ctx.strokeStyle = '#2d2d3d';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < canvas.width; x += cellSize) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += cellSize) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+
+        // --- INICIO ALGORITMO DDA ---
+        let mapX = Math.floor(rayOrigin.x);
+        let mapY = Math.floor(rayOrigin.y);
+
+        // deltaDist es la distancia que recorre el rayo para avanzar 1 celda entera en X o Y
+        const deltaDistX = (dx === 0) ? Infinity : Math.abs(1 / dx);
+        const deltaDistY = (dy === 0) ? Infinity : Math.abs(1 / dy);
+        
+        valDdx.innerText = deltaDistX === Infinity ? "∞" : deltaDistX.toFixed(3);
+        valDdy.innerText = deltaDistY === Infinity ? "∞" : deltaDistY.toFixed(3);
+
+        let stepX, stepY;
+        let sideDistX, sideDistY;
+
+        // Calcular paso inicial y sideDist inicial
+        if (dx < 0) {
+            stepX = -1;
+            sideDistX = (rayOrigin.x - mapX) * deltaDistX;
+        } else {
+            stepX = 1;
+            sideDistX = (mapX + 1.0 - rayOrigin.x) * deltaDistX;
+        }
+
+        if (dy < 0) {
+            stepY = -1;
+            sideDistY = (rayOrigin.y - mapY) * deltaDistY;
+        } else {
+            stepY = 1;
+            sideDistY = (mapY + 1.0 - rayOrigin.y) * deltaDistY;
+        }
+
+        // Limpiar lista de pasos lateral
+        stepList.innerHTML = '';
+
+        // Simular y renderizar pasos de celda del DDA (Límite de 10 pasos para visualización limpia)
+        let visitedCells = [];
+        let stepsInfo = [];
+
+        for (let i = 0; i < 12; i++) {
+            // Guardar datos actuales de la celda antes de avanzar para dibujarlos
+            visitedCells.push({
+                cx: mapX,
+                cy: mapY,
+                sdx: sideDistX,
+                sdy: sideDistY,
+                chosen: (sideDistX < sideDistY) ? 'X' : 'Y'
+            });
+
+            let currentStepData = {
+                stepNum: i + 1,
+                cellStr: `[${mapX}, ${mapY}]`,
+                sdxVal: sideDistX.toFixed(3),
+                sdyVal: sideDistY.toFixed(3),
+                decision: ''
+            };
+
+            // Condición DDA fundamental para avanzar celda por celda
+            if (sideDistX < sideDistY) {
+                currentStepData.decision = `sideDistX menor → Avanza X (${stepX > 0 ? '+1' : '-1'})`;
+                sideDistX += deltaDistX;
+                mapX += stepX;
+            } else {
+                currentStepData.decision = `sideDistY menor → Avanza Y (${stepY > 0 ? '+1' : '-1'})`;
+                sideDistY += deltaDistY;
+                mapY += stepY;
+            }
+            stepsInfo.push(currentStepData);
+            
+            // Seguridad para no salirse de la pantalla visual
+            if (mapX < 0 || mapY < 0 || mapX * cellSize > canvas.width || mapY * cellSize > canvas.height) break;
+        }
+
+        // 1. Pintar las celdas calculadas por el DDA y sus textos internos
+        visitedCells.forEach((cell, idx) => {
+            // Resaltar fondo de celda recorrida
+            ctx.fillStyle = idx === 0 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.12)';
+            ctx.fillRect(cell.cx * cellSize, cell.cy * cellSize, cellSize, cellSize);
+            
+            // Borde sutil de celda activa
+            ctx.strokeStyle = idx === 0 ? '#f59e0b' : '#3b82f6';
+            ctx.lineWidth = idx === 0 ? 2 : 1;
+            ctx.strokeRect(cell.cx * cellSize, cell.cy * cellSize, cellSize, cellSize);
+
+            // Escribir Coordenadas e Información de Distancia si el espacio lo permite
+            if (cellSize >= 55) {
+                ctx.fillStyle = '#8888a0';
+                ctx.font = 'bold 10px monospace';
+                ctx.fillText(`[${cell.cx},${cell.cy}]`, cell.cx * cellSize + 5, cell.cy * cellSize + 15);
+                
+                // Mostrar distancias en los bordes internos de cada paso
+                ctx.font = '9px monospace';
+                ctx.fillStyle = '#4da3ff';
+                ctx.fillText(`sX:${cell.sdx.toFixed(2)}`, cell.cx * cellSize + 4, cell.cy * cellSize + cellSize - 16);
+                ctx.fillStyle = '#10b981';
+                ctx.fillText(`sY:${cell.sdy.toFixed(2)}`, cell.cx * cellSize + 4, cell.cy * cellSize + cellSize - 5);
+            }
+        });
+
+        // 2. Poblar la barra lateral de pasos con la lógica matemática exacta
+        stepsInfo.forEach((s) => {
+            const div = document.createElement('div');
+            div.className = 'step-item';
+            
+            const isX = s.decision.includes('Avanza X');
+            const colorLabel = isX ? 'color:#3b82f6;' : 'color:#10b981;';
+            
+            div.innerHTML = `
+                <div class="step-header">
+                    <span>Paso ${s.stepNum}: Celda ${s.cellStr}</span>
+                </div>
+                <div style="color:#aaa;">sideDistX: <span style="color:#3b82f6">${s.sdxVal}</span> | sideDistY: <span style="color:#10b981">${s.sdyVal}</span></div>
+                <div style="${colorLabel} font-weight:bold; margin-top:2px;">${s.decision}</div>
+            `;
+            stepList.appendChild(div);
+        });
+
+        // 3. Dibujar la línea física del Rayo real superpuesta
+        const rayLength = 800; // Suficientemente largo para cruzar la pantalla
+        ctx.beginPath();
+        ctx.moveTo(rayOrigin.x * cellSize, rayOrigin.y * cellSize);
+        ctx.lineTo((rayOrigin.x + dx * rayLength) * cellSize, (rayOrigin.y + dy * rayLength) * cellSize);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // 4. Dibujar el punto de Origen físico del Rayo
+        ctx.beginPath();
+        ctx.arc(rayOrigin.x * cellSize, rayOrigin.y * cellSize, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
+
+    // Dibujado inicial
+    draw();
+</script>
+
+</body>
+</html>

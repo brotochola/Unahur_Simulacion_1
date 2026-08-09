@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Random Grid + Blur</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    background: #111;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+  }
+  canvas {
+    border: 1px solid #444;
+    image-rendering: pixelated;
+    margin-top: 16px;
+  }
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    background: #2a6df4;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { background: #1d54c4; }
+  button.secondary { background: #333; }
+  button.secondary:hover { background: #444; }
+  label { font-size: 14px; }
+  #passCount { font-size: 13px; color: #999; }
+  .explain {
+    max-width: 680px;
+    margin-top: 32px;
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .explain h3 {
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+  }
+  .explain h4 {
+    color: #6ea8ff;
+    margin-top: 24px;
+    margin-bottom: 6px;
+  }
+  .explain p { color: #ccc; margin: 8px 0; }
+  .explain pre {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #9fe39f;
+    overflow-x: auto;
+  }
+  .explain strong { color: #fff; }
+  .explain em { color: #eee; }
+</style>
+</head>
+<body>
+
+<h2>Grid random → blur (promedio de vecinos)</h2>
+
+<div class="controls">
+  <label>Tamaño grid:
+    <select id="sizeSelect">
+      <option value="16">16x16</option>
+      <option value="32" selected>32x32</option>
+      <option value="64">64x64</option>
+      <option value="128">128x128</option>
+    </select>
+  </label>
+  <button id="randomizeBtn">Randomizar</button>
+  <button id="blurBtn">Blur (1 pasada)</button>
+  <button id="blurManyBtn" class="secondary">Blur x10</button>
+  <button id="contrastBtn" class="secondary">Más contraste</button>
+  <button id="normalizeBtn" class="secondary">Normalizar (estirar min-max)</button>
+  <span id="passCount">Pasadas: 0</span>
+</div>
+
+<canvas id="grid" width="512" height="512"></canvas>
+
+<div class="explain">
+  <h3>¿Qué está pasando acá?</h3>
+
+  <h4>1. Grid random</h4>
+  <p>
+    Cada celda arranca con un número random entre 0 y 1 (distribución uniforme,
+    sin ninguna relación con sus vecinas). Ese número se pinta directamente como
+    gris: 0 = negro, 1 = blanco. Por eso el resultado inicial es "estática" pura,
+    tipo ruido de TV vieja — no hay ninguna estructura espacial, cada celda es
+    independiente de las demás.
+  </p>
+
+  <h4>2. Blur = convolución con un kernel caja (box kernel)</h4>
+  <p>
+    El blur es el ejemplo clásico de <strong>convolución discreta</strong>. Para
+    cada celda, en vez de mirar solo su propio valor, agarramos una "ventana" de
+    3x3 celdas centrada ahí (ella + sus 8 vecinas) y las promediamos. Eso es
+    literalmente aplicar este kernel (matriz de pesos) y deslizarlo por toda la grilla:
+  </p>
+  <pre>1/9  1/9  1/9
+1/9  1/9  1/9
+1/9  1/9  1/9</pre>
+  <p>
+    Cada peso vale 1/9 porque son 9 celdas y queremos el <em>promedio</em> (si sumáramos
+    sin dividir, la imagen se iría toda a blanco). Esto es "normalizar el kernel":
+    la suma de todos los pesos debe dar 1, así el brillo promedio de la imagen no cambia.
+  </p>
+  <p>
+    Al deslizar este kernel celda por celda, valores muy distintos entre vecinos se
+    "contagian" y se acercan al promedio local. Repetir esta operación muchas veces
+    (botón "Blur x10") es matemáticamente encadenar convoluciones, y por el
+    <strong>teorema central del límite</strong> el resultado tiende a parecerse a una
+    campana gaussiana suave — por eso después de varias pasadas la imagen se ve
+    "borrosa" y sin bordes duros. El costo: los valores se van comprimiendo hacia
+    el gris medio (0.5) y la imagen pierde contraste — todo se ve cada vez más plano.
+  </p>
+
+  <h4>3. Contraste: NO es convolución, es una transformación puntual (pointwise)</h4>
+  <p>
+    A diferencia del blur, que mezcla información <em>entre</em> celdas vecinas
+    (por eso es convolución "espacial"), el botón de contraste opera cada celda
+    <strong>en total aislamiento</strong>, sin mirar a sus vecinas. La fórmula es:
+  </p>
+  <pre>nuevo_valor = (valor - 0.5) * factor + 0.5</pre>
+  <p>
+    Esto es una función afín (recta): restamos 0.5 para centrar en 0, escalamos por
+    el factor (alejando el valor de 0 en ambas direcciones), y volvemos a centrar en 0.5.
+    Con factor &gt; 1, los valores por encima del gris medio se van más hacia el blanco,
+    y los que están por debajo se van más hacia el negro — de ahí el contraste.
+  </p>
+  <p>
+    <strong>¿Cómo se conecta esto con la idea de convolución?</strong> Se puede pensar
+    el contraste como un "caso degenerado" de convolución: si el kernel del blur
+    reparte su peso entre 9 celdas (1/9 cada una), el contraste equivale a un kernel de
+    <em>un solo punto</em> (delta de Dirac) con peso igual al factor, en vez de 1:
+  </p>
+  <pre>[ 0    0    0  ]
+[ 0  factor 0  ]
+[ 0    0    0  ]</pre>
+  <p>
+    Convolucionar con este kernel no mezcla nada con los vecinos (todos los pesos
+    fuera del centro son 0): simplemente re-escala cada celda por sí misma. Es el
+    kernel "identidad" pero amplificado. Esta es la diferencia matemática clave:
+    <strong>blur = kernel ancho, energía repartida entre vecinos (suaviza)</strong>,
+    <strong>contraste = kernel puntual, energía concentrada en el centro (exagera)</strong>.
+    Un blur real de "sharpening" (afilado) en procesamiento de imágenes combina ambas
+    ideas: resta una versión borrosa de la imagen a la imagen original amplificada
+    (esto se llama <em>unsharp masking</em>), lo cual sí es una convolución con un
+    kernel que tiene un centro grande positivo y vecinos negativos.
+  </p>
+
+  <h4>4. Normalizar (estirar min-max)</h4>
+  <p>
+    Esta operación tampoco es convolución — es aún más global que el contraste: mira
+    <strong>todos</strong> los valores de la grilla, encuentra el mínimo y el máximo
+    actuales, y estira ese rango para que ocupe todo el intervalo [0,1] de nuevo:
+  </p>
+  <pre>nuevo_valor = (valor - min) / (max - min)</pre>
+  <p>
+    Es especialmente útil después de varias pasadas de blur, porque el blur no solo
+    suaviza sino que además comprime el rango dinámico (los valores se acercan todos
+    al promedio global). Normalizar "recupera" el contraste perdido sin inventar
+    información nueva: solo reescala lo que ya está ahí. A diferencia del botón de
+    contraste (que usa un factor fijo elegido a mano), normalizar se auto-ajusta según
+    los datos reales de cada momento.
+  </p>
+</div>
+
+<script>
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+const sizeSelect = document.getElementById('sizeSelect');
+const passCountEl = document.getElementById('passCount');
+
+let N = parseInt(sizeSelect.value);
+let values = new Float32Array(N * N);
+let passes = 0;
+
+function randomize() {
+  N = parseInt(sizeSelect.value);
+  values = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) values[i] = Math.random();
+  passes = 0;
+  draw();
+}
+
+// Blur: cada celda pasa a ser el promedio de sus vecinos (incluye la celda misma),
+// con bordes reflejados (clamp) para no perder tamaño ni introducir bordes negros.
+function blurOnce() {
+  const next = new Float32Array(N * N);
+  const idx = (x, y) => {
+    x = Math.max(0, Math.min(N - 1, x));
+    y = Math.max(0, Math.min(N - 1, y));
+    return y * N + x;
+  };
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let sum = 0;
+      let count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          sum += values[idx(x + dx, y + dy)];
+          count++;
+        }
+      }
+      next[y * N + x] = sum / count;
+    }
+  }
+  values = next;
+  passes++;
+  passCountEl.textContent = `Pasadas: ${passes}`;
+  draw();
+}
+
+function draw() {
+  const cell = canvas.width / N;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const v = values[y * N + x];
+      const g = Math.floor(v * 255);
+      ctx.fillStyle = `rgb(${g},${g},${g})`;
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+}
+
+// Contraste: aleja cada valor del gris medio (0.5), con clamp a [0,1].
+// factor > 1 aumenta contraste. Se puede aplicar varias veces seguidas.
+function increaseContrast(factor = 1.3) {
+  for (let i = 0; i < values.length; i++) {
+    let v = (values[i] - 0.5) * factor + 0.5;
+    values[i] = Math.min(1, Math.max(0, v));
+  }
+  draw();
+}
+
+// Normalizar: estira el rango actual [min,max] a [0,1] completo.
+// Útil después de varias pasadas de blur, donde los valores quedan
+// comprimidos cerca del gris medio.
+function normalizeContrast() {
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] < min) min = values[i];
+    if (values[i] > max) max = values[i];
+  }
+  const range = max - min || 1;
+  for (let i = 0; i < values.length; i++) {
+    values[i] = (values[i] - min) / range;
+  }
+  draw();
+}
+
+document.getElementById('randomizeBtn').addEventListener('click', randomize);
+document.getElementById('blurBtn').addEventListener('click', blurOnce);
+document.getElementById('blurManyBtn').addEventListener('click', () => {
+  for (let i = 0; i < 10; i++) blurOnce();
+});
+document.getElementById('contrastBtn').addEventListener('click', () => increaseContrast(1.3));
+document.getElementById('normalizeBtn').addEventListener('click', normalizeContrast);
+sizeSelect.addEventListener('change', randomize);
+
+randomize();
+</script>
+
+</body>
+</html>

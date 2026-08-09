@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suma de Senos 2D - Noise Generator</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --panel-bg: #1e1e24;
+            --accent: #6366f1;
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            gap: 20px;
+            box-sizing: border-box;
+            min-height: 100vh;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        canvas {
+            background: #000;
+            border-radius: 8px;
+            image-rendering: pixelated;
+            width: 100%;
+            max-width: 512px;
+            height: auto;
+            aspect-ratio: 1 / 1;
+        }
+
+        .controls {
+            width: 320px;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: calc(100vh - 80px);
+            overflow-y: auto;
+        }
+
+        h2 {
+            margin: 0 0 10px 0;
+            font-size: 1.2rem;
+            color: var(--accent);
+            border-bottom: 1px solid #333;
+            padding-bottom: 8px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .control-header span.val {
+            color: var(--accent);
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .info {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+            margin-top: 10px;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="canvas-container">
+        <canvas id="noiseCanvas" width="256" height="256"></canvas>
+    </div>
+
+    <div class="controls">
+        <h2>Parámetros de Ruido</h2>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="octaves">Octavas (Armónicos):</label>
+                <span id="val-octaves" class="val">4</span>
+            </div>
+            <input type="range" id="octaves" min="1" max="8" step="1" value="4">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="baseFreq">Frecuencia Base:</label>
+                <span id="val-baseFreq" class="val">0.020</span>
+            </div>
+            <input type="range" id="baseFreq" min="0.001" max="0.1" step="0.001" value="0.02">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="lacunarity">Lacunaridad (Multiplicador de Freq):</label>
+                <span id="val-lacunarity" class="val">2.00</span>
+            </div>
+            <input type="range" id="lacunarity" min="1.0" max="4.0" step="0.05" value="2.0">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="gain">Persistencia / Gain (Caída de Amplitud):</label>
+                <span id="val-gain" class="val">0.50</span>
+            </div>
+            <input type="range" id="gain" min="0.1" max="0.9" step="0.02" value="0.5">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="rotAngle">Ángulo de Rotación por Octava:</label>
+                <span id="val-rotAngle" class="val">0.50 rad</span>
+            </div>
+            <input type="range" id="rotAngle" min="0" max="3.14" step="0.01" value="0.5">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="offsetX">Desplazamiento X (Offset):</label>
+                <span id="val-offsetX" class="val">0</span>
+            </div>
+            <input type="range" id="offsetX" min="-500" max="500" step="1" value="0">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="offsetY">Desplazamiento Y (Offset):</label>
+                <span id="val-offsetY" class="val">0</span>
+            </div>
+            <input type="range" id="offsetY" min="-500" max="500" step="1" value="0">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <label for="phaseShift">Desfase Armónico (Phase Shift):</label>
+                <span id="val-phaseShift" class="val">133.7</span>
+            </div>
+            <input type="range" id="phaseShift" min="0" max="500" step="0.5" value="133.7">
+        </div>
+
+        <div class="info">
+            <strong>Cómo funciona:</strong> Suma ondas de <code>Math.sin</code> rotando las coordenadas e incrementando la frecuencia en cada armónico para romper la simetría de la grilla.
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('noiseCanvas');
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const imgData = ctx.createImageData(width, height);
+    const buffer = imgData.data;
+
+    // Referencias a los Sliders y Labels
+    const params = ['octaves', 'baseFreq', 'lacunarity', 'gain', 'rotAngle', 'offsetX', 'offsetY', 'phaseShift'];
+    const inputs = {};
+
+    params.forEach(param => {
+        const input = document.getElementById(param);
+        const display = document.getElementById(`val-${param}`);
+        inputs[param] = input;
+
+        input.addEventListener('input', () => {
+            display.textContent = parseFloat(input.value).toFixed(
+                param === 'octaves' || param === 'offsetX' || param === 'offsetY' ? 0 : 3
+            );
+            render();
+        });
+    });
+
+    function generateSineNoise(x, y, config) {
+        let value = 0;
+        let amplitude = 1.0;
+        let frequency = config.baseFreq;
+        let maxValue = 0;
+
+        const cosA = Math.cos(config.rotAngle);
+        const sinA = Math.sin(config.rotAngle);
+
+        let rx = x + config.offsetX;
+        let ry = y + config.offsetY;
+
+        for (let i = 0; i < config.octaves; i++) {
+            const phase = i * config.phaseShift;
+
+            // Combinación senoidal en X e Y
+            const waveX = Math.sin(rx * frequency + phase);
+            const waveY = Math.cos(ry * frequency + phase);
+            
+            value += (waveX + waveY) * amplitude;
+            maxValue += amplitude * 2.0;
+
+            // Rotación de coordenadas para desacoplar ejes
+            const nx = rx * cosA - ry * sinA;
+            const ny = rx * sinA + ry * cosA;
+            rx = nx;
+            ry = ny;
+
+            // Actualizar parámetros para la siguiente octava (fBm)
+            amplitude *= config.gain;
+            frequency *= config.lacunarity;
+        }
+
+        // Normalizado de [0, 1]
+        return (value / maxValue) * 0.5 + 0.5;
+    }
+
+    function render() {
+        const config = {
+            octaves: parseInt(inputs.octaves.value),
+            baseFreq: parseFloat(inputs.baseFreq.value),
+            lacunarity: parseFloat(inputs.lacunarity.value),
+            gain: parseFloat(inputs.gain.value),
+            rotAngle: parseFloat(inputs.rotAngle.value),
+            offsetX: parseFloat(inputs.offsetX.value),
+            offsetY: parseFloat(inputs.offsetY.value),
+            phaseShift: parseFloat(inputs.phaseShift.value)
+        };
+
+        let ptr = 0;
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const n = generateSineNoise(x, y, config);
+                const color = Math.floor(n * 255);
+
+                buffer[ptr]     = color; // Red
+                buffer[ptr + 1] = color; // Green
+                buffer[ptr + 2] = color; // Blue
+                buffer[ptr + 3] = 255;   // Alpha
+
+                ptr += 4;
+            }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Render inicial
+    render();
+</script>
+
+</body>
+</html>
