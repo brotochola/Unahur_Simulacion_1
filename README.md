@@ -41,7 +41,7 @@
 - [Kernel Convolution](https://www.youtube.com/watch?v=KuXjwB4LzSA)
 - [Kernel Convolution tester](https://setosa.io/ev/image-kernels/)
 - [Falling sand + rigid bodies](https://www.youtube.com/watch?v=BL38jgmdVzU)
-- [Renderizar cada pixel](5 - ecs_y_optimizaciones\ecs_chiquito_con_renderers)
+- [Renderizar cada pixel](/5%20-%20ecs_y_optimizaciones/ecs_chiquito_con_renderers.html)
 - [Noita](https://www.youtube.com/watch?v=prXuyMCgbTc)
 
 ## Unidad 3 — Simulación de fluidos
