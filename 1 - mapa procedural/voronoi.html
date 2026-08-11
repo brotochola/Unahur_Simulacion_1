@@ -186,6 +186,42 @@
             </select>
 
             <div class="control-row" style="margin-top: 8px;">
+                <label for="modeSelect">Modo de Render:</label>
+            </div>
+            <select id="modeSelect">
+                <option value="voronoi">Voronoi (celdas)</option>
+                <option value="worley">Worley noise</option>
+            </select>
+
+            <div id="worleyControls" style="display: none; margin-top: 8px;">
+                <div class="control-row">
+                    <label for="worleyFeature">Feature Worley:</label>
+                </div>
+                <select id="worleyFeature">
+                    <option value="f1">F1 (distancia al más cercano)</option>
+                    <option value="f2">F2 (distancia al 2º más cercano)</option>
+                    <option value="f2-f1" selected>F2 − F1 (bordes / grietas)</option>
+                </select>
+
+                <div class="control-row" style="margin-top: 8px;">
+                    <label for="worleyInvert">Invertir:</label>
+                    <input type="checkbox" id="worleyInvert">
+                </div>
+
+                <div class="control-row" style="margin-top: 8px;">
+                    <label for="worleyFalloff">Falloff:</label>
+                    <span id="worleyFalloffVal" class="stats">1</span>
+                </div>
+                <input type="range" id="worleyFalloff" min="0.25" max="3" step="0.05" value="1">
+
+                <div class="control-row" style="margin-top: 8px;">
+                    <label for="worleyContrast">Contrast:</label>
+                    <span id="worleyContrastVal" class="stats">1</span>
+                </div>
+                <input type="range" id="worleyContrast" min="0.25" max="3" step="0.05" value="1">
+            </div>
+
+            <div class="control-row" style="margin-top: 8px;">
                 <label for="speedRange">Velocidad de Movimiento:</label>
                 <span id="speedVal" class="stats">1</span>
             </div>
@@ -227,6 +263,7 @@
             <p><strong>Tips para la clase:</strong></p>
             <p>• Haz <strong>click en el canvas</strong> para añadir puntos manualmente.</p>
             <p>• Cambia la métrica a <strong>Manhattan</strong> para mostrar cómo se vería un sistema basado en grilla (estilo Roguelike o Tilemap).</p>
+            <p>• Modo <strong>Worley</strong>: usa F1/F2 (distancias) para texturas — piedra, cáusticas, grietas.</p>
         </div>
 
         <div class="stats">
@@ -241,6 +278,14 @@
     
     // UI Elements
     const metricSelect = document.getElementById('metricSelect');
+    const modeSelect = document.getElementById('modeSelect');
+    const worleyControls = document.getElementById('worleyControls');
+    const worleyFeature = document.getElementById('worleyFeature');
+    const worleyInvert = document.getElementById('worleyInvert');
+    const worleyFalloff = document.getElementById('worleyFalloff');
+    const worleyFalloffVal = document.getElementById('worleyFalloffVal');
+    const worleyContrast = document.getElementById('worleyContrast');
+    const worleyContrastVal = document.getElementById('worleyContrastVal');
     const speedRange = document.getElementById('speedRange');
     const speedVal = document.getElementById('speedVal');
     const showPointsCheckbox = document.getElementById('showPoints');
@@ -248,6 +293,10 @@
     const addPointsBtn = document.getElementById('addPointsBtn');
     const clearBtn = document.getElementById('clearBtn');
     const renderTimeEl = document.getElementById('renderTime');
+
+    function syncWorleyPanel() {
+        worleyControls.style.display = modeSelect.value === 'worley' ? 'block' : 'none';
+    }
 
     let width, height;
     let points = [];
@@ -368,7 +417,8 @@
         return { cols, rows, cellSize, cells };
     }
 
-    function findNearestColor(realX, realY, metric, grid) {
+    // Devuelve F1, F2 (métrica cruda: dist² si euclidiana) y color del nearest.
+    function findDistances(realX, realY, metric, grid, needF2) {
         const { cols, rows, cellSize, cells } = grid;
         let gx = (realX / cellSize) | 0;
         let gy = (realY / cellSize) | 0;
@@ -377,7 +427,8 @@
         if (gy < 0) gy = 0;
         else if (gy >= rows) gy = rows - 1;
 
-        let minDist = Infinity;
+        let f1 = Infinity;
+        let f2 = Infinity;
         let bestColor = 0;
         const maxRing = cols > rows ? cols : rows;
 
@@ -400,26 +451,61 @@
                     for (let i = 0; i < bucket.length; i++) {
                         const p = bucket[i];
                         const dist = getDistance(realX, realY, p.x, p.y, metric);
-                        if (dist < minDist) {
-                            minDist = dist;
+                        if (dist < f1) {
+                            f2 = f1;
+                            f1 = dist;
                             bestColor = p.color32;
+                        } else if (needF2 && dist < f2) {
+                            f2 = dist;
                         }
                     }
                 }
             }
 
-            if (minDist === Infinity) continue;
+            if (f1 === Infinity) continue;
 
-            // Bound: cualquier semilla fuera del anillo ring está al menos a ring*cellSize
+            // Early-exit: bound vs F1, o vs F2 si hace falta el segundo nearest
             const bound = ring * cellSize;
+            const stopDist = needF2 ? f2 : f1;
+            if (stopDist === Infinity) continue;
             if (metric === 'euclidean') {
-                if (bound * bound >= minDist) break;
-            } else if (bound >= minDist) {
+                if (bound * bound >= stopDist) break;
+            } else if (bound >= stopDist) {
                 break;
             }
         }
 
-        return bestColor;
+        return { f1, f2, color32: bestColor };
+    }
+
+    function toRealDistance(raw, metric) {
+        return metric === 'euclidean' ? Math.sqrt(raw) : raw;
+    }
+
+    function worleyToColor32(f1Raw, f2Raw, metric, feature, falloff, contrast, invert) {
+        const f1 = toRealDistance(f1Raw, metric);
+        const f2 = toRealDistance(f2Raw, metric);
+        let value;
+        switch (feature) {
+            case 'f2':
+                value = f2;
+                break;
+            case 'f2-f1':
+                value = f2 - f1;
+                break;
+            case 'f1':
+            default:
+                value = f1;
+                break;
+        }
+
+        let t = falloff > 0 ? value / falloff : 0;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        if (invert) t = 1 - t;
+        t = Math.pow(t, contrast);
+        const g = (t * 255 + 0.5) | 0;
+        return packColor32(g, g, g);
     }
 
     function resize() {
@@ -451,17 +537,29 @@
         const imgData = getImageData(scaledW, scaledH);
         const u32 = cachedU32;
         const metric = metricSelect.value;
+        const mode = modeSelect.value;
+        const isWorley = mode === 'worley';
+        const feature = worleyFeature.value;
+        const needF2 = isWorley && feature !== 'f1';
+        const invert = worleyInvert.checked;
+        const falloffMul = parseFloat(worleyFalloff.value);
+        const contrast = parseFloat(worleyContrast.value);
 
         if (points.length > 0) {
             const n = points.length;
-            const cellSize = Math.max(32, Math.floor(Math.max(width, height) / Math.sqrt(n)));
+            const baseFalloff = Math.max(width, height) / Math.sqrt(n);
+            const cellSize = Math.max(32, Math.floor(baseFalloff));
             const grid = buildSpatialGrid(cellSize);
+            const falloff = baseFalloff * falloffMul;
 
             for (let y = 0; y < scaledH; y++) {
                 const realY = y * scale;
                 const row = y * scaledW;
                 for (let x = 0; x < scaledW; x++) {
-                    u32[row + x] = findNearestColor(x * scale, realY, metric, grid);
+                    const { f1, f2, color32 } = findDistances(x * scale, realY, metric, grid, needF2);
+                    u32[row + x] = isWorley
+                        ? worleyToColor32(f1, f2, metric, feature, falloff, contrast, invert)
+                        : color32;
                 }
             }
         } else {
@@ -536,6 +634,22 @@
     resolutionSelect.addEventListener('change', markDirty);
     showPointsCheckbox.addEventListener('change', markDirty);
 
+    modeSelect.addEventListener('change', () => {
+        syncWorleyPanel();
+        markDirty();
+    });
+    worleyFeature.addEventListener('change', markDirty);
+    worleyInvert.addEventListener('change', markDirty);
+    worleyFalloff.addEventListener('input', (e) => {
+        worleyFalloffVal.textContent = e.target.value;
+        markDirty();
+    });
+    worleyContrast.addEventListener('input', (e) => {
+        worleyContrastVal.textContent = e.target.value;
+        markDirty();
+    });
+
+    syncWorleyPanel();
     resize();
     generateRandomPoints(8);
     requestAnimationFrame(update);
