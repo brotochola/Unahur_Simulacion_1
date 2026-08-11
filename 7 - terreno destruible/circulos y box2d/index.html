@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Destructible Terrain — Box2D v3 + Phaser</title>
+    <style>
+        html, body { margin: 0; padding: 0; background: #1a1a2e; overflow: hidden; }
+        #game-container { display: block; }
+        #hud {
+            position: fixed; top: 8px; left: 8px; color: #cfd8ff; font: 13px monospace;
+            background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px;
+            line-height: 1.5; pointer-events: none;
+        }
+        #loading {
+            position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+            color: #cfd8ff; font: 16px monospace; background: #1a1a2e; z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading Box2D…</div>
+    <div id="hud">
+        A/D or ←/→ — move &nbsp;|&nbsp; W/↑/Space — jump &nbsp;|&nbsp; Hold <b>E</b> — laser<br>
+        Hold Left Mouse — dig &nbsp;|&nbsp; Hold Right Mouse — fill<br>
+        <span id="perf">frame — ms</span><br>
+        <span id="phys-debug">bodies: —</span><br>
+        <span style="opacity:.85">C = colliders &nbsp;|&nbsp;
+            <span style="color:#ff4fd8">○</span> static &nbsp;
+            <span style="color:#ffaa44">○</span> debris FULL &nbsp;
+            <span style="color:#ffee88">○</span> debris SMALL &nbsp;
+            <span style="color:#00e5ff">○</span> player</span>
+    </div>
+    <div id="game-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+
+    <script type="module">
+        import {
+            CreateWorld, WorldStep, CreateCircle, CreateCapsule,
+            SetWorldScale, pxm,
+            b2Body_GetPosition, b2Body_GetRotation, b2Rot_GetAngle,
+            b2Body_SetLinearVelocity, b2Body_GetLinearVelocity, b2Body_SetAwake, b2Body_SetBullet,
+            b2Body_SetGravityScale,
+            b2Body_SetTransform, b2Body_SetUserData, b2Body_GetUserData,
+            b2Body_ApplyLinearImpulseToCenter, b2Body_Enable, b2Body_Disable,
+            b2MakeRot, b2World_CastRay, b2DefaultQueryFilter,
+            b2DefaultWorldDef, b2Vec2, STATIC, DYNAMIC,
+            b2Shape_EnableContactEvents, b2Shape_GetBody, b2Shape_SetFilter,
+            b2World_GetContactEvents, b2Filter
+        } from 'https://cdn.jsdelivr.net/npm/phaser-box2d@1.1.0/dist/PhaserBox2D.js';
+
+        import {
+            SCALE, WORLD_W, WORLD_H, CELL, CIRCLE_R, DIG_RADIUS,
+            PHYS_RADIUS, PHYS_HYSTERESIS, LOOKAHEAD, CORE_KEEP, SYNC_MOVE, BODY_POOL_SIZE,
+            CAT_TERRAIN, CAT_PLAYER, MASK_TERRAIN, MASK_PLAYER, PARK_X, PARK_Y
+        } from './js/config.js';
+        import { toScreenX, toScreenY, toWorldVec, terrainKey, bodyKey } from './js/coords.js';
+        import { createDebrisSystem } from './js/debrisPool.js';
+        import { createLaser } from './js/laser.js';
+        import { createContactProcessor } from './js/contacts.js';
+
+        document.getElementById('loading').remove();
+        SetWorldScale(SCALE);
+
+        const box2d = {
+            CreateCircle, CreateCapsule, DYNAMIC, STATIC, b2Vec2, b2MakeRot, b2Filter,
+            b2Body_SetTransform, b2Body_SetUserData, b2Body_GetUserData,
+            b2Body_GetPosition, b2Body_SetAwake, b2Body_SetLinearVelocity,
+            b2Body_GetLinearVelocity, b2Body_ApplyLinearImpulseToCenter,
+            b2Body_Enable, b2Body_Disable, b2Body_SetBullet, b2Body_SetGravityScale,
+            b2Shape_EnableContactEvents, b2Shape_GetBody, b2Shape_SetFilter,
+            b2World_CastRay, b2DefaultQueryFilter, b2World_GetContactEvents,
+            pxm
+        };
+
+        class MainScene extends Phaser.Scene {
+            constructor() { super('main'); }
+
+            create() {
+                const worldDef = b2DefaultWorldDef();
+                worldDef.gravity = new b2Vec2(0, -10);
+                const world = CreateWorld({ worldDef });
+                this.worldId = world.worldId;
+
+                this.terrain = new Map();
+                this.activeBodies = new Set();
+                this.bodyPool = [];
+                this.bodyIdToKey = new Map();
+                this.rot0 = b2MakeRot(0);
+
+                const groundLine = (x) => WORLD_H * 0.55
+                    + Math.sin(x / 260) * 90
+                    + Math.sin(x / 90 + 4) * 30;
+
+                const cols = Math.floor(WORLD_W / CELL);
+                const rows = Math.floor(WORLD_H / CELL);
+
+                for (let col = 0; col < cols; col++) {
+                    const x = col * CELL;
+                    const surfaceY = groundLine(x);
+                    for (let row = 0; row < rows; row++) {
+                        const y = row * CELL;
+                        if (y < surfaceY) continue;
+                        const caveNoise = Math.sin(x / 100 + y / 90) + Math.sin(x / 40 - y / 70) * 0.5;
+                        if (y > surfaceY + 60 && caveNoise > 1.35) continue;
+                        const offsetX = (row % 2 === 0) ? 0 : CELL / 2;
+                        const px = x + offsetX, py = y;
+                        this.terrain.set(terrainKey(col, row), {
+                            bodyId: null, x: px, y: py, r: CIRCLE_R, col, row
+                        });
+                    }
+                }
+
+                {
+                    const d = CIRCLE_R * 2;
+                    const g = this.make.graphics({ x: 0, y: 0, add: false });
+                    g.fillStyle(0x5a4630, 1);
+                    g.fillCircle(CIRCLE_R, CIRCLE_R, CIRCLE_R);
+                    g.generateTexture('dirtCircle', d, d);
+                    g.clear();
+                    g.fillStyle(0xffffff, 1);
+                    g.fillCircle(CIRCLE_R, CIRCLE_R, CIRCLE_R);
+                    g.generateTexture('eraseCircle', d, d);
+                    g.destroy();
+                }
+
+                this.terrainRT = this.add.renderTexture(0, 0, WORLD_W, WORLD_H).setOrigin(0, 0).setDepth(0);
+                for (const e of this.terrain.values()) {
+                    this.terrainRT.draw('dirtCircle', e.x - CIRCLE_R, e.y - CIRCLE_R);
+                }
+
+                this.debugGfx = this.add.graphics().setDepth(3);
+                this.colliderGfx = this.add.graphics().setDepth(4);
+                this.showColliders = true;
+                this._syncCx = null;
+                this._syncCy = null;
+                this._hudFrame = 0;
+                this._rayOrigin = new b2Vec2(0, 0);
+                this._rayTrans = new b2Vec2(0, -pxm(8));
+                this._queryFilter = b2DefaultQueryFilter();
+                this._toRelease = [];
+                this.peakUpdate = 0;
+                this.peakRender = 0;
+                this.peakPhys = 0;
+                this.lastRenderMs = 0;
+                this.events.on('prerender', () => { this._tRender0 = performance.now(); });
+                this.events.on('postrender', () => {
+                    this.lastRenderMs = performance.now() - this._tRender0;
+                });
+
+                for (let i = 0; i < BODY_POOL_SIZE; i++) {
+                    const circle = CreateCircle({
+                        worldId: this.worldId,
+                        type: STATIC,
+                        position: new b2Vec2(PARK_X - i * 5, PARK_Y),
+                        radius: pxm(CIRCLE_R),
+                        friction: 0.95,
+                        restitution: 0,
+                        categoryBits: CAT_TERRAIN,
+                        maskBits: MASK_TERRAIN,
+                        color: 0x8a6d3b
+                    });
+                    this.bodyPool.push(circle.bodyId);
+                }
+                this._parkSlot = BODY_POOL_SIZE;
+
+                {
+                    const g = this.debugGfx;
+                    g.lineStyle(2, 0x7dffa3, 0.9);
+                    g.strokeCircle(0, 0, PHYS_RADIUS);
+                    g.lineStyle(2, 0xffe066, 0.7);
+                    g.strokeCircle(0, 0, PHYS_RADIUS + PHYS_HYSTERESIS);
+                }
+
+                const playerW = 28, playerH = 52;
+                this.playerSize = { w: playerW, h: playerH };
+                const spawnX = 200, spawnY = groundLine(200) - 200;
+                this._playerSx = spawnX;
+                this._playerSy = spawnY;
+
+                const capR = pxm(playerW / 2);
+                const capAxis = pxm(playerH / 2 - playerW / 2);
+                const playerBody = CreateCapsule({
+                    worldId: this.worldId,
+                    type: DYNAMIC,
+                    position: toWorldVec(b2Vec2, spawnX, spawnY),
+                    center1: new b2Vec2(0, -capAxis),
+                    center2: new b2Vec2(0, capAxis),
+                    radius: capR,
+                    density: 20,
+                    friction: 0.95,
+                    restitution: 0,
+                    fixedRotation: true,
+                    linearDamping: 0.05,
+                    categoryBits: CAT_PLAYER,
+                    maskBits: MASK_PLAYER
+                });
+                this.playerBodyId = playerBody.bodyId;
+                b2Body_SetBullet(this.playerBodyId, true);
+                b2Body_SetUserData(this.playerBodyId, { kind: 'player' });
+                b2Shape_EnableContactEvents(playerBody.shapeId, true);
+
+                {
+                    const pad = 2;
+                    const tw = playerW + pad * 2, th = playerH + pad * 2;
+                    const g = this.make.graphics({ x: 0, y: 0, add: false });
+                    g.fillStyle(0x4fc3f7, 1);
+                    g.lineStyle(2, 0x1976d2, 1);
+                    g.fillRect(pad, pad, playerW, playerH);
+                    g.strokeRect(pad, pad, playerW, playerH);
+                    g.generateTexture('player', tw, th);
+                    g.destroy();
+                    this.playerSprite = this.add.image(spawnX, spawnY, 'player').setDepth(2);
+                    this.playerSprite.setOrigin(0.5);
+                }
+
+                this.debris = createDebrisSystem(box2d, this.worldId, this);
+                this.laser = createLaser(box2d, this, { worldId: this.worldId });
+                this.contacts = createContactProcessor(box2d, this.worldId, this.playerBodyId, this.debris);
+
+                this.perfEl = document.getElementById('perf');
+                this.physDebugEl = document.getElementById('phys-debug');
+
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.keys = this.input.keyboard.addKeys('W,A,S,D,SPACE,C,E');
+                this.input.keyboard.on('keydown-C', () => {
+                    this.showColliders = !this.showColliders;
+                    if (!this.showColliders) this.colliderGfx.clear();
+                });
+
+                this.pointerDown = { left: false, right: false };
+                this.input.on('pointerdown', (p) => {
+                    if (p.leftButtonDown()) this.pointerDown.left = true;
+                    if (p.rightButtonDown()) this.pointerDown.right = true;
+                });
+                this.input.on('pointerup', (p) => {
+                    if (!p.leftButtonDown()) this.pointerDown.left = false;
+                    if (!p.rightButtonDown()) this.pointerDown.right = false;
+                });
+                this.input.mouse.disableContextMenu();
+
+                this.cameras.main.setBounds(0, -WORLD_H, WORLD_W, WORLD_H * 2);
+                this.cameras.main.setZoom(1);
+
+                this.syncPhysicsWindow(spawnX, spawnY, spawnX, spawnY);
+            }
+
+            spawnBody(entry) {
+                if (entry.bodyId) return false;
+                let bodyId = this.bodyPool.pop();
+                if (!bodyId) {
+                    bodyId = this.stealFarthestBody(this._playerSx, this._playerSy);
+                    if (!bodyId) {
+                        this._poolStarved = true;
+                        return false;
+                    }
+                }
+                b2Body_SetTransform(bodyId, new b2Vec2(entry.x / SCALE, -entry.y / SCALE), this.rot0);
+                const key = terrainKey(entry.col, entry.row);
+                entry.bodyId = bodyId;
+                b2Body_SetUserData(bodyId, { kind: 'terrain', key });
+                this.bodyIdToKey.set(bodyKey(bodyId), key);
+                this.activeBodies.add(key);
+                return true;
+            }
+
+            stealFarthestBody(px, py) {
+                let farthest = null, best = -1;
+                for (const k of this.activeBodies) {
+                    const e = this.terrain.get(k);
+                    if (!e || !e.bodyId) continue;
+                    const dx = e.x - px, dy = e.y - py;
+                    const d = dx * dx + dy * dy;
+                    if (d > best) { best = d; farthest = e; }
+                }
+                if (!farthest) return null;
+                const id = farthest.bodyId;
+                this.bodyIdToKey.delete(bodyKey(id));
+                b2Body_SetUserData(id, null);
+                this.activeBodies.delete(terrainKey(farthest.col, farthest.row));
+                farthest.bodyId = null;
+                return id;
+            }
+
+            killBody(entry) {
+                if (!entry.bodyId) return false;
+                this.bodyIdToKey.delete(bodyKey(entry.bodyId));
+                b2Body_SetUserData(entry.bodyId, null);
+                const slot = this._parkSlot++;
+                b2Body_SetTransform(entry.bodyId, new b2Vec2(PARK_X - slot * 5, PARK_Y), this.rot0);
+                this.bodyPool.push(entry.bodyId);
+                entry.bodyId = null;
+                this.activeBodies.delete(terrainKey(entry.col, entry.row));
+                return true;
+            }
+
+            eraseAndRestamp(col0, row0, radius) {
+                const restampSpan = Math.ceil((radius + CIRCLE_R * 2) / CELL) + 1;
+                for (let dc = -restampSpan; dc <= restampSpan; dc++) {
+                    for (let dr = -restampSpan; dr <= restampSpan; dr++) {
+                        const entry = this.terrain.get(terrainKey(col0 + dc, row0 + dr));
+                        if (!entry) continue;
+                        this.terrainRT.draw('dirtCircle', entry.x - CIRCLE_R, entry.y - CIRCLE_R);
+                    }
+                }
+            }
+
+            /** Laser / dig: remove one terrain cell visually + physically, return screen pos. */
+            removeTerrainEntry(entry) {
+                const sx = entry.x, sy = entry.y, col = entry.col, row = entry.row;
+                this.terrainRT.erase('eraseCircle', sx - CIRCLE_R, sy - CIRCLE_R);
+                this.killBody(entry);
+                this.terrain.delete(terrainKey(col, row));
+                this.eraseAndRestamp(col, row, CIRCLE_R);
+                return { sx, sy };
+            }
+
+            detachTerrainToDebris(key) {
+                const entry = this.terrain.get(key);
+                if (!entry) return false;
+                const { sx, sy } = this.removeTerrainEntry(entry);
+                const rec = this.debris.spawn('full', sx, sy, (Math.random() - 0.5) * 1.5, 1.5);
+                if (rec) {
+                    this.laser.nudgeDetach(rec.bodyId, sx, sy, sx, sy - 20);
+                }
+                return true;
+            }
+
+            ensureFeetSupport(sx, sy) {
+                const halfW = this.playerSize.w / 2 + CELL * 2;
+                const top = sy - CELL;
+                const bot = sy + this.playerSize.h / 2 + CELL * 3;
+                const c0 = Math.floor((sx - halfW) / CELL);
+                const c1 = Math.ceil((sx + halfW) / CELL);
+                const r0 = Math.floor(top / CELL);
+                const r1 = Math.ceil(bot / CELL);
+                let changed = false, live = 0;
+                for (let col = c0; col <= c1; col++) {
+                    for (let row = r0; row <= r1; row++) {
+                        const entry = this.terrain.get(terrainKey(col, row));
+                        if (!entry) continue;
+                        if (!entry.bodyId) {
+                            if (this.spawnBody(entry)) changed = true;
+                        }
+                        if (entry.bodyId) live++;
+                    }
+                }
+                this._feetLive = live;
+                return changed;
+            }
+
+            syncPhysicsWindow(cx, cy, playerX, playerY) {
+                const activateR2 = PHYS_RADIUS * PHYS_RADIUS;
+                const keepR2 = (PHYS_RADIUS + PHYS_HYSTERESIS) * (PHYS_RADIUS + PHYS_HYSTERESIS);
+                const coreR2 = CORE_KEEP * CORE_KEEP;
+                let changed = false;
+                this._poolStarved = false;
+
+                const release = this._toRelease;
+                release.length = 0;
+                for (const k of this.activeBodies) {
+                    const entry = this.terrain.get(k);
+                    if (!entry) {
+                        release.push(k);
+                        continue;
+                    }
+                    const dx = entry.x - cx, dy = entry.y - cy;
+                    if (dx * dx + dy * dy <= keepR2) continue;
+                    const px = entry.x - playerX, py = entry.y - playerY;
+                    if (px * px + py * py <= coreR2) continue;
+                    release.push(entry);
+                }
+                for (const item of release) {
+                    if (typeof item === 'number') this.activeBodies.delete(item);
+                    else if (this.killBody(item)) changed = true;
+                }
+
+                const span = Math.ceil(PHYS_RADIUS / CELL) + 1;
+                const c0 = Math.round(cx / CELL);
+                const r0 = Math.round(cy / CELL);
+                for (let dc = -span; dc <= span; dc++) {
+                    for (let dr = -span; dr <= span; dr++) {
+                        const entry = this.terrain.get(terrainKey(c0 + dc, r0 + dr));
+                        if (!entry || entry.bodyId) continue;
+                        const dx = entry.x - cx, dy = entry.y - cy;
+                        if (dx * dx + dy * dy <= activateR2) {
+                            if (this.spawnBody(entry)) changed = true;
+                        }
+                    }
+                }
+                this._syncCx = cx;
+                this._syncCy = cy;
+                return changed;
+            }
+
+            maybeSyncPhysics(cx, cy, playerX, playerY, force = false) {
+                if (!force && this._syncCx != null) {
+                    const dx = cx - this._syncCx, dy = cy - this._syncCy;
+                    if (dx * dx + dy * dy < SYNC_MOVE * SYNC_MOVE) return false;
+                }
+                return this.syncPhysicsWindow(cx, cy, playerX, playerY);
+            }
+
+            digAt(sx, sy, radius) {
+                const cellSpan = Math.ceil((radius + CIRCLE_R) / CELL) + 1;
+                const c0 = Math.round(sx / CELL);
+                const r0 = Math.round(sy / CELL);
+                const r2 = radius * radius;
+                const removed = [];
+
+                for (let dc = -cellSpan; dc <= cellSpan; dc++) {
+                    for (let dr = -cellSpan; dr <= cellSpan; dr++) {
+                        const k = terrainKey(c0 + dc, r0 + dr);
+                        const entry = this.terrain.get(k);
+                        if (!entry) continue;
+                        const dx = entry.x - sx, dy = entry.y - sy;
+                        if (dx * dx + dy * dy > r2) continue;
+                        this.killBody(entry);
+                        this.terrain.delete(k);
+                        removed.push(entry);
+                    }
+                }
+                if (!removed.length) return false;
+
+                for (const e of removed) {
+                    this.terrainRT.erase('eraseCircle', e.x - CIRCLE_R, e.y - CIRCLE_R);
+                }
+                this.eraseAndRestamp(c0, r0, radius);
+                return true;
+            }
+
+            fillAt(sx, sy, radius) {
+                let changed = false;
+                const cellSpan = Math.ceil(radius / CELL) + 1;
+                const c0 = Math.round(sx / CELL);
+                const r0 = Math.round(sy / CELL);
+                const r2 = radius * radius;
+
+                for (let dc = -cellSpan; dc <= cellSpan; dc++) {
+                    for (let dr = -cellSpan; dr <= cellSpan; dr++) {
+                        const col = c0 + dc, row = r0 + dr;
+                        const k = terrainKey(col, row);
+                        if (this.terrain.has(k)) continue;
+                        const offsetX = (row % 2 === 0) ? 0 : CELL / 2;
+                        const px = col * CELL + offsetX, py = row * CELL;
+                        const dx = px - sx, dy = py - sy;
+                        if (dx * dx + dy * dy > r2) continue;
+                        if (px < 0 || px > WORLD_W || py < 0 || py > WORLD_H) continue;
+                        const entry = { bodyId: null, x: px, y: py, r: CIRCLE_R, col, row };
+                        this.terrain.set(k, entry);
+                        this.terrainRT.draw('dirtCircle', px - CIRCLE_R, py - CIRCLE_R);
+                        changed = true;
+                    }
+                }
+                return changed;
+            }
+
+            drawColliderDebug() {
+                const g = this.colliderGfx;
+                g.clear();
+                if (!this.showColliders) return;
+
+                g.lineStyle(1, 0xff4fd8, 0.9);
+                let mismatch = 0;
+                for (const k of this.activeBodies) {
+                    const entry = this.terrain.get(k);
+                    if (!entry || !entry.bodyId) continue;
+                    const p = b2Body_GetPosition(entry.bodyId);
+                    const bx = toScreenX(p.x), by = toScreenY(p.y);
+                    g.strokeCircle(bx, by, CIRCLE_R);
+                    if (Math.abs(bx - entry.x) > 0.5 || Math.abs(by - entry.y) > 0.5) {
+                        mismatch++;
+                        g.lineStyle(2, 0xffe066, 1);
+                        g.strokeCircle(entry.x, entry.y, CIRCLE_R);
+                        g.lineBetween(bx, by, entry.x, entry.y);
+                        g.lineStyle(1, 0xff4fd8, 0.9);
+                    }
+                }
+                this._colliderMismatch = mismatch;
+                this.debris.drawColliders(g);
+
+                const pos = b2Body_GetPosition(this.playerBodyId);
+                const px = toScreenX(pos.x), py = toScreenY(pos.y);
+                const capR = this.playerSize.w / 2;
+                const axisPx = this.playerSize.h / 2 - this.playerSize.w / 2;
+                g.lineStyle(2, 0x00e5ff, 1);
+                g.strokeCircle(px, py - axisPx, capR);
+                g.strokeCircle(px, py + axisPx, capR);
+                g.lineBetween(px - capR, py - axisPx, px - capR, py + axisPx);
+                g.lineBetween(px + capR, py - axisPx, px + capR, py + axisPx);
+            }
+
+            update(time, delta) {
+                const tUpdate0 = performance.now();
+                const dt = Math.min(delta / 1000, 1 / 30);
+                const tPhys0 = performance.now();
+
+                let pos = b2Body_GetPosition(this.playerBodyId);
+                let sx = toScreenX(pos.x), sy = toScreenY(pos.y);
+                this._playerSx = sx;
+                this._playerSy = sy;
+
+                let vx = 0;
+                const speed = pxm(220);
+                if (this.cursors.left.isDown || this.keys.A.isDown) vx = -speed;
+                if (this.cursors.right.isDown || this.keys.D.isDown) vx = speed;
+
+                const lookX = vx < 0 ? -LOOKAHEAD : vx > 0 ? LOOKAHEAD : 0;
+                this.maybeSyncPhysics(sx + lookX, sy, sx, sy, false);
+                this.ensureFeetSupport(sx, sy);
+
+                const cam = this.cameras.main;
+                const worldPt = cam.getWorldPoint(this.input.activePointer.x, this.input.activePointer.y);
+
+                this.laser.tick(time, this.playerBodyId, worldPt.x, worldPt.y, {
+                    collectTargets: () => {
+                        const list = [];
+                        for (const k of this.activeBodies) {
+                            const e = this.terrain.get(k);
+                            if (!e || !e.bodyId) continue;
+                            list.push({
+                                kind: 'terrain',
+                                key: k,
+                                x: e.x,
+                                y: e.y,
+                                r: e.r || CIRCLE_R
+                            });
+                        }
+                        this.debris.forEachActive((t) => list.push(t));
+                        return list;
+                    },
+                    onHitTerrain: (key) => { this.detachTerrainToDebris(key); },
+                    onHitDebrisFull: (bodyId, dirX, dirY) => {
+                        this.debris.splitFull(bodyId, dirX, dirY);
+                    },
+                    onHitDebrisSmall: (bodyId) => { this.debris.despawn(bodyId); }
+                });
+
+                const vel = b2Body_GetLinearVelocity(this.playerBodyId);
+                let vy = vel.y;
+                const jumpPressed = Phaser.Input.Keyboard.JustDown(this.cursors.up)
+                    || Phaser.Input.Keyboard.JustDown(this.keys.W)
+                    || Phaser.Input.Keyboard.JustDown(this.keys.SPACE);
+                if (jumpPressed) vy = pxm(200);
+
+                b2Body_SetLinearVelocity(this.playerBodyId, new b2Vec2(vx, vy));
+                b2Body_SetAwake(this.playerBodyId, true);
+
+                WorldStep({ worldId: this.worldId, deltaTime: dt, fixedTimeStep: 1 / 60, subStepCount: 4 });
+                this.contacts.process();
+
+                pos = b2Body_GetPosition(this.playerBodyId);
+                const rot = b2Body_GetRotation(this.playerBodyId);
+                const angle = -b2Rot_GetAngle(rot);
+                sx = toScreenX(pos.x);
+                sy = toScreenY(pos.y);
+                this._playerSx = sx;
+                this._playerSy = sy;
+                this.cameras.main.centerOn(sx, sy);
+
+                let dirty = false;
+                if (this.pointerDown.left) dirty = this.digAt(worldPt.x, worldPt.y, DIG_RADIUS) || dirty;
+                if (this.pointerDown.right) dirty = this.fillAt(worldPt.x, worldPt.y, DIG_RADIUS * 0.7) || dirty;
+                if (dirty) {
+                    this.ensureFeetSupport(sx, sy);
+                    this.maybeSyncPhysics(sx + lookX, sy, sx, sy, true);
+                }
+                const physMs = performance.now() - tPhys0;
+
+                this.playerSprite.setPosition(sx, sy);
+                this.playerSprite.setRotation(angle);
+                this.debris.syncSprites();
+                this.debugGfx.setPosition(sx, sy);
+                this.drawColliderDebug();
+
+                const updateMs = performance.now() - tUpdate0;
+                const renderMs = this.lastRenderMs;
+                const frameMs = this.game.loop.delta;
+                this.peakUpdate = Math.max(updateMs, this.peakUpdate * 0.95);
+                this.peakRender = Math.max(renderMs, this.peakRender * 0.95);
+                this.peakPhys = Math.max(physMs, this.peakPhys * 0.95);
+
+                if ((++this._hudFrame % 5) === 0) {
+                    this.perfEl.textContent =
+                        `frame Δ ${frameMs.toFixed(1)} ms (${this.game.loop.actualFps.toFixed(0)} fps) | ` +
+                        `update ${updateMs.toFixed(1)} (peak ${this.peakUpdate.toFixed(1)}) | ` +
+                        `phaser-render ${renderMs.toFixed(1)} (peak ${this.peakRender.toFixed(1)}) | ` +
+                        `phys ${physMs.toFixed(1)} (peak ${this.peakPhys.toFixed(1)})`;
+                    this.physDebugEl.textContent =
+                        `static ${this.activeBodies.size}/${BODY_POOL_SIZE} | ` +
+                        `debris ${this.debris.activeCount} (fullFree ${this.debris.fullFree} smallFree ${this.debris.smallFree}) | ` +
+                        `feet ${this._feetLive ?? 0}` +
+                        (this._colliderMismatch ? ` | MISMATCH ${this._colliderMismatch}` : '') +
+                        (this._poolStarved ? ' !! POOL' : '');
+                }
+            }
+        }
+
+        const game = new Phaser.Game({
+            type: Phaser.AUTO,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            parent: 'game-container',
+            backgroundColor: '#1a1a2e',
+            scene: MainScene,
+            physics: {}
+        });
+
+        window.addEventListener('resize', () => {
+            game.scale.resize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

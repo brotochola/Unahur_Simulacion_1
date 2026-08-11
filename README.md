@@ -37,6 +37,13 @@
 - Integración con cuerpos rígidos (rigid bodies).
 - Integración con campos de flujo (flow fields) para aproximar comportamiento fluido.
 
+- [Falling Sand paso a paso](https://www.youtube.com/watch?v=L4u7Zy_b868)
+- [Kernel Convolution](https://www.youtube.com/watch?v=KuXjwB4LzSA)
+- [Kernel Convolution tester](https://setosa.io/ev/image-kernels/)
+- [Falling sand + rigid bodies](https://www.youtube.com/watch?v=BL38jgmdVzU)
+- [Renderizar cada pixel](5 - ecs_y_optimizaciones\ecs_chiquito_con_renderers)
+- [Noita](https://www.youtube.com/watch?v=prXuyMCgbTc)
+
 ## Unidad 3 — Simulación de fluidos
 
 - Enfoque basado en grilla / celdas (píxeles).
@@ -44,6 +51,10 @@
 - Smoothed Particle Hydrodynamics (SPH) y reconstrucción de superficie mediante marching squares.
 - Método híbrido PIC/FLIP.
 - Simulación de fluidos por campo de altura (height-field / 1.5D).
+
+- [Liquid Fun](https://google.github.io/liquidfun/)
+- [Liquid Fun: explicación](/3%20-%20simulacion%20de%20fluidos/Inside%20LiquidFun.pdf)
+- [PIC + FLIP](https://matthias-research.github.io/pages/tenMinutePhysics/18-flip.pdf)
 
 ## Unidad 4 — Vida artificial y autómatas celulares
 
@@ -53,6 +64,14 @@
 - Modelos continuos de vida artificial: Lenia y Flow Lenia como generalización matemática de los autómatas celulares.
 - Sistemas de partículas con reglas de interacción emergente: Particle Life y Particle Lenia.
 
+- [Multiple Neighborhoods Cellular Automata] (https://softologyblog.wordpress.com/2018/03/09/multiple-neighborhoods-cellular-automata/)
+- [Kernel Convolution](https://www.youtube.com/watch?v=C_zFhWdM4ic)
+- [Game of Life + Smooth Life + Lenia](https://www.youtube.com/watch?v=6kiBYjvyojQ)
+- [Lenia](https://www.youtube.com/watch?v=iE46jKYcI4Y)
+- [Más sobre Lenia](https://www.youtube.com/playlist?list=PLxls5YhYdJ0xYabkHAP63cMhPq2mJVSe-)
+- [Particle Lenia](https://google-research.github.io/self-organising-systems/particle-lenia/)
+- [Particle Life](/4 - artificial_life/particle_life_standalone.html)
+
 ## Unidad 5 — Optimización de simulaciones
 
 - Análisis de complejidad algorítmica (notación Big O) aplicado a simulaciones.
@@ -61,6 +80,8 @@
 - El método científico aplicado a la optimización: formulación de una hipótesis de rendimiento (por ejemplo, "convertir esta estructura a SoA reduce el tiempo de frame"), diseño del experimento, medición mediante benchmarks y comparación cuantitativa entre una implementación baseline y la implementación modificada.
 - Benchmarking comparativo (por ejemplo, el Juego de la Vida implementado con paradigma orientado a objetos versus SoA) como caso de aplicación del método anterior.
 - Alternativas de ejecución de alto rendimiento en el navegador: WebAssembly.
+- Bitwise Operations: bit masking, bit packing, bit shifting.
+- Multithreading (Web workers en el navegador).
 - Caso de estudio de optimización sobre un proyecto propio de la cátedra (WeedJS).
 
 ## Unidad 6 — Ray casting
@@ -70,6 +91,8 @@
 - Algoritmo DDA (Digital Differential Analyzer) sobre grillas, optimizado mediante spatial hashing.
 - Aplicación histórica de referencia: el renderizado pseudo-3D de Wolfenstein 3D.
 - Cálculo de iluminación mediante ray casting.
+
+-
 
 ## Unidad 7 — Terreno destructible
 
