@@ -10,6 +10,26 @@
 - Combinación de múltiples campos de ruido (temperatura, humedad, altura, pendiente) para la definición de biomas mediante reglas compuestas.
 - Herramientas de autoría: generadores de mapas, autotiling y generación procedural de caminos.
 
+- [/1 - mapa procedural/seeded_random.html](/1%20-%20mapa%20procedural/seeded_random.html)
+- [/1 - mapa procedural/estatica_ruido_blanco.html](/1%20-%20mapa%20procedural/estatica_ruido_blanco.html)
+- [/1 - mapa procedural/ruido basado en coseno.html](/1%20-%20mapa%20procedural/ruido%20basado%20en%20coseno.html)
+- [/1 - mapa procedural/noise_lab.html](/1%20-%20mapa%20procedural/noise_lab.html)
+- [/1 - mapa procedural/blur_contraste.html](/1%20-%20mapa%20procedural/blur_contraste.html)
+- [/1 - mapa procedural/perlin_noise_1D.html](/1%20-%20mapa%20procedural/perlin_noise_1D.html)
+- [/1 - mapa procedural/terreno3d_procedural.html](/1%20-%20mapa%20procedural/terreno3d_procedural.html)
+- [/1 - mapa procedural/chunk_manager.html](/1%20-%20mapa%20procedural/chunk_manager.html)
+- [/1 - mapa procedural/voronoi.html](/1%20-%20mapa%20procedural/voronoi.html)
+- [Voronoi diagrams in game development (procedural maps, AI territories, stylish effects)](https://www.gamegeniuslab.com/tutorial-post/voronoi-diagrams-in-game-development-procedural-maps-ai-territories-stylish-effects/)
+- [Map Maker](https://brotochola.github.io/map_maker/)
+- [Autotiler](https://brotochola.github.io/autotiler/)
+- [Procedural Map](https://brotochola.github.io/procedural_map/)
+- [2D Path Generator](https://brotochola.github.io/2d_path_generator/)
+- [Mapas fractales (YouTube)](https://www.youtube.com/watch?v=7xL0udlhnqI)
+- [Qué es Perlin Noise (YouTube)](https://www.youtube.com/watch?v=DxUY42r_6Cg)
+- [Sculpting terrain with math (YouTube)](https://www.youtube.com/watch?v=J1OdPrO7GD0)
+- [Game terrain generation is pretty simple, actually (YouTube)](https://www.youtube.com/watch?v=QF2Nj1zME40)
+- [Worley noise (YouTube)](https://www.youtube.com/watch?v=4066MndcyCk)
+
 ## Unidad 2 — Falling sand
 
 - El modelo de autómata celular aplicado a materiales granulares (arena, agua, fuego) con renderizado directo por píxel.
