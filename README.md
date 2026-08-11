@@ -58,6 +58,9 @@
 - Enfoques alternativos basados en cuerpos rígidos compuestos, profundizados en la Unidad 10 (Box2D).
 - Casos de referencia de la industria (Noita, Worms, Astroneer, A Game About Digging A Hole) como estudio de decisiones de diseño y de rendimiento.
 
+- https://brotochola.github.io/destructible_terrain_2d/
+-
+
 ## Unidad 8 — Simulación de sonido
 
 - Fundamentos del audio digital: frecuencia de muestreo y profundidad de bits como discretización de una señal continua.
@@ -81,8 +84,6 @@
 - Dinámica angular: velocidad angular, angular drag, linear drag.
 - Restricciones y articulaciones (constraints / joints): weld, distance, pin, mouse.
 - Optimización del solver: coloreo de grafos de restricciones (graph coloring) y agrupamiento de cuerpos en reposo (islands).
-
-
 
 Dinamica de la materia:
 Los alumnos se dividirán en grupos de 2. A lo largo del cuatrimestre cada grupo deberá realizar un juego usando los contenidos y algoritmos de al menos 2 de las 10 unidades. Para la fecha de primer parcial deberán tener un GDD que explique en detalle qué tipo de proyecto van a llevar a cabo, cómo usarán los algoritmos dados en la materia...
