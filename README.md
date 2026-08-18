@@ -29,6 +29,7 @@
 - [Sculpting terrain with math (YouTube)](https://www.youtube.com/watch?v=J1OdPrO7GD0)
 - [Game terrain generation is pretty simple, actually (YouTube)](https://www.youtube.com/watch?v=QF2Nj1zME40)
 - [Worley noise (YouTube)](https://www.youtube.com/watch?v=4066MndcyCk)
+- [Más sobre PErlin Noise](https://www.youtube.com/watch?v=sChQCdbLdHE)
 
 ## Unidad 2 — Falling sand
 
