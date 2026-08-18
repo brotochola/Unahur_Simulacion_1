@@ -153,3 +153,12 @@ Al inicio del desarrollo de cada unidad temática, uno o dos grupos de estudiant
 - Montecarlo.
 - SAT, OBB, AABB.
 - Box2D.
+
+https://www.youtube.com/c/TenMinutePhysics
+https://www.youtube.com/@3blue1brown
+https://www.youtube.com/@SebastianLague
+https://www.youtube.com/@Acerola_t
+https://www.youtube.com/@TheCodingTrain
+https://www.youtube.com/@acegikmo
+https://www.youtube.com/@Reducible
+https://www.youtube.com/@javidx9

@@ -1,0 +1,71 @@
+18/8
+RAMIS, SANTIAGO EMANUEL
+CASTRO, RAMIRO
+Pseudo random y Perlin noise
+
+18/8
+LEDESMA MORALES, MATEO TAIEL
+LERNER, DANIEL NICOLAS
+Mapa procedural.
+
+25/8
+ALABARCES VARELA, AGUSTÍN
+MAZZALAI, ALAN DARIO
+Falling Sand.
+
+1/9
+VAZQUEZ, MARCOS ARIEL
+DEPAULO, JOAQUÍN DIEGO
+Simulación de agua con celdas.
+
+1/9
+MANSILLA, SANTIAGO ARIEL
+CASELLA, LAUTARO MARTIN
+Simulación de agua con partículas.
+
+8/9
+BRAVO, GASTON MARTIN
+FINOQUETTO, ADRIANA VICTORIA
+Cellular automata + kernel convolution + Game of Life.
+
+15/9
+NARANCIO, LUCAS
+BLANCO CANGIANO, IVAN MATIAS
+Big O + OOP vs SoA.
+
+15/9
+Franco corrales
+Lautaro Colman
+Cache misses + Data Oriented Design + Garbage Collector.
+
+22/9
+GELAY, JUAN MANUEL
+HUTMACHER, ALEJO AGUSTIN
+Ray casting: usos, ejemplos, por qué existe.
+
+29/9
+BELFORTE, JUAN IGNACIO
+PRICOLO ORFANO, RENZO
+Terraforming: grilla + square/cube marching.
+
+6/10
+ARNEZ, SEBASTIAN LUIS
+GENISETTO, CARLOS ALBERTO
+Sonido digital: sampling rate, bit depth, compresión (mp3), ruido blanco.
+
+6/10
+MOLDERO, DANTE
+MARCIALES, FRANCO NEHUEN
+Sonido digital: Web Audio API + efectos (filtros, delay, pitch, etc.).
+
+13/10
+IANNONE, FRANCO
+MARECO, LUCIANO NICOLAS
+Discrete event simulator + Min Heap
+
+20/10
+ACEVEDO CANAVIRI, KEVIN AXEL
+MAMANI, FABIAN EZEQUIEL
+Deteccion y resolucion de colisiones: SAT, OBB, AABB.
+
+

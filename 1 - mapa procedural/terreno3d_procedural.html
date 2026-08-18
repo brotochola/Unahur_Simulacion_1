@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulación de Generación Procedural de Terrenos 3D</title>
+    <!-- Estilos globales: pantalla completa, paneles flotantes y tema oscuro -->
     <style>
         * {
             box-sizing: border-box;
@@ -11,6 +12,7 @@
             padding: 0;
             user-select: none;
         }
+
         body {
             width: 100vw;
             height: 100vh;
@@ -19,6 +21,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             color: #e2e8f0;
         }
+
         #webgl-container {
             width: 100%;
             height: 100%;
@@ -27,7 +30,7 @@
             left: 0;
             z-index: 1;
         }
-        
+
         #header-panel {
             position: absolute;
             top: 16px;
@@ -42,6 +45,7 @@
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
             pointer-events: auto;
         }
+
         #header-panel h1 {
             font-size: 1.15rem;
             font-weight: 700;
@@ -52,6 +56,7 @@
             align-items: center;
             gap: 8px;
         }
+
         #header-panel h2 {
             font-size: 0.8rem;
             font-weight: 500;
@@ -60,6 +65,7 @@
             letter-spacing: 0.05em;
             margin-bottom: 10px;
         }
+
         #header-panel p {
             font-size: 0.82rem;
             line-height: 1.4;
@@ -79,6 +85,7 @@
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
             pointer-events: auto;
         }
+
         #legend-panel h3 {
             font-size: 0.75rem;
             font-weight: 700;
@@ -87,11 +94,13 @@
             color: #94a3b8;
             margin-bottom: 10px;
         }
+
         .legend-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 6px 16px;
         }
+
         .legend-item {
             display: flex;
             align-items: center;
@@ -99,6 +108,7 @@
             font-size: 0.78rem;
             color: #e2e8f0;
         }
+
         .color-dot {
             width: 12px;
             height: 12px;
@@ -140,6 +150,7 @@
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
         }
+
         .lil-gui .title {
             font-weight: 700 !important;
             letter-spacing: 0.03em !important;
@@ -164,6 +175,7 @@
             border-radius: 30px;
             border: 1px solid rgba(56, 189, 248, 0.3);
         }
+
         .spinner {
             width: 18px;
             height: 18px;
@@ -172,8 +184,11 @@
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
+
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 
@@ -192,14 +207,32 @@
             opacity: 0;
             transition: opacity 0.2s;
         }
-        #crosshair::before, #crosshair::after {
+
+        #crosshair::before,
+        #crosshair::after {
             content: '';
             position: absolute;
             background: rgba(226, 232, 240, 0.85);
         }
-        #crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
-        #crosshair::after { left: 0; top: 6px; width: 14px; height: 2px; }
-        body.flying #crosshair { opacity: 1; }
+
+        #crosshair::before {
+            left: 6px;
+            top: 0;
+            width: 2px;
+            height: 14px;
+        }
+
+        #crosshair::after {
+            left: 0;
+            top: 6px;
+            width: 14px;
+            height: 2px;
+        }
+
+        body.flying #crosshair {
+            opacity: 1;
+        }
+
         #fly-hint {
             position: absolute;
             bottom: 80px;
@@ -215,38 +248,69 @@
             pointer-events: none;
             transition: opacity 0.25s;
         }
-        body.flying #fly-hint { opacity: 0; }
+
+        body.flying #fly-hint {
+            opacity: 0;
+        }
     </style>
 </head>
 <body>
 
+    <!-- Canvas WebGL (Three.js inyecta el canvas aquí) -->
     <div id="webgl-container"></div>
+    <!-- Retícula central visible solo en modo vuelo (pointer lock) -->
     <div id="crosshair"></div>
     <div id="fly-hint">Click en el terreno · FPS fly: WASD · Space/Ctrl · Shift sprint · Esc soltar</div>
 
+    <!-- Panel superior: título y descripción del simulador -->
     <div id="header-panel">
         <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                </path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
             Generación Procedural 3D
         </h1>
         <h2>Simulación 1 &bull; Chunks + Biomas</h2>
-        <p>Mundo infinito por <b>chunks</b>. Cámara <b>FPS fly / god mode</b>: mouse look + WASD + Space/Ctrl. Ruido seamless, biomas y objetos por chunk.</p>
+        <p>Mundo infinito por <b>chunks</b>. Cámara <b>FPS fly / god mode</b>: mouse look + WASD + Space/Ctrl. Ruido
+            seamless, biomas y objetos por chunk.</p>
     </div>
 
+    <!-- Leyenda de colores por bioma -->
     <div id="legend-panel">
         <h3>Biomas Detectados</h3>
         <div class="legend-grid">
-            <div class="legend-item"><div class="color-dot" style="background:#1d4ed8;"></div> Océano / Agua</div>
-            <div class="legend-item"><div class="color-dot" style="background:#eab308;"></div> Playa / Arena</div>
-            <div class="legend-item"><div class="color-dot" style="background:#84cc16;"></div> Pastizal / Pradera</div>
-            <div class="legend-item"><div class="color-dot" style="background:#15803d;"></div> Bosque denso</div>
-            <div class="legend-item"><div class="color-dot" style="background:#065f46;"></div> Pantano</div>
-            <div class="legend-item"><div class="color-dot" style="background:#d97706;"></div> Desierto</div>
-            <div class="legend-item"><div class="color-dot" style="background:#78716c;"></div> Roca / Montaña</div>
-            <div class="legend-item"><div class="color-dot" style="background:#f8fafc;"></div> Nieve / Glaciar</div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#1d4ed8;"></div> Océano / Agua
+            </div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#eab308;"></div> Playa / Arena
+            </div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#84cc16;"></div> Pastizal / Pradera
+            </div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#15803d;"></div> Bosque denso
+            </div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#065f46;"></div> Pantano
+            </div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#d97706;"></div> Desierto
+            </div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#78716c;"></div> Roca / Montaña
+            </div>
+            <div class="legend-item">
+                <div class="color-dot" style="background:#f8fafc;"></div> Nieve / Glaciar
+            </div>
         </div>
     </div>
 
+    <!-- Contadores en tiempo real (chunk, vértices, objetos) -->
     <div id="stats-panel">
         <div>Chunk: <span id="stat-chunk">0, 0</span></div>
         <div>En memoria: <span id="stat-loaded">0</span></div>
@@ -254,7 +318,6 @@
         <div>Árboles: <span id="stat-trees">0</span></div>
         <div>Cactus: <span id="stat-cacti">0</span></div>
         <div>Rocas: <span id="stat-rocks">0</span></div>
-        <div>Ríos: <span id="stat-rivers">0</span></div>
     </div>
 
     <div id="loader" style="opacity: 0;">
@@ -263,887 +326,933 @@
     </div>
 
     <script>
-        /* =========================================================================
-           1. PSEUDO-RANDOM NUMBER GENERATOR (PRNG) & HASHING FUNCTIONS
-           ========================================================================= */
+        /* =============================================================================
+           SIMULACIÓN DE TERRENO 3D PROCEDURAL
+           -----------------------------------------------------------------------------
+           Arquitectura general:
+             1. PRNG + ruido Simplex (altura, temperatura, humedad)
+             2. Parámetros ajustables desde lil-gui
+             3. Escena Three.js (cámara FPS, luces, agua)
+             4. Ruido para terreno + GestorChunks (generación y carga de chunks)
+             5. Panel de controles y bucle de animación
+           ============================================================================= */
 
-        function createPRNG(seed) {
-            let s = seed >>> 0;
-            return function() {
-                s = (s + 0x6D2B79F5) | 0;
-                let t = Math.imul(s ^ (s >>> 15), 1 | s);
-                t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        /* =============================================================================
+           1. GENERADOR PSEUDOALEATORIO (PRNG) Y FUNCIONES DE HASH
+           -----------------------------------------------------------------------------
+           crearGeneradorPseudoaleatorio: números reproducibles desde una semilla (mismo seed = mismo mundo).
+           hashCoordenadas2D: valor pseudoaleatorio único para cada par (x, z) sin guardar tabla.
+           RuidoSimplexConSemilla: ruido continuo y suave; base del terreno procedural.
+           ============================================================================= */
+
+        /**
+         * Crea generador pseudoaleatorio determinista (Mulberry32 simplificado).
+         * @param {number} semilla - Entero que fija la secuencia aleatoria.
+         * @returns {function} Función que devuelve números en [0, 1).
+         */
+        function crearGeneradorPseudoaleatorio(semilla) {
+            let estadoInterno = semilla >>> 0; // unsigned 32-bit
+            return function () {
+                estadoInterno = (estadoInterno + 0x6D2B79F5) | 0;
+                let mezcla = Math.imul(estadoInterno ^ (estadoInterno >>> 15), 1 | estadoInterno);
+                mezcla = (mezcla + Math.imul(mezcla ^ (mezcla >>> 7), 61 | mezcla)) ^ mezcla;
+                return ((mezcla ^ (mezcla >>> 14)) >>> 0) / 4294967296;
             };
         }
 
-        function hash2D(x, z, seed = 0) {
-            let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(z, 668265263);
-            h = (h ^ (h >>> 13)) * 1274126177;
-            return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+        /**
+         * Hash 2D → [0, 1). Misma (x, z, semilla) siempre da mismo valor.
+         * Usado para colocar árboles/rocas sin repetir patrón del ruido de altura.
+         */
+        function hashCoordenadas2D(coordenadaX, coordenadaZ, semilla = 0) {
+            let hash = semilla ^ Math.imul(coordenadaX, 374761393) ^ Math.imul(coordenadaZ, 668265263);
+            hash = (hash ^ (hash >>> 13)) * 1274126177;
+            return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
         }
 
-        class SeededSimplexNoise {
-            constructor(seed = 1337) {
-                this.reseed(seed);
+        /**
+         * Ruido Simplex 2D con semilla fija.
+         * noise2D: una capa de ruido. fbm: varias capas (fractal brownian motion).
+         */
+        class RuidoSimplexConSemilla {
+            constructor(semilla = 1337) {
+                this.reiniciarSemilla(semilla);
             }
 
-            reseed(seed) {
-                const rng = createPRNG(seed);
-                const p = new Uint8Array(256);
-                for (let i = 0; i < 256; i++) p[i] = i;
+            /** Baraja tabla de permutación según semilla (patrón único pero reproducible). */
+            reiniciarSemilla(semilla) {
+                const generador = crearGeneradorPseudoaleatorio(semilla);
+                const permutacionBase = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) permutacionBase[i] = i;
+                // Fisher-Yates shuffle con PRNG
                 for (let i = 255; i > 0; i--) {
-                    const r = Math.floor(rng() * (i + 1));
-                    const temp = p[i];
-                    p[i] = p[r];
-                    p[r] = temp;
+                    const indiceAleatorio = Math.floor(generador() * (i + 1));
+                    const temporal = permutacionBase[i];
+                    permutacionBase[i] = permutacionBase[indiceAleatorio];
+                    permutacionBase[indiceAleatorio] = temporal;
                 }
-                this.perm = new Uint8Array(512);
-                this.permMod12 = new Uint8Array(512);
+                // Tablas extendidas a 512 para evitar overflow en índices
+                this.tablaPermutacion = new Uint8Array(512);
+                this.permutacionMod12 = new Uint8Array(512);
                 for (let i = 0; i < 512; i++) {
-                    this.perm[i] = p[i & 255];
-                    this.permMod12[i] = this.perm[i] % 12;
+                    this.tablaPermutacion[i] = permutacionBase[i & 255];
+                    this.permutacionMod12[i] = this.tablaPermutacion[i] % 12;
                 }
             }
 
-            noise2D(xin, yin) {
-                const grad3 = [
-                    [1,1],[ -1,1],[1,-1],[ -1,-1],
-                    [1,0],[ -1,0],[0,1],[0,-1],
-                    [0,1],[0,-1],[1,0],[ -1,0]
+            /** Ruido Simplex en un punto (coordenadaX, coordenadaY). Resultado ~[0, 1]. */
+            ruido2D(coordenadaX, coordenadaY) {
+                const gradientes = [
+                    [1, 1], [-1, 1], [1, -1], [-1, -1],
+                    [1, 0], [-1, 0], [0, 1], [0, -1],
+                    [0, 1], [0, -1], [1, 0], [-1, 0]
                 ];
-                let n0, n1, n2;
-                const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
-                const s = (xin + yin) * F2;
-                const i = Math.floor(xin + s);
-                const j = Math.floor(yin + s);
-                const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
-                const t = (i + j) * G2;
-                const X0 = i - t;
-                const Y0 = j - t;
-                const x0 = xin - X0;
-                const y0 = yin - Y0;
+                let contribucion0, contribucion1, contribucion2;
+                const factorSkew = 0.5 * (Math.sqrt(3.0) - 1.0);
+                const skew = (coordenadaX + coordenadaY) * factorSkew;
+                const indiceCeldaI = Math.floor(coordenadaX + skew);
+                const indiceCeldaJ = Math.floor(coordenadaY + skew);
+                const factorUnskew = (3.0 - Math.sqrt(3.0)) / 6.0;
+                const tUnskew = (indiceCeldaI + indiceCeldaJ) * factorUnskew;
+                const origenCeldaX = indiceCeldaI - tUnskew;
+                const origenCeldaY = indiceCeldaJ - tUnskew;
+                const distanciaLocalX = coordenadaX - origenCeldaX;
+                const distanciaLocalY = coordenadaY - origenCeldaY;
 
-                let i1, j1;
-                if (x0 > y0) { i1 = 1; j1 = 0; } else { i1 = 0; j1 = 1; }
+                let indiceVecinoI, indiceVecinoJ;
+                if (distanciaLocalX > distanciaLocalY) { indiceVecinoI = 1; indiceVecinoJ = 0; }
+                else { indiceVecinoI = 0; indiceVecinoJ = 1; }
 
-                const x1 = x0 - i1 + G2;
-                const y1 = y0 - j1 + G2;
-                const x2 = x0 - 1.0 + 2.0 * G2;
-                const y2 = y0 - 1.0 + 2.0 * G2;
+                const distanciaEsquina1X = distanciaLocalX - indiceVecinoI + factorUnskew;
+                const distanciaEsquina1Y = distanciaLocalY - indiceVecinoJ + factorUnskew;
+                const distanciaEsquina2X = distanciaLocalX - 1.0 + 2.0 * factorUnskew;
+                const distanciaEsquina2Y = distanciaLocalY - 1.0 + 2.0 * factorUnskew;
 
-                const ii = i & 255;
-                const jj = j & 255;
+                const indiceI = indiceCeldaI & 255;
+                const indiceJ = indiceCeldaJ & 255;
 
-                let t0 = 0.5 - x0 * x0 - y0 * y0;
-                if (t0 < 0) n0 = 0.0;
+                let peso0 = 0.5 - distanciaLocalX * distanciaLocalX - distanciaLocalY * distanciaLocalY;
+                if (peso0 < 0) contribucion0 = 0.0;
                 else {
-                    t0 *= t0;
-                    const gi0 = this.permMod12[ii + this.perm[jj]];
-                    n0 = t0 * t0 * (grad3[gi0][0] * x0 + grad3[gi0][1] * y0);
+                    peso0 *= peso0;
+                    const indiceGradiente0 = this.permutacionMod12[indiceI + this.tablaPermutacion[indiceJ]];
+                    contribucion0 = peso0 * peso0 * (gradientes[indiceGradiente0][0] * distanciaLocalX + gradientes[indiceGradiente0][1] * distanciaLocalY);
                 }
 
-                let t1 = 0.5 - x1 * x1 - y1 * y1;
-                if (t1 < 0) n1 = 0.0;
+                let peso1 = 0.5 - distanciaEsquina1X * distanciaEsquina1X - distanciaEsquina1Y * distanciaEsquina1Y;
+                if (peso1 < 0) contribucion1 = 0.0;
                 else {
-                    t1 *= t1;
-                    const gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]];
-                    n1 = t1 * t1 * (grad3[gi1][0] * x1 + grad3[gi1][1] * y1);
+                    peso1 *= peso1;
+                    const indiceGradiente1 = this.permutacionMod12[indiceI + indiceVecinoI + this.tablaPermutacion[indiceJ + indiceVecinoJ]];
+                    contribucion1 = peso1 * peso1 * (gradientes[indiceGradiente1][0] * distanciaEsquina1X + gradientes[indiceGradiente1][1] * distanciaEsquina1Y);
                 }
 
-                let t2 = 0.5 - x2 * x2 - y2 * y2;
-                if (t2 < 0) n2 = 0.0;
+                let peso2 = 0.5 - distanciaEsquina2X * distanciaEsquina2X - distanciaEsquina2Y * distanciaEsquina2Y;
+                if (peso2 < 0) contribucion2 = 0.0;
                 else {
-                    t2 *= t2;
-                    const gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
-                    n2 = t2 * t2 * (grad3[gi2][0] * x2 + grad3[gi2][1] * y2);
+                    peso2 *= peso2;
+                    const indiceGradiente2 = this.permutacionMod12[indiceI + 1 + this.tablaPermutacion[indiceJ + 1]];
+                    contribucion2 = peso2 * peso2 * (gradientes[indiceGradiente2][0] * distanciaEsquina2X + gradientes[indiceGradiente2][1] * distanciaEsquina2Y);
                 }
 
-                return 70.0 * (n0 + n1 + n2) * 0.5 + 0.5;
+                return 70.0 * (contribucion0 + contribucion1 + contribucion2) * 0.5 + 0.5;
             }
 
-            fbm(x, y, octaves = 4, persistence = 0.5, lacunarity = 2.0, scale = 0.01) {
-                let total = 0;
-                let frequency = scale;
-                let amplitude = 1;
-                let maxValue = 0;
-                for (let i = 0; i < octaves; i++) {
-                    total += this.noise2D(x * frequency, y * frequency) * amplitude;
-                    maxValue += amplitude;
-                    amplitude *= persistence;
-                    frequency *= lacunarity;
+            /**
+             * Fractal Brownian Motion: suma varias octavas de ruido.
+             * octavas: más octavas = más detalle fino.
+             * persistencia: cuánto aporta cada octava siguiente (gain).
+             * lacunaridad: multiplicador de frecuencia por octava.
+             * escala: zoom del ruido (menor = montañas más grandes).
+             */
+            ruidoFractal(coordenadaX, coordenadaY, octavas = 4, persistencia = 0.5, lacunaridad = 2.0, escala = 0.01) {
+                let sumaTotal = 0;
+                let frecuenciaActual = escala;
+                let amplitudActual = 1;
+                let amplitudMaxima = 0;
+                for (let octava = 0; octava < octavas; octava++) {
+                    sumaTotal += this.ruido2D(coordenadaX * frecuenciaActual, coordenadaY * frecuenciaActual) * amplitudActual;
+                    amplitudMaxima += amplitudActual;
+                    amplitudActual *= persistencia;
+                    frecuenciaActual *= lacunaridad;
                 }
-                return total / maxValue;
+                return sumaTotal / amplitudMaxima; // normalizar a ~[0, 1]
             }
         }
 
-        /* =========================================================================
-           2. GLOBAL PARAMETERS & SIMULATION CONFIG
-           ========================================================================= */
+        /* =============================================================================
+           2. PARÁMETROS GLOBALES Y CONFIGURACIÓN DE LA SIMULACIÓN
+           -----------------------------------------------------------------------------
+           Objeto enlazado a lil-gui: cada propiedad controla una parte del mundo.
+           Cambiar seed regenera todo; chunkSize/gridSize/viewRadius definen el mundo infinito.
+           ============================================================================= */
 
-        const params = {
-            seed: 678,
-            chunkSize: 120,
-            gridSize: 80,
-            viewRadius: 1,
-            heightScale: 28,
-            flySpeed: 1.8,
-            sprintMultiplier: 3.0,
-            lookSensitivity: 0.0022,
+        const parametrosSimulacion = {
+            // --- Semilla y chunks ---
+            seed: 678,              // Semilla principal: mismo número = mismo mapa
+            chunkSize: 120,         // Tamaño en unidades mundo de cada chunk (ancho/largo)
+            gridSize: 80,           // Vértices por eje en la malla del chunk (resolución)
+            viewRadius: 1,          // Radio de chunks cargados (1 = grilla 3×3 alrededor de cámara)
+            heightScale: 28,        // Multiplicador de altura tras el ruido
+            flySpeed: 1.8,          // Velocidad base cámara FPS
+            sprintMultiplier: 3.0,  // Multiplicador con Shift
+            lookSensitivity: 0.0022,// Sensibilidad mouse al mirar
 
-            octaves: 5,
-            persistence: 0.48,
-            lacunarity: 2.1,
-            noiseScale: 0.008,
-            exponent: 1.8,
+            // --- Ruido fBm para altura ---
+            octaves: 5,             // Capas de detalle del ruido
+            persistence: 0.48,      // Gain: peso de cada octava siguiente
+            lacunarity: 2.1,        // Frecuencia × por octava
+            noiseScale: 0.008,      // Zoom del ruido (menor = terreno más suave/grande)
+            exponent: 1.8,          // Curva de altura: >1 acentúa picos
 
-            waterLevel: 4.5,
-            tempScale: 0.005,
-            humidityScale: 0.006,
-            snowLevel: 18.0,
-            desertTempThreshold: 0.62,
-            desertHumidityThreshold: 0.38,
+            // --- Clima y biomas ---
+            waterLevel: 4.5,        // Altura Y del plano de agua
+            tempScale: 0.005,       // Escala espacial del mapa de temperatura
+            humidityScale: 0.006,   // Escala espacial del mapa de humedad
+            snowLevel: 18.0,         // Altura mínima para nieve
+            desertTempThreshold: 0.62,      // Temp alta → candidato desierto
+            desertHumidityThreshold: 0.38,  // Humedad baja → candidato desierto
 
+            // --- Densidad de objetos decorativos ---
             treeDensity: 0.35,
             cactusDensity: 0.25,
             rockDensity: 0.20,
 
-            enableRivers: true,
-            riverCount: 2,
-            riverMinStartHeight: 14.0,
-            riverCarveDepth: 1.2,
-
-            animateWater: true,
-            viewMode: 'Biomes',
+            // --- Visualización ---
+            viewMode: 'Biomes',     // Biomes | Heightmap | Temperature | Humidity | Slope
             wireframe: false,
             flatShading: true,
             showChunkBorders: true,
 
-            regenerate: () => rebuildWorld(),
-            resetCamera: () => resetCameraPosition()
+            regenerate: () => reconstruirMundo(),
+            resetCamera: () => reiniciarPosicionCamara()
         };
 
-        const presets = {
+        /** Valores predefinidos para el panel GUI (combinaciones de parámetros temáticos). */
+        const presetsDeMapa = {
             'Archipielago / Islas': { seed: 1024, heightScale: 22, waterLevel: 7.0, octaves: 4, noiseScale: 0.012 },
             'Cordillera Alpina': { seed: 888, heightScale: 45, waterLevel: 2.0, octaves: 6, exponent: 2.2, snowLevel: 16 },
             'Cañón Desértico': { seed: 333, desertTempThreshold: 0.2, desertHumidityThreshold: 0.8, heightScale: 30 },
             'Bosque Tropical': { seed: 555, humidityScale: 0.01, desertTempThreshold: 0.9, treeDensity: 0.7 }
         };
 
-        /* =========================================================================
-           3. THREE.JS SCENE SETUP
-           ========================================================================= */
+        /* =============================================================================
+           3. ESCENA THREE.JS — CÁMARA FPS, LUCES, AGUA Y CONTROLES
+           ============================================================================= */
 
-        const container = document.getElementById('webgl-container');
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0b0f19);
-        scene.fog = new THREE.FogExp2(0x0b0f19, 0.0018);
+        const contenedorWebGL = document.getElementById('webgl-container');
+        const escena = new THREE.Scene();
+        escena.background = new THREE.Color(0x0b0f19);
+        escena.fog = new THREE.FogExp2(0x0b0f19, 0.0018); // Niebla exponencial en el horizonte
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const camara = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
 
-        // FPS fly / god mode — euler YXZ (yaw, pitch)
-        const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
-        const PI_2 = Math.PI / 2;
-        let pointerLocked = false;
+        // Rotación FPS: Euler YXZ (yaw horizontal, pitch vertical)
+        const angulosCamara = new THREE.Euler(0, 0, 0, 'YXZ');
+        const MITAD_PI = Math.PI / 2;
+        let punteroBloqueado = false;
 
-        function applyLook() {
-            camera.quaternion.setFromEuler(lookEuler);
+        /** Convierte yaw/pitch en quaternion de la cámara. */
+        function aplicarRotacionCamara() {
+            camara.quaternion.setFromEuler(angulosCamara);
         }
 
-        function resetCameraPosition() {
-            camera.position.set(40, 55, 90);
-            lookEuler.set(-0.45, -0.35, 0);
-            applyLook();
+        /** Posición y mirada inicial. */
+        function reiniciarPosicionCamara() {
+            camara.position.set(40, 55, 90);
+            angulosCamara.set(-0.45, -0.35, 0);
+            aplicarRotacionCamara();
         }
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        container.appendChild(renderer.domElement);
-        resetCameraPosition();
+        const renderizador = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderizador.setSize(window.innerWidth, window.innerHeight);
+        renderizador.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderizador.shadowMap.enabled = true;
+        renderizador.shadowMap.type = THREE.PCFSoftShadowMap;
+        contenedorWebGL.appendChild(renderizador.domElement);
+        reiniciarPosicionCamara();
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
-        scene.add(ambientLight);
+        const luzAmbiente = new THREE.AmbientLight(0xffffff, 0.45);
+        escena.add(luzAmbiente);
 
-        const sunLight = new THREE.DirectionalLight(0xfffbeb, 0.9);
-        sunLight.position.set(120, 150, 80);
-        sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 2048;
-        sunLight.shadow.mapSize.height = 2048;
-        sunLight.shadow.camera.near = 10;
-        sunLight.shadow.camera.far = 600;
-        const d = 220;
-        sunLight.shadow.camera.left = -d;
-        sunLight.shadow.camera.right = d;
-        sunLight.shadow.camera.top = d;
-        sunLight.shadow.camera.bottom = -d;
-        scene.add(sunLight);
+        const luzSolar = new THREE.DirectionalLight(0xfffbeb, 0.9);
+        luzSolar.position.set(120, 150, 80);
+        luzSolar.castShadow = true;
+        luzSolar.shadow.mapSize.width = 2048;
+        luzSolar.shadow.mapSize.height = 2048;
+        luzSolar.shadow.camera.near = 10;
+        luzSolar.shadow.camera.far = 600;
+        const tamanoAreaSombras = 220;
+        luzSolar.shadow.camera.left = -tamanoAreaSombras;
+        luzSolar.shadow.camera.right = tamanoAreaSombras;
+        luzSolar.shadow.camera.top = tamanoAreaSombras;
+        luzSolar.shadow.camera.bottom = -tamanoAreaSombras;
+        escena.add(luzSolar);
 
-        let waterMesh;
-        function createWaterPlane() {
-            if (waterMesh) {
-                scene.remove(waterMesh);
-                waterMesh.geometry.dispose();
-                waterMesh.material.dispose();
+        /** Crea o recrea el plano de agua según tamaño de vista. */
+        let mallaAgua;
+        function crearPlanoAgua() {
+            if (mallaAgua) {
+                escena.remove(mallaAgua);
+                mallaAgua.geometry.dispose();
+                mallaAgua.material.dispose();
             }
-            const span = params.chunkSize * (params.viewRadius * 2 + 1) * 1.4;
-            const waterGeo = new THREE.PlaneGeometry(span, span);
-            const waterMat = new THREE.MeshStandardMaterial({
+            const extensionAgua = parametrosSimulacion.chunkSize * (parametrosSimulacion.viewRadius * 2 + 1) * 1.4;
+            const geometriaAgua = new THREE.PlaneGeometry(extensionAgua, extensionAgua);
+            const materialAgua = new THREE.MeshStandardMaterial({
                 color: 0x1d4ed8,
                 roughness: 0.1,
                 metalness: 0.8,
                 transparent: true,
                 opacity: 0.75
             });
-            waterMesh = new THREE.Mesh(waterGeo, waterMat);
-            waterMesh.rotation.x = -Math.PI / 2;
-            waterMesh.position.y = params.waterLevel;
-            scene.add(waterMesh);
+            mallaAgua = new THREE.Mesh(geometriaAgua, materialAgua);
+            mallaAgua.rotation.x = -Math.PI / 2;
+            mallaAgua.position.y = parametrosSimulacion.waterLevel;
+            escena.add(mallaAgua);
         }
 
-        const keys = {};
+        // Mapa tecla presionada (KeyboardEvent.code → boolean)
+        const teclasPresionadas = {};
         window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
+            teclasPresionadas[e.code] = true;
             // Evita scroll / shortcuts del browser en fly
-            if (pointerLocked && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+            if (punteroBloqueado && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
                 e.preventDefault();
             }
         });
-        window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+        window.addEventListener('keyup', (e) => { teclasPresionadas[e.code] = false; });
 
-        renderer.domElement.addEventListener('click', () => {
-            if (!pointerLocked) renderer.domElement.requestPointerLock();
+        renderizador.domElement.addEventListener('click', () => {
+            if (!punteroBloqueado) renderizador.domElement.requestPointerLock();
         });
 
         document.addEventListener('pointerlockchange', () => {
-            pointerLocked = document.pointerLockElement === renderer.domElement;
-            document.body.classList.toggle('flying', pointerLocked);
+            punteroBloqueado = document.pointerLockElement === renderizador.domElement;
+            document.body.classList.toggle('flying', punteroBloqueado);
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (!pointerLocked) return;
-            lookEuler.y -= e.movementX * params.lookSensitivity;
-            lookEuler.x -= e.movementY * params.lookSensitivity;
-            lookEuler.x = Math.max(-PI_2 + 0.01, Math.min(PI_2 - 0.01, lookEuler.x));
-            applyLook();
+            if (!punteroBloqueado) return;
+            angulosCamara.y -= e.movementX * parametrosSimulacion.lookSensitivity;
+            angulosCamara.x -= e.movementY * parametrosSimulacion.lookSensitivity;
+            angulosCamara.x = Math.max(-MITAD_PI + 0.01, Math.min(MITAD_PI - 0.01, angulosCamara.x));
+            aplicarRotacionCamara();
         });
 
-        const _forward = new THREE.Vector3();
-        const _right = new THREE.Vector3();
-        const _worldUp = new THREE.Vector3(0, 1, 0);
-        const _move = new THREE.Vector3();
+        // Vectores reutilizados cada frame (evita allocaciones)
+        const _vectorAdelante = new THREE.Vector3();
+        const _vectorDerecha = new THREE.Vector3();
+        const _vectorArriba = new THREE.Vector3(0, 1, 0);
+        const _vectorMovimiento = new THREE.Vector3();
 
-        function updateFlyCamera() {
-            const sprint = keys['ShiftLeft'] || keys['ShiftRight'];
-            const speed = params.flySpeed * (sprint ? params.sprintMultiplier : 1);
+        /** WASD + Space/Ctrl; Shift multiplica velocidad. */
+        function actualizarCamaraVuelo() {
+            const estaSprintando = teclasPresionadas['ShiftLeft'] || teclasPresionadas['ShiftRight'];
+            const velocidad = parametrosSimulacion.flySpeed * (estaSprintando ? parametrosSimulacion.sprintMultiplier : 1);
 
-            camera.getWorldDirection(_forward);
-            _right.crossVectors(_forward, _worldUp).normalize();
+            camara.getWorldDirection(_vectorAdelante);
+            _vectorDerecha.crossVectors(_vectorAdelante, _vectorArriba).normalize();
 
-            _move.set(0, 0, 0);
-            if (keys['KeyW'] || keys['ArrowUp'])    _move.add(_forward);
-            if (keys['KeyS'] || keys['ArrowDown'])  _move.sub(_forward);
-            if (keys['KeyD'] || keys['ArrowRight']) _move.add(_right);
-            if (keys['KeyA'] || keys['ArrowLeft'])  _move.sub(_right);
+            _vectorMovimiento.set(0, 0, 0);
+            if (teclasPresionadas['KeyW'] || teclasPresionadas['ArrowUp']) _vectorMovimiento.add(_vectorAdelante);
+            if (teclasPresionadas['KeyS'] || teclasPresionadas['ArrowDown']) _vectorMovimiento.sub(_vectorAdelante);
+            if (teclasPresionadas['KeyD'] || teclasPresionadas['ArrowRight']) _vectorMovimiento.add(_vectorDerecha);
+            if (teclasPresionadas['KeyA'] || teclasPresionadas['ArrowLeft']) _vectorMovimiento.sub(_vectorDerecha);
             // Vertical god-mode (no depende del pitch)
-            if (keys['Space'])                      _move.y += 1;
-            if (keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']) _move.y -= 1;
+            if (teclasPresionadas['Space']) _vectorMovimiento.y += 1;
+            if (teclasPresionadas['ControlLeft'] || teclasPresionadas['ControlRight'] || teclasPresionadas['KeyC']) _vectorMovimiento.y -= 1;
 
-            if (_move.lengthSq() > 0) {
+            if (_vectorMovimiento.lengthSq() > 0) {
                 // Horizontal from WASD stays on look dir (incluye pitch); Space/Ctrl ya en Y
-                _move.normalize().multiplyScalar(speed);
-                camera.position.add(_move);
+                _vectorMovimiento.normalize().multiplyScalar(velocidad);
+                camara.position.add(_vectorMovimiento);
             }
         }
 
-        /* =========================================================================
-           4. PROCEDURAL TERRAIN — PER CHUNK
-           ========================================================================= */
+        /* =============================================================================
+           4. RUIDO PARA TERRENO (usado por GestorChunks)
+           ============================================================================= */
 
-        const noiseHeight = new SeededSimplexNoise();
-        const noiseTemp = new SeededSimplexNoise();
-        const noiseHum = new SeededSimplexNoise();
+        const ruidoAltura = new RuidoSimplexConSemilla();
+        const ruidoTemperatura = new RuidoSimplexConSemilla();
+        const ruidoHumedad = new RuidoSimplexConSemilla();
 
-        const BIOME_COLORS = {
-            ocean: new THREE.Color(0x1d4ed8),
-            beach: new THREE.Color(0xeab308),
-            grass: new THREE.Color(0x84cc16),
-            forest: new THREE.Color(0x15803d),
-            swamp: new THREE.Color(0x065f46),
-            desert: new THREE.Color(0xd97706),
-            rock: new THREE.Color(0x78716c),
-            snow: new THREE.Color(0xf8fafc),
-            river: new THREE.Color(0x38bdf8)
+        /* =============================================================================
+           5. GESTOR DE CHUNKS — TERRENO PROCEDURAL + MUNDO INFINITO
+           -----------------------------------------------------------------------------
+           Todo lo del terreno procedural vive aquí; el gestor decide cuándo cargar/descargar.
+           ============================================================================= */
+
+        /** Índice numérico de bioma guardado en Uint8Array por vértice. */
+        const INDICE_BIOMA = {
+            OCEANO: 0,
+            PLAYA: 1,
+            PASTIZAL: 2,
+            BOSQUE: 3,
+            PANTANO: 4,
+            DESIERTO: 5,
+            ROCA: 6,
+            NIEVE: 7
         };
 
-        function disposeObject3D(obj) {
-            obj.traverse((child) => {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) {
-                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
-                    else child.material.dispose();
-                }
-            });
-        }
+        /** Colores RGB para pintar cada bioma (modo visualización Biomes). */
+        const COLORES_BIOMA = {
+            oceano: new THREE.Color(0x1d4ed8),
+            playa: new THREE.Color(0xeab308),
+            pastizal: new THREE.Color(0x84cc16),
+            bosque: new THREE.Color(0x15803d),
+            pantano: new THREE.Color(0x065f46),
+            desierto: new THREE.Color(0xd97706),
+            roca: new THREE.Color(0x78716c),
+            nieve: new THREE.Color(0xf8fafc)
+        };
 
-        function buildObjectInstances(count, posAttr, heights, slopes, biomes, humidities) {
-            const treeTransforms = [];
-            const cactusTransforms = [];
-            const rockTransforms = [];
-            const dummy = new THREE.Object3D();
+        class GestorChunks {
+            constructor() {
+                this.chunksCargados = new Map(); // clave "cx,cz" → datos del chunk
+            }
 
-            for (let i = 0; i < count; i++) {
-                const h = heights[i];
-                const slope = slopes[i];
-                const biome = biomes[i];
-                const humidity = humidities[i];
-
-                if (h <= params.waterLevel + 0.8) continue;
-
-                const x = posAttr.getX(i);
-                const z = posAttr.getZ(i);
-
-                const gx = Math.round(x * 10);
-                const gz = Math.round(z * 10);
-
-                const rProb = hash2D(gx, gz, params.seed + 1000);
-                const rRot = hash2D(gx, gz, params.seed + 2000);
-                const rScale = hash2D(gx, gz, params.seed + 3000);
-                const rOffX = hash2D(gx, gz, params.seed + 4000);
-                const rOffZ = hash2D(gx, gz, params.seed + 5000);
-
-                if ((biome === 3 || biome === 2 || biome === 4) && slope < 0.25) {
-                    const biomeFactor = biome === 3 ? 1.0 : (biome === 4 ? 0.6 : 0.25);
-                    const treeChance = humidity * (1.0 - slope) * biomeFactor * params.treeDensity * 0.15;
-
-                    if (rProb < treeChance) {
-                        dummy.position.set(x + (rOffX - 0.5) * 1.2, h, z + (rOffZ - 0.5) * 1.2);
-                        const s = 0.6 + rScale * 0.8;
-                        dummy.scale.set(s, s * (0.8 + rRot * 0.5), s);
-                        dummy.rotation.set(0, rRot * Math.PI * 2, 0);
-                        dummy.updateMatrix();
-                        treeTransforms.push(dummy.matrix.clone());
+            /** Libera geometrías y materiales (evita fugas de memoria al descargar chunks). */
+            liberarRecursos3D(objeto) {
+                objeto.traverse((hijo) => {
+                    if (hijo.geometry) hijo.geometry.dispose();
+                    if (hijo.material) {
+                        if (Array.isArray(hijo.material)) hijo.material.forEach(m => m.dispose());
+                        else hijo.material.dispose();
                     }
-                }
-
-                if (biome === 5 && slope < 0.2) {
-                    const cactusChance = (1.0 - humidity) * (1.0 - slope) * params.cactusDensity * 0.12;
-                    if (rProb < cactusChance) {
-                        dummy.position.set(x + (rOffX - 0.5) * 1.5, h, z + (rOffZ - 0.5) * 1.5);
-                        const s = 0.5 + rScale * 0.7;
-                        dummy.scale.set(s, s, s);
-                        dummy.rotation.set(0, rRot * Math.PI * 2, 0);
-                        dummy.updateMatrix();
-                        cactusTransforms.push(dummy.matrix.clone());
-                    }
-                }
-
-                if ((slope > 0.28 || biome === 6 || biome === 5) && h > params.waterLevel + 1.0) {
-                    const rockChance = slope * params.rockDensity * 0.18;
-                    if (rProb < rockChance) {
-                        dummy.position.set(x, h - 0.2, z);
-                        const s = 0.4 + rScale * 1.2;
-                        dummy.scale.set(s, s * 0.7, s);
-                        dummy.rotation.set(rRot * Math.PI, rOffX * Math.PI, rOffZ * Math.PI);
-                        dummy.updateMatrix();
-                        rockTransforms.push(dummy.matrix.clone());
-                    }
-                }
+                });
             }
 
-            const meshes = [];
-            if (treeTransforms.length > 0) {
-                const treeGeo = new THREE.ConeGeometry(1.2, 4.5, 5);
-                treeGeo.translate(0, 2.25, 0);
-                const treeMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.9, flatShading: true });
-                const instancedTrees = new THREE.InstancedMesh(treeGeo, treeMat, treeTransforms.length);
-                treeTransforms.forEach((mat, idx) => instancedTrees.setMatrixAt(idx, mat));
-                instancedTrees.castShadow = true;
-                instancedTrees.receiveShadow = true;
-                meshes.push(instancedTrees);
-            }
-
-            if (cactusTransforms.length > 0) {
-                const cactusGeo = new THREE.CylinderGeometry(0.3, 0.35, 2.8, 6);
-                cactusGeo.translate(0, 1.4, 0);
-                const cactusMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7, flatShading: true });
-                const instancedCacti = new THREE.InstancedMesh(cactusGeo, cactusMat, cactusTransforms.length);
-                cactusTransforms.forEach((mat, idx) => instancedCacti.setMatrixAt(idx, mat));
-                instancedCacti.castShadow = true;
-                meshes.push(instancedCacti);
-            }
-
-            if (rockTransforms.length > 0) {
-                const rockGeo = new THREE.DodecahedronGeometry(1.2, 1);
-                const rockMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95, flatShading: true });
-                const instancedRocks = new THREE.InstancedMesh(rockGeo, rockMat, rockTransforms.length);
-                rockTransforms.forEach((mat, idx) => instancedRocks.setMatrixAt(idx, mat));
-                instancedRocks.castShadow = true;
-                instancedRocks.receiveShadow = true;
-                meshes.push(instancedRocks);
-            }
-
-            return {
-                meshes,
-                trees: treeTransforms.length,
-                cacti: cactusTransforms.length,
-                rocks: rockTransforms.length
-            };
-        }
-
-        /** Genera un chunk de terreno en coords de chunk (cx, cz). Ruido en world-space → bordes seamless. */
-        function generateTerrainChunk(cx, cz) {
-            const N = params.gridSize;
-            const size = params.chunkSize;
-            const halfSize = size / 2;
-            const step = size / (N - 1);
-            const originX = cx * size;
-            const originZ = cz * size;
-
-            const group = new THREE.Group();
-            group.name = `chunk_${cx}_${cz}`;
-
-            const geometry = new THREE.PlaneGeometry(size, size, N - 1, N - 1);
-            geometry.rotateX(-Math.PI / 2);
-
-            const posAttr = geometry.attributes.position;
-            const count = posAttr.count;
-
-            // Local plane → world coords (ruido global)
-            for (let i = 0; i < count; i++) {
-                posAttr.setX(i, posAttr.getX(i) + originX + halfSize);
-                posAttr.setZ(i, posAttr.getZ(i) + originZ + halfSize);
-            }
-
-            const heights = new Float32Array(count);
-            const temperatures = new Float32Array(count);
-            const humidities = new Float32Array(count);
-            const slopes = new Float32Array(count);
-            const biomes = new Uint8Array(count);
-            const colors = new Float32Array(count * 3);
-
-            const riverPRNG = createPRNG(params.seed + 303 + cx * 73856093 + cz * 19349663);
-
-            for (let i = 0; i < count; i++) {
-                const x = posAttr.getX(i);
-                const z = posAttr.getZ(i);
-
-                let rawNoise = noiseHeight.fbm(
-                    x + 5000, z + 5000,
-                    params.octaves,
-                    params.persistence,
-                    params.lacunarity,
-                    params.noiseScale
-                );
-
-                let h = Math.pow(rawNoise, params.exponent) * params.heightScale;
-                heights[i] = h;
-                posAttr.setY(i, h);
-
-                let baseT = noiseTemp.fbm(x + 1000, z + 1000, 3, 0.5, 2.0, params.tempScale);
-                let altitudeCooling = (h / params.heightScale) * 0.45;
-                temperatures[i] = Math.max(0, Math.min(1, baseT - altitudeCooling));
-
-                let hum = noiseHum.fbm(x + 2000, z + 2000, 3, 0.5, 2.0, params.humidityScale);
-                humidities[i] = Math.max(0, Math.min(1, hum));
-            }
-
-            geometry.computeVertexNormals();
-            const normAttr = geometry.attributes.normal;
-
-            for (let i = 0; i < count; i++) {
-                slopes[i] = 1.0 - normAttr.getY(i);
-            }
-
-            const riverLinesGroup = new THREE.Group();
-            let activeRivers = 0;
-
-            if (params.enableRivers) {
-                const candidates = [];
-                for (let i = 0; i < count; i++) {
-                    if (heights[i] >= params.riverMinStartHeight) candidates.push(i);
-                }
-
-                for (let i = candidates.length - 1; i > 0; i--) {
-                    const j = Math.floor(riverPRNG() * (i + 1));
-                    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-                }
-
-                const numRivers = Math.min(params.riverCount, candidates.length);
-                for (let r = 0; r < numRivers; r++) {
-                    let currentIdx = candidates[r];
-                    const riverPath = [currentIdx];
-                    const visited = new Set([currentIdx]);
-
-                    for (let stepCount = 0; stepCount < 200; stepCount++) {
-                        const curX = Math.round((posAttr.getX(currentIdx) - originX) / step);
-                        const curZ = Math.round((posAttr.getZ(currentIdx) - originZ) / step);
-
-                        if (heights[currentIdx] <= params.waterLevel) break;
-
-                        let lowestIdx = -1;
-                        let lowestH = heights[currentIdx];
-
-                        for (let dx = -1; dx <= 1; dx++) {
-                            for (let dz = -1; dz <= 1; dz++) {
-                                if (dx === 0 && dz === 0) continue;
-                                const nx = curX + dx;
-                                const nz = curZ + dz;
-                                if (nx >= 0 && nx < N && nz >= 0 && nz < N) {
-                                    const nIdx = nz * N + nx;
-                                    if (!visited.has(nIdx) && heights[nIdx] < lowestH) {
-                                        lowestH = heights[nIdx];
-                                        lowestIdx = nIdx;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (lowestIdx !== -1) {
-                            currentIdx = lowestIdx;
-                            riverPath.push(currentIdx);
-                            visited.add(currentIdx);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    if (riverPath.length > 5) {
-                        activeRivers++;
-                        const points = [];
-                        for (let pIdx of riverPath) {
-                            heights[pIdx] = Math.max(params.waterLevel - 0.5, heights[pIdx] - params.riverCarveDepth);
-                            posAttr.setY(pIdx, heights[pIdx]);
-                            humidities[pIdx] = 1.0;
-                            points.push(new THREE.Vector3(
-                                posAttr.getX(pIdx),
-                                heights[pIdx] + 0.3,
-                                posAttr.getZ(pIdx)
-                            ));
-                        }
-                        const riverGeo = new THREE.BufferGeometry().setFromPoints(points);
-                        const riverMat = new THREE.LineBasicMaterial({ color: 0x38bdf8 });
-                        riverLinesGroup.add(new THREE.Line(riverGeo, riverMat));
-                    }
-                }
-
-                geometry.computeVertexNormals();
-            }
-
-            for (let i = 0; i < count; i++) {
-                const h = heights[i];
-                const t = temperatures[i];
-                const m = humidities[i];
-                const slope = slopes[i];
-                let color = new THREE.Color();
-
-                if (params.viewMode === 'Biomes') {
-                    if (h < params.waterLevel) {
-                        biomes[i] = 0; color.copy(BIOME_COLORS.ocean);
-                    } else if (h < params.waterLevel + 1.2) {
-                        biomes[i] = 1; color.copy(BIOME_COLORS.beach);
-                    } else if (h > params.snowLevel || (t < 0.22 && h > params.heightScale * 0.5)) {
-                        biomes[i] = 7; color.copy(BIOME_COLORS.snow);
-                    } else if (slope > 0.38) {
-                        biomes[i] = 6; color.copy(BIOME_COLORS.rock);
-                    } else if (t > params.desertTempThreshold && m < params.desertHumidityThreshold) {
-                        biomes[i] = 5; color.copy(BIOME_COLORS.desert);
-                    } else if (m > 0.65 && h < params.waterLevel + 4.0) {
-                        biomes[i] = 4; color.copy(BIOME_COLORS.swamp);
-                    } else if (m > 0.55) {
-                        biomes[i] = 3; color.copy(BIOME_COLORS.forest);
-                    } else {
-                        biomes[i] = 2; color.copy(BIOME_COLORS.grass);
-                    }
-                } else if (params.viewMode === 'Heightmap') {
-                    const normH = Math.max(0, Math.min(1, h / params.heightScale));
-                    color.setRGB(normH, normH, normH);
-                } else if (params.viewMode === 'Temperature') {
-                    color.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
-                } else if (params.viewMode === 'Humidity') {
-                    color.setHSL(0.55, m, 0.2 + m * 0.5);
-                } else if (params.viewMode === 'Slope') {
-                    color.setRGB(slope, slope, slope);
-                }
-
-                colors[i * 3] = color.r;
-                colors[i * 3 + 1] = color.g;
-                colors[i * 3 + 2] = color.b;
-            }
-
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            geometry.attributes.position.needsUpdate = true;
-
-            const terrainMat = new THREE.MeshStandardMaterial({
-                vertexColors: true,
-                wireframe: params.wireframe,
-                flatShading: params.flatShading,
-                roughness: 0.85,
-                metalness: 0.1
-            });
-
-            const terrainMesh = new THREE.Mesh(geometry, terrainMat);
-            terrainMesh.receiveShadow = true;
-            terrainMesh.castShadow = true;
-            group.add(terrainMesh);
-            group.add(riverLinesGroup);
-
-            if (params.showChunkBorders) {
-                const border = new THREE.LineSegments(
-                    new THREE.EdgesGeometry(new THREE.BoxGeometry(size, 0.1, size)),
-                    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
-                );
-                border.position.set(originX + halfSize, params.waterLevel + 0.5, originZ + halfSize);
-                group.add(border);
-            }
-
-            const objects = buildObjectInstances(count, posAttr, heights, slopes, biomes, humidities);
-            objects.meshes.forEach(m => group.add(m));
-
-            return {
-                cx, cz,
-                group,
-                vertices: count,
-                trees: objects.trees,
-                cacti: objects.cacti,
-                rocks: objects.rocks,
-                rivers: activeRivers
-            };
-        }
-
-        /* =========================================================================
-           5. CHUNK MANAGER (3x3 / NxN alrededor del target)
-           ========================================================================= */
-
-        class ChunkManager {
-            constructor(generator) {
-                this.generator = generator;
-                this.loadedChunks = new Map();
-                this.currentChunkKey = null;
-            }
-
-            worldToChunkCoords(x, z) {
-                const s = params.chunkSize;
+            /** Convierte posición mundo (x, z) a índices de chunk. */
+            mundoAChunk(posicionX, posicionZ) {
+                const tamano = parametrosSimulacion.chunkSize;
                 return {
-                    cx: Math.floor(x / s),
-                    cz: Math.floor(z / s)
+                    cx: Math.floor(posicionX / tamano),
+                    cz: Math.floor(posicionZ / tamano)
                 };
             }
 
-            getOrCreateChunk(cx, cz) {
-                const key = `${cx},${cz}`;
-                if (!this.loadedChunks.has(key)) {
-                    const chunk = this.generator(cx, cz);
-                    this.loadedChunks.set(key, chunk);
-                    scene.add(chunk.group);
+            /**
+             * Paso A: crea malla plana, mueve vértices a coords mundo y prepara arrays vacíos.
+             */
+            #crearMallaBase(indiceChunkX, indiceChunkZ) {
+                const puntosPorEje = parametrosSimulacion.gridSize;
+                const tamanoChunk = parametrosSimulacion.chunkSize;
+                const mitadTamano = tamanoChunk / 2;
+                const origenMundoX = indiceChunkX * tamanoChunk;
+                const origenMundoZ = indiceChunkZ * tamanoChunk;
+
+                const grupoChunk = new THREE.Group();
+                grupoChunk.name = `chunk_${indiceChunkX}_${indiceChunkZ}`;
+
+                const geometriaTerreno = new THREE.PlaneGeometry(tamanoChunk, tamanoChunk, puntosPorEje - 1, puntosPorEje - 1);
+                geometriaTerreno.rotateX(-Math.PI / 2);
+
+                const atributoPosiciones = geometriaTerreno.attributes.position;
+                const totalVertices = atributoPosiciones.count;
+
+                for (let indice = 0; indice < totalVertices; indice++) {
+                    atributoPosiciones.setX(indice, atributoPosiciones.getX(indice) + origenMundoX + mitadTamano);
+                    atributoPosiciones.setZ(indice, atributoPosiciones.getZ(indice) + origenMundoZ + mitadTamano);
                 }
-                return this.loadedChunks.get(key);
+
+                return {
+                    grupoChunk,
+                    geometriaTerreno,
+                    atributoPosiciones,
+                    totalVertices,
+                    tamanoChunk,
+                    mitadTamano,
+                    origenMundoX,
+                    origenMundoZ,
+                    alturas: new Float32Array(totalVertices),
+                    temperaturas: new Float32Array(totalVertices),
+                    humedades: new Float32Array(totalVertices),
+                    pendientes: new Float32Array(totalVertices),
+                    biomas: new Uint8Array(totalVertices),
+                    coloresVertices: new Float32Array(totalVertices * 3)
+                };
             }
 
-            unloadChunk(key) {
-                const chunk = this.loadedChunks.get(key);
-                if (!chunk) return;
-                scene.remove(chunk.group);
-                disposeObject3D(chunk.group);
-                this.loadedChunks.delete(key);
-            }
+            /**
+             * Paso B: ruido fBm → altura, temperatura, humedad; luego normales y pendiente.
+             */
+            #calcularAlturaClima(datos) {
+                const { atributoPosiciones, totalVertices, alturas, temperaturas, humedades, pendientes, geometriaTerreno } = datos;
 
-            clear() {
-                for (const key of [...this.loadedChunks.keys()]) {
-                    this.unloadChunk(key);
+                for (let indice = 0; indice < totalVertices; indice++) {
+                    const posicionX = atributoPosiciones.getX(indice);
+                    const posicionZ = atributoPosiciones.getZ(indice);
+
+                    const ruidoAlturaCrudo = ruidoAltura.ruidoFractal(
+                        posicionX + 5000, posicionZ + 5000,
+                        parametrosSimulacion.octaves,
+                        parametrosSimulacion.persistence,
+                        parametrosSimulacion.lacunarity,
+                        parametrosSimulacion.noiseScale
+                    );
+
+                    const altura = Math.pow(ruidoAlturaCrudo, parametrosSimulacion.exponent) * parametrosSimulacion.heightScale;
+                    alturas[indice] = altura;
+                    atributoPosiciones.setY(indice, altura);
+
+                    const temperaturaBase = ruidoTemperatura.ruidoFractal(
+                        posicionX + 1000, posicionZ + 1000, 3, 0.5, 2.0, parametrosSimulacion.tempScale
+                    );
+                    const enfriamientoPorAltura = (altura / parametrosSimulacion.heightScale) * 0.45;
+                    temperaturas[indice] = Math.max(0, Math.min(1, temperaturaBase - enfriamientoPorAltura));
+
+                    const humedadCruda = ruidoHumedad.ruidoFractal(
+                        posicionX + 2000, posicionZ + 2000, 3, 0.5, 2.0, parametrosSimulacion.humidityScale
+                    );
+                    humedades[indice] = Math.max(0, Math.min(1, humedadCruda));
                 }
-                this.currentChunkKey = null;
+
+                geometriaTerreno.computeVertexNormals();
+                const atributoNormales = geometriaTerreno.attributes.normal;
+
+                for (let indice = 0; indice < totalVertices; indice++) {
+                    pendientes[indice] = 1.0 - atributoNormales.getY(indice);
+                }
             }
 
-            update(worldX, worldZ) {
-                const { cx, cz } = this.worldToChunkCoords(worldX, worldZ);
-                const centerKey = `${cx},${cz}`;
-                const R = params.viewRadius;
-                const visibleKeys = new Set();
+            /**
+             * Paso C: asigna bioma y color de cada vértice según viewMode.
+             */
+            #asignarColoresBiomas(datos) {
+                const { alturas, temperaturas, humedades, pendientes, biomas, coloresVertices, totalVertices } = datos;
 
-                for (let dx = -R; dx <= R; dx++) {
-                    for (let dz = -R; dz <= R; dz++) {
-                        const key = `${cx + dx},${cz + dz}`;
-                        visibleKeys.add(key);
-                        this.getOrCreateChunk(cx + dx, cz + dz);
+                for (let indice = 0; indice < totalVertices; indice++) {
+                    const altura = alturas[indice];
+                    const temperatura = temperaturas[indice];
+                    const humedad = humedades[indice];
+                    const pendiente = pendientes[indice];
+                    const color = new THREE.Color();
+
+                    if (parametrosSimulacion.viewMode === 'Biomes') {
+                        if (altura < parametrosSimulacion.waterLevel) {
+                            biomas[indice] = INDICE_BIOMA.OCEANO; color.copy(COLORES_BIOMA.oceano);
+                        } else if (altura < parametrosSimulacion.waterLevel + 1.2) {
+                            biomas[indice] = INDICE_BIOMA.PLAYA; color.copy(COLORES_BIOMA.playa);
+                        } else if (altura > parametrosSimulacion.snowLevel || (temperatura < 0.22 && altura > parametrosSimulacion.heightScale * 0.5)) {
+                            biomas[indice] = INDICE_BIOMA.NIEVE; color.copy(COLORES_BIOMA.nieve);
+                        } else if (pendiente > 0.38) {
+                            biomas[indice] = INDICE_BIOMA.ROCA; color.copy(COLORES_BIOMA.roca);
+                        } else if (temperatura > parametrosSimulacion.desertTempThreshold && humedad < parametrosSimulacion.desertHumidityThreshold) {
+                            biomas[indice] = INDICE_BIOMA.DESIERTO; color.copy(COLORES_BIOMA.desierto);
+                        } else if (humedad > 0.65 && altura < parametrosSimulacion.waterLevel + 4.0) {
+                            biomas[indice] = INDICE_BIOMA.PANTANO; color.copy(COLORES_BIOMA.pantano);
+                        } else if (humedad > 0.55) {
+                            biomas[indice] = INDICE_BIOMA.BOSQUE; color.copy(COLORES_BIOMA.bosque);
+                        } else {
+                            biomas[indice] = INDICE_BIOMA.PASTIZAL; color.copy(COLORES_BIOMA.pastizal);
+                        }
+                    } else if (parametrosSimulacion.viewMode === 'Heightmap') {
+                        const alturaNormalizada = Math.max(0, Math.min(1, altura / parametrosSimulacion.heightScale));
+                        color.setRGB(alturaNormalizada, alturaNormalizada, alturaNormalizada);
+                    } else if (parametrosSimulacion.viewMode === 'Temperature') {
+                        color.setHSL((1.0 - temperatura) * 0.7, 1.0, 0.5);
+                    } else if (parametrosSimulacion.viewMode === 'Humidity') {
+                        color.setHSL(0.55, humedad, 0.2 + humedad * 0.5);
+                    } else if (parametrosSimulacion.viewMode === 'Slope') {
+                        color.setRGB(pendiente, pendiente, pendiente);
+                    }
+
+                    coloresVertices[indice * 3] = color.r;
+                    coloresVertices[indice * 3 + 1] = color.g;
+                    coloresVertices[indice * 3 + 2] = color.b;
+                }
+            }
+
+            /** Coloca árboles, cactus y rocas con InstancedMesh. */
+            #colocarObjetos(totalVertices, atributoPosiciones, alturas, pendientes, biomas, humedades) {
+                const matricesArboles = [];
+                const matricesCactus = [];
+                const matricesRocas = [];
+                const objetoAuxiliar = new THREE.Object3D();
+
+                for (let indice = 0; indice < totalVertices; indice++) {
+                    const altura = alturas[indice];
+                    const pendiente = pendientes[indice];
+                    const indiceBioma = biomas[indice];
+                    const humedad = humedades[indice];
+
+                    if (altura <= parametrosSimulacion.waterLevel + 0.8) continue;
+
+                    const posicionX = atributoPosiciones.getX(indice);
+                    const posicionZ = atributoPosiciones.getZ(indice);
+                    const gridX = Math.round(posicionX * 10);
+                    const gridZ = Math.round(posicionZ * 10);
+
+                    const probabilidadAleatoria = hashCoordenadas2D(gridX, gridZ, parametrosSimulacion.seed + 1000);
+                    const rotacionAleatoria = hashCoordenadas2D(gridX, gridZ, parametrosSimulacion.seed + 2000);
+                    const escalaAleatoria = hashCoordenadas2D(gridX, gridZ, parametrosSimulacion.seed + 3000);
+                    const offsetAleatorioX = hashCoordenadas2D(gridX, gridZ, parametrosSimulacion.seed + 4000);
+                    const offsetAleatorioZ = hashCoordenadas2D(gridX, gridZ, parametrosSimulacion.seed + 5000);
+
+                    if (
+                        (indiceBioma === INDICE_BIOMA.BOSQUE || indiceBioma === INDICE_BIOMA.PASTIZAL || indiceBioma === INDICE_BIOMA.PANTANO)
+                        && pendiente < 0.25
+                    ) {
+                        const factorBioma = indiceBioma === INDICE_BIOMA.BOSQUE ? 1.0
+                            : (indiceBioma === INDICE_BIOMA.PANTANO ? 0.6 : 0.25);
+                        const probabilidadArbol = humedad * (1.0 - pendiente) * factorBioma
+                            * parametrosSimulacion.treeDensity * 0.15;
+
+                        if (probabilidadAleatoria < probabilidadArbol) {
+                            objetoAuxiliar.position.set(
+                                posicionX + (offsetAleatorioX - 0.5) * 1.2,
+                                altura,
+                                posicionZ + (offsetAleatorioZ - 0.5) * 1.2
+                            );
+                            const escala = 0.6 + escalaAleatoria * 0.8;
+                            objetoAuxiliar.scale.set(escala, escala * (0.8 + rotacionAleatoria * 0.5), escala);
+                            objetoAuxiliar.rotation.set(0, rotacionAleatoria * Math.PI * 2, 0);
+                            objetoAuxiliar.updateMatrix();
+                            matricesArboles.push(objetoAuxiliar.matrix.clone());
+                        }
+                    }
+
+                    if (indiceBioma === INDICE_BIOMA.DESIERTO && pendiente < 0.2) {
+                        const probabilidadCactus = (1.0 - humedad) * (1.0 - pendiente)
+                            * parametrosSimulacion.cactusDensity * 0.12;
+                        if (probabilidadAleatoria < probabilidadCactus) {
+                            objetoAuxiliar.position.set(
+                                posicionX + (offsetAleatorioX - 0.5) * 1.5,
+                                altura,
+                                posicionZ + (offsetAleatorioZ - 0.5) * 1.5
+                            );
+                            const escala = 0.5 + escalaAleatoria * 0.7;
+                            objetoAuxiliar.scale.set(escala, escala, escala);
+                            objetoAuxiliar.rotation.set(0, rotacionAleatoria * Math.PI * 2, 0);
+                            objetoAuxiliar.updateMatrix();
+                            matricesCactus.push(objetoAuxiliar.matrix.clone());
+                        }
+                    }
+
+                    if (
+                        (pendiente > 0.28 || indiceBioma === INDICE_BIOMA.ROCA || indiceBioma === INDICE_BIOMA.DESIERTO)
+                        && altura > parametrosSimulacion.waterLevel + 1.0
+                    ) {
+                        const probabilidadRoca = pendiente * parametrosSimulacion.rockDensity * 0.18;
+                        if (probabilidadAleatoria < probabilidadRoca) {
+                            objetoAuxiliar.position.set(posicionX, altura - 0.2, posicionZ);
+                            const escala = 0.4 + escalaAleatoria * 1.2;
+                            objetoAuxiliar.scale.set(escala, escala * 0.7, escala);
+                            objetoAuxiliar.rotation.set(
+                                rotacionAleatoria * Math.PI,
+                                offsetAleatorioX * Math.PI,
+                                offsetAleatorioZ * Math.PI
+                            );
+                            objetoAuxiliar.updateMatrix();
+                            matricesRocas.push(objetoAuxiliar.matrix.clone());
+                        }
                     }
                 }
 
-                for (const key of [...this.loadedChunks.keys()]) {
-                    if (!visibleKeys.has(key)) this.unloadChunk(key);
+                const mallas = [];
+                if (matricesArboles.length > 0) {
+                    const geometriaArbol = new THREE.ConeGeometry(1.2, 4.5, 5);
+                    geometriaArbol.translate(0, 2.25, 0);
+                    const materialArbol = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.9, flatShading: true });
+                    const arbolesInstanciados = new THREE.InstancedMesh(geometriaArbol, materialArbol, matricesArboles.length);
+                    matricesArboles.forEach((matriz, idx) => arbolesInstanciados.setMatrixAt(idx, matriz));
+                    arbolesInstanciados.castShadow = true;
+                    arbolesInstanciados.receiveShadow = true;
+                    mallas.push(arbolesInstanciados);
                 }
 
-                this.currentChunkKey = centerKey;
-                return { activeChunk: { cx, cz } };
+                if (matricesCactus.length > 0) {
+                    const geometriaCactus = new THREE.CylinderGeometry(0.3, 0.35, 2.8, 6);
+                    geometriaCactus.translate(0, 1.4, 0);
+                    const materialCactus = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7, flatShading: true });
+                    const cactusInstanciados = new THREE.InstancedMesh(geometriaCactus, materialCactus, matricesCactus.length);
+                    matricesCactus.forEach((matriz, idx) => cactusInstanciados.setMatrixAt(idx, matriz));
+                    cactusInstanciados.castShadow = true;
+                    mallas.push(cactusInstanciados);
+                }
+
+                if (matricesRocas.length > 0) {
+                    const geometriaRoca = new THREE.DodecahedronGeometry(1.2, 1);
+                    const materialRoca = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95, flatShading: true });
+                    const rocasInstanciadas = new THREE.InstancedMesh(geometriaRoca, materialRoca, matricesRocas.length);
+                    matricesRocas.forEach((matriz, idx) => rocasInstanciadas.setMatrixAt(idx, matriz));
+                    rocasInstanciadas.castShadow = true;
+                    rocasInstanciadas.receiveShadow = true;
+                    mallas.push(rocasInstanciadas);
+                }
+
+                return {
+                    mallas,
+                    arboles: matricesArboles.length,
+                    cactus: matricesCactus.length,
+                    rocas: matricesRocas.length
+                };
             }
 
-            aggregateStats() {
-                let vertices = 0, trees = 0, cacti = 0, rocks = 0, rivers = 0;
-                for (const chunk of this.loadedChunks.values()) {
+            /**
+             * Genera un chunk completo. Ruido en coords mundo → bordes seamless entre vecinos.
+             */
+            generarChunk(indiceChunkX, indiceChunkZ) {
+                const datos = this.#crearMallaBase(indiceChunkX, indiceChunkZ);
+                this.#calcularAlturaClima(datos);
+                this.#asignarColoresBiomas(datos);
+
+                const {
+                    grupoChunk, geometriaTerreno, atributoPosiciones, totalVertices,
+                    tamanoChunk, mitadTamano, origenMundoX, origenMundoZ,
+                    alturas, pendientes, biomas, humedades, coloresVertices
+                } = datos;
+
+                geometriaTerreno.setAttribute('color', new THREE.Float32BufferAttribute(coloresVertices, 3));
+                geometriaTerreno.attributes.position.needsUpdate = true;
+
+                const materialTerreno = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    wireframe: parametrosSimulacion.wireframe,
+                    flatShading: parametrosSimulacion.flatShading,
+                    roughness: 0.85,
+                    metalness: 0.1
+                });
+
+                const mallaTerreno = new THREE.Mesh(geometriaTerreno, materialTerreno);
+                mallaTerreno.receiveShadow = true;
+                mallaTerreno.castShadow = true;
+                grupoChunk.add(mallaTerreno);
+
+                if (parametrosSimulacion.showChunkBorders) {
+                    const bordeChunk = new THREE.LineSegments(
+                        new THREE.EdgesGeometry(new THREE.BoxGeometry(tamanoChunk, 0.1, tamanoChunk)),
+                        new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
+                    );
+                    bordeChunk.position.set(origenMundoX + mitadTamano, parametrosSimulacion.waterLevel + 0.5, origenMundoZ + mitadTamano);
+                    grupoChunk.add(bordeChunk);
+                }
+
+                const objetos = this.#colocarObjetos(totalVertices, atributoPosiciones, alturas, pendientes, biomas, humedades);
+                objetos.mallas.forEach(malla => grupoChunk.add(malla));
+
+                return {
+                    cx: indiceChunkX,
+                    cz: indiceChunkZ,
+                    grupo: grupoChunk,
+                    vertices: totalVertices,
+                    arboles: objetos.arboles,
+                    cactus: objetos.cactus,
+                    rocas: objetos.rocas
+                };
+            }
+
+            /** Genera el chunk si no existe y lo agrega a la escena. */
+            obtenerOCrearChunk(indiceChunkX, indiceChunkZ) {
+                const clave = `${indiceChunkX},${indiceChunkZ}`;
+                if (!this.chunksCargados.has(clave)) {
+                    const chunk = this.generarChunk(indiceChunkX, indiceChunkZ);
+                    this.chunksCargados.set(clave, chunk);
+                    escena.add(chunk.grupo);
+                }
+                return this.chunksCargados.get(clave);
+            }
+
+            /** Quita chunk de escena y libera GPU/RAM. */
+            descargarChunk(clave) {
+                const chunk = this.chunksCargados.get(clave);
+                if (!chunk) return;
+                escena.remove(chunk.grupo);
+                this.liberarRecursos3D(chunk.grupo);
+                this.chunksCargados.delete(clave);
+            }
+
+            /** Descarga todos los chunks (al regenerar mundo). */
+            vaciar() {
+                for (const clave of [...this.chunksCargados.keys()]) {
+                    this.descargarChunk(clave);
+                }
+            }
+
+            /**
+             * Actualiza chunks visibles según posición cámara.
+             * @returns {{ chunkActivo: { cx, cz } }}
+             */
+            actualizar(posicionMundoX, posicionMundoZ) {
+                const { cx, cz } = this.mundoAChunk(posicionMundoX, posicionMundoZ);
+                const radio = parametrosSimulacion.viewRadius;
+                const clavesVisibles = new Set();
+
+                for (let deltaX = -radio; deltaX <= radio; deltaX++) {
+                    for (let deltaZ = -radio; deltaZ <= radio; deltaZ++) {
+                        const clave = `${cx + deltaX},${cz + deltaZ}`;
+                        clavesVisibles.add(clave);
+                        this.obtenerOCrearChunk(cx + deltaX, cz + deltaZ);
+                    }
+                }
+
+                for (const clave of [...this.chunksCargados.keys()]) {
+                    if (!clavesVisibles.has(clave)) this.descargarChunk(clave);
+                }
+
+                return { chunkActivo: { cx, cz } };
+            }
+
+            /** Suma estadísticas de todos los chunks en memoria para el panel HUD. */
+            sumarEstadisticas() {
+                let vertices = 0, arboles = 0, cactus = 0, rocas = 0;
+                for (const chunk of this.chunksCargados.values()) {
                     vertices += chunk.vertices;
-                    trees += chunk.trees;
-                    cacti += chunk.cacti;
-                    rocks += chunk.rocks;
-                    rivers += chunk.rivers;
+                    arboles += chunk.arboles;
+                    cactus += chunk.cactus;
+                    rocas += chunk.rocas;
                 }
-                return { vertices, trees, cacti, rocks, rivers, loaded: this.loadedChunks.size };
+                return { vertices, arboles, cactus, rocas, cargados: this.chunksCargados.size };
             }
         }
 
-        const chunkManager = new ChunkManager(generateTerrainChunk);
+        const gestorChunks = new GestorChunks();
 
-        function reseedNoise() {
-            noiseHeight.reseed(params.seed);
-            noiseTemp.reseed(params.seed + 101);
-            noiseHum.reseed(params.seed + 202);
+        /** Reinicia las tres semillas de ruido (offsets distintos evitan correlación). */
+        function reiniciarSemillasRuido() {
+            ruidoAltura.reiniciarSemilla(parametrosSimulacion.seed);
+            ruidoTemperatura.reiniciarSemilla(parametrosSimulacion.seed + 101);
+            ruidoHumedad.reiniciarSemilla(parametrosSimulacion.seed + 202);
         }
 
-        function rebuildWorld() {
-            const loader = document.getElementById('loader');
-            loader.style.opacity = '1';
+        /** Regenera mundo completo: ruido, chunks y plano de agua. */
+        function reconstruirMundo() {
+            const indicadorCarga = document.getElementById('loader');
+            indicadorCarga.style.opacity = '1';
 
             setTimeout(() => {
-                reseedNoise();
-                chunkManager.clear();
-                createWaterPlane();
-                lastChunkKey = null;
-                const { activeChunk } = chunkManager.update(camera.position.x, camera.position.z);
-                updateStats(activeChunk);
-                loader.style.opacity = '0';
+                reiniciarSemillasRuido();
+                gestorChunks.vaciar();
+                crearPlanoAgua();
+                ultimaClaveChunk = null;
+                const { chunkActivo } = gestorChunks.actualizar(camara.position.x, camara.position.z);
+                actualizarPanelEstadisticas(chunkActivo);
+                indicadorCarga.style.opacity = '0';
             }, 30);
         }
 
-        function updateStats(activeChunk) {
-            const s = chunkManager.aggregateStats();
-            document.getElementById('stat-chunk').textContent = `${activeChunk.cx}, ${activeChunk.cz}`;
-            document.getElementById('stat-loaded').textContent = s.loaded;
-            document.getElementById('stat-vertices').textContent = s.vertices.toLocaleString();
-            document.getElementById('stat-trees').textContent = s.trees;
-            document.getElementById('stat-cacti').textContent = s.cacti;
-            document.getElementById('stat-rocks').textContent = s.rocks;
-            document.getElementById('stat-rivers').textContent = s.rivers;
+        /** Actualiza números del panel inferior (chunk, vértices, objetos). */
+        function actualizarPanelEstadisticas(chunkActivo) {
+            const estadisticas = gestorChunks.sumarEstadisticas();
+            document.getElementById('stat-chunk').textContent = `${chunkActivo.cx}, ${chunkActivo.cz}`;
+            document.getElementById('stat-loaded').textContent = estadisticas.cargados;
+            document.getElementById('stat-vertices').textContent = estadisticas.vertices.toLocaleString();
+            document.getElementById('stat-trees').textContent = estadisticas.arboles;
+            document.getElementById('stat-cacti').textContent = estadisticas.cactus;
+            document.getElementById('stat-rocks').textContent = estadisticas.rocas;
         }
 
-        /* =========================================================================
-           6. LIL-GUI KNOBS & CONTROLS SETUP
-           ========================================================================= */
+        /* =============================================================================
+           6. PANEL lil-gui — CONTROLES EN VIVO
+           ============================================================================= */
 
         const gui = new lil.GUI({ title: 'Parámetros de Simulación' });
 
         const fSeed = gui.addFolder('1. Seed & Chunks');
-        fSeed.add(params, 'seed', 1, 9999, 1).name('Seed (Semilla)').onFinishChange(() => rebuildWorld());
-        fSeed.add(params, 'chunkSize', 60, 200, 10).name('Tamaño Chunk').onFinishChange(() => rebuildWorld());
-        fSeed.add(params, 'gridSize', 40, 160, 10).name('Resolución / Chunk').onFinishChange(() => rebuildWorld());
-        fSeed.add(params, 'viewRadius', 1, 2, 1).name('Radio Vista (1=3×3)').onFinishChange(() => rebuildWorld());
-        fSeed.add(params, 'heightScale', 5, 80, 1).name('Escala Altura').onFinishChange(() => rebuildWorld());
-        fSeed.add(params, 'waterLevel', 0, 20, 0.5).name('Nivel del Agua').onFinishChange(() => rebuildWorld());
-        fSeed.add(params, 'flySpeed', 0.3, 8, 0.1).name('Velocidad Fly');
-        fSeed.add(params, 'sprintMultiplier', 1.5, 6, 0.1).name('Multiplicador Sprint');
-        fSeed.add(params, 'lookSensitivity', 0.0005, 0.006, 0.0001).name('Sensibilidad Mouse');
-        fSeed.add(params, 'showChunkBorders').name('Bordes de Chunk').onFinishChange(() => rebuildWorld());
+        fSeed.add(parametrosSimulacion, 'seed', 1, 9999, 1).name('Seed (Semilla)').onFinishChange(() => reconstruirMundo());
+        fSeed.add(parametrosSimulacion, 'chunkSize', 60, 200, 10).name('Tamaño Chunk').onFinishChange(() => reconstruirMundo());
+        fSeed.add(parametrosSimulacion, 'gridSize', 40, 160, 10).name('Resolución / Chunk').onFinishChange(() => reconstruirMundo());
+        fSeed.add(parametrosSimulacion, 'viewRadius', 1, 2, 1).name('Radio Vista (1=3×3)').onFinishChange(() => reconstruirMundo());
+        fSeed.add(parametrosSimulacion, 'heightScale', 5, 80, 1).name('Escala Altura').onFinishChange(() => reconstruirMundo());
+        fSeed.add(parametrosSimulacion, 'waterLevel', 0, 20, 0.5).name('Nivel del Agua').onFinishChange(() => reconstruirMundo());
+        fSeed.add(parametrosSimulacion, 'flySpeed', 0.3, 8, 0.1).name('Velocidad Fly');
+        fSeed.add(parametrosSimulacion, 'sprintMultiplier', 1.5, 6, 0.1).name('Multiplicador Sprint');
+        fSeed.add(parametrosSimulacion, 'lookSensitivity', 0.0005, 0.006, 0.0001).name('Sensibilidad Mouse');
+        fSeed.add(parametrosSimulacion, 'showChunkBorders').name('Bordes de Chunk').onFinishChange(() => reconstruirMundo());
 
         const fNoise = gui.addFolder('2. Ruido fBm (Heightmap)');
-        fNoise.add(params, 'octaves', 1, 8, 1).name('Octavas (Detalle)').onFinishChange(() => rebuildWorld());
-        fNoise.add(params, 'persistence', 0.1, 0.8, 0.02).name('Persistencia (Gain)').onFinishChange(() => rebuildWorld());
-        fNoise.add(params, 'lacunarity', 1.2, 3.5, 0.1).name('Lacunaridad (Freq)').onFinishChange(() => rebuildWorld());
-        fNoise.add(params, 'noiseScale', 0.002, 0.03, 0.001).name('Escala del Ruido').onFinishChange(() => rebuildWorld());
-        fNoise.add(params, 'exponent', 1.0, 3.5, 0.1).name('Exponente (Picos)').onFinishChange(() => rebuildWorld());
+        fNoise.add(parametrosSimulacion, 'octaves', 1, 8, 1).name('Octavas (Detalle)').onFinishChange(() => reconstruirMundo());
+        fNoise.add(parametrosSimulacion, 'persistence', 0.1, 0.8, 0.02).name('Persistencia (Gain)').onFinishChange(() => reconstruirMundo());
+        fNoise.add(parametrosSimulacion, 'lacunarity', 1.2, 3.5, 0.1).name('Lacunaridad (Freq)').onFinishChange(() => reconstruirMundo());
+        fNoise.add(parametrosSimulacion, 'noiseScale', 0.002, 0.03, 0.001).name('Escala del Ruido').onFinishChange(() => reconstruirMundo());
+        fNoise.add(parametrosSimulacion, 'exponent', 1.0, 3.5, 0.1).name('Exponente (Picos)').onFinishChange(() => reconstruirMundo());
 
         const fClimate = gui.addFolder('3. Clima y Biomas');
-        fClimate.add(params, 'tempScale', 0.001, 0.02, 0.001).name('Escala Temp.').onFinishChange(() => rebuildWorld());
-        fClimate.add(params, 'humidityScale', 0.001, 0.02, 0.001).name('Escala Humedad').onFinishChange(() => rebuildWorld());
-        fClimate.add(params, 'snowLevel', 10, 50, 1).name('Límite Nieve').onFinishChange(() => rebuildWorld());
-        fClimate.add(params, 'desertTempThreshold', 0.3, 0.9, 0.05).name('Umbral Desierto Temp').onFinishChange(() => rebuildWorld());
+        fClimate.add(parametrosSimulacion, 'tempScale', 0.001, 0.02, 0.001).name('Escala Temp.').onFinishChange(() => reconstruirMundo());
+        fClimate.add(parametrosSimulacion, 'humidityScale', 0.001, 0.02, 0.001).name('Escala Humedad').onFinishChange(() => reconstruirMundo());
+        fClimate.add(parametrosSimulacion, 'snowLevel', 10, 50, 1).name('Límite Nieve').onFinishChange(() => reconstruirMundo());
+        fClimate.add(parametrosSimulacion, 'desertTempThreshold', 0.3, 0.9, 0.05).name('Umbral Desierto Temp').onFinishChange(() => reconstruirMundo());
 
         const fObjects = gui.addFolder('4. Colocación de Objetos');
-        fObjects.add(params, 'treeDensity', 0.0, 1.0, 0.05).name('Densidad Árboles').onFinishChange(() => rebuildWorld());
-        fObjects.add(params, 'cactusDensity', 0.0, 1.0, 0.05).name('Densidad Cactus').onFinishChange(() => rebuildWorld());
-        fObjects.add(params, 'rockDensity', 0.0, 1.0, 0.05).name('Densidad Rocas').onFinishChange(() => rebuildWorld());
+        fObjects.add(parametrosSimulacion, 'treeDensity', 0.0, 1.0, 0.05).name('Densidad Árboles').onFinishChange(() => reconstruirMundo());
+        fObjects.add(parametrosSimulacion, 'cactusDensity', 0.0, 1.0, 0.05).name('Densidad Cactus').onFinishChange(() => reconstruirMundo());
+        fObjects.add(parametrosSimulacion, 'rockDensity', 0.0, 1.0, 0.05).name('Densidad Rocas').onFinishChange(() => reconstruirMundo());
 
-        const fRivers = gui.addFolder('5. Algoritmo de Ríos');
-        fRivers.add(params, 'enableRivers').name('Activar Ríos').onFinishChange(() => rebuildWorld());
-        fRivers.add(params, 'riverCount', 1, 6, 1).name('Ríos / Chunk').onFinishChange(() => rebuildWorld());
-        fRivers.add(params, 'riverCarveDepth', 0.2, 3.0, 0.1).name('Profundidad Cauce').onFinishChange(() => rebuildWorld());
-
-        const fVisuals = gui.addFolder('6. Visualización y Animación');
-        fVisuals.add(params, 'animateWater').name('Animar Agua');
-        fVisuals.add(params, 'viewMode', ['Biomes', 'Heightmap', 'Temperature', 'Humidity', 'Slope']).name('Modo Mapa').onFinishChange(() => rebuildWorld());
-        fVisuals.add(params, 'wireframe').name('Ver Malla (Wireframe)').onChange((v) => {
-            for (const chunk of chunkManager.loadedChunks.values()) {
-                chunk.group.traverse((child) => {
+        const fVisuals = gui.addFolder('5. Visualización');
+        fVisuals.add(parametrosSimulacion, 'viewMode', ['Biomes', 'Heightmap', 'Temperature', 'Humidity', 'Slope']).name('Modo Mapa').onFinishChange(() => reconstruirMundo());
+        fVisuals.add(parametrosSimulacion, 'wireframe').name('Ver Malla (Wireframe)').onChange((v) => {
+            for (const chunk of gestorChunks.chunksCargados.values()) {
+                chunk.grupo.traverse((child) => {
                     if (child.isMesh && child.material && child.material.vertexColors) {
                         child.material.wireframe = v;
                     }
                 });
             }
         });
-        fVisuals.add(params, 'flatShading').name('Flat Shading').onFinishChange(() => rebuildWorld());
+        fVisuals.add(parametrosSimulacion, 'flatShading').name('Flat Shading').onFinishChange(() => reconstruirMundo());
 
         const fPresets = gui.addFolder('Presets de Mapa');
-        Object.keys(presets).forEach(name => {
-            fPresets.add({ [name]: () => {
-                Object.assign(params, presets[name]);
-                gui.controllersRecursive().forEach(c => c.updateDisplay());
-                rebuildWorld();
-            }}, name);
+        Object.keys(presetsDeMapa).forEach(name => {
+            fPresets.add({
+                [name]: () => {
+                    Object.assign(parametrosSimulacion, presetsDeMapa[name]);
+                    gui.controllersRecursive().forEach(c => c.updateDisplay());
+                    reconstruirMundo();
+                }
+            }, name);
         });
 
-        gui.add(params, 'regenerate').name('Regenerar Mundo');
-        gui.add(params, 'resetCamera').name('Resetear Cámara');
+        gui.add(parametrosSimulacion, 'regenerate').name('Regenerar Mundo');
+        gui.add(parametrosSimulacion, 'resetCamera').name('Resetear Cámara');
 
-        /* =========================================================================
-           7. ANIMATION & RESIZE HANDLING
-           ========================================================================= */
+        /* =============================================================================
+           7. BUCLE DE ANIMACIÓN Y RESIZE
+           ============================================================================= */
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            camara.aspect = window.innerWidth / window.innerHeight;
+            camara.updateProjectionMatrix();
+            renderizador.setSize(window.innerWidth, window.innerHeight);
         });
 
-        reseedNoise();
-        createWaterPlane();
-        {
-            const { activeChunk } = chunkManager.update(camera.position.x, camera.position.z);
-            updateStats(activeChunk);
-        }
+        // Arranque inicial
+        reiniciarSemillasRuido();
+        crearPlanoAgua();
 
-        let lastChunkKey = null;
+        const { chunkActivo } = gestorChunks.actualizar(camara.position.x, camara.position.z);
+        actualizarPanelEstadisticas(chunkActivo);
 
-        function animate() {
-            requestAnimationFrame(animate);
+        let ultimaClaveChunk = null;
 
-            updateFlyCamera();
+        /** Bucle principal: movimiento, chunks, render. */
+        function bucleAnimacion() {
+            requestAnimationFrame(bucleAnimacion);
 
-            const { activeChunk } = chunkManager.update(camera.position.x, camera.position.z);
-            const key = `${activeChunk.cx},${activeChunk.cz}`;
-            if (key !== lastChunkKey) {
-                lastChunkKey = key;
-                updateStats(activeChunk);
-                const cx = (activeChunk.cx + 0.5) * params.chunkSize;
-                const cz = (activeChunk.cz + 0.5) * params.chunkSize;
-                if (waterMesh) {
-                    waterMesh.position.x = cx;
-                    waterMesh.position.z = cz;
+            actualizarCamaraVuelo();
+
+            const { chunkActivo } = gestorChunks.actualizar(camara.position.x, camara.position.z);
+            const claveChunk = `${chunkActivo.cx},${chunkActivo.cz}`;
+
+            // Al cambiar de chunk: actualizar stats, centrar agua y luz solar
+            if (claveChunk !== ultimaClaveChunk) {
+                ultimaClaveChunk = claveChunk;
+                actualizarPanelEstadisticas(chunkActivo);
+                const centroChunkX = (chunkActivo.cx + 0.5) * parametrosSimulacion.chunkSize;
+                const centroChunkZ = (chunkActivo.cz + 0.5) * parametrosSimulacion.chunkSize;
+                if (mallaAgua) {
+                    mallaAgua.position.x = centroChunkX;
+                    mallaAgua.position.z = centroChunkZ;
                 }
-                sunLight.position.set(cx + 120, 150, cz + 80);
-                sunLight.target.position.set(cx, 0, cz);
-                sunLight.target.updateMatrixWorld();
+                luzSolar.position.set(centroChunkX + 120, 150, centroChunkZ + 80);
+                luzSolar.target.position.set(centroChunkX, 0, centroChunkZ);
+                luzSolar.target.updateMatrixWorld();
             }
 
-            if (waterMesh) {
-                if (params.animateWater) {
-                    waterMesh.position.y = params.waterLevel + Math.sin(Date.now() * 0.0015) * 0.15;
-                } else {
-                    waterMesh.position.y = params.waterLevel;
-                }
-            }
-
-            renderer.render(scene, camera);
+            renderizador.render(escena, camara);
         }
-        animate();
+        bucleAnimacion();
 
     </script>
 </body>

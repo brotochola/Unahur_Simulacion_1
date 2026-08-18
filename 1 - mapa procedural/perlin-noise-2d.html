@@ -1,0 +1,363 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); }
+#wrap { padding: 1rem 0; }
+.row-top { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.pasos { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.paso-btn {
+  font-size: 12px; padding: 4px 10px;
+  border-radius: var(--radius); border: 0.5px solid var(--border-strong);
+  cursor: pointer; background: var(--surface-1); color: var(--text-secondary);
+}
+.paso-btn.activo { background: var(--bg-accent); color: var(--text-accent); border-color: var(--border-accent); }
+canvas { display: block; border: 0.5px solid var(--border); border-radius: 8px; }
+#c-grilla { width: 100%; cursor: crosshair; }
+#c-ruido { width: 100%; image-rendering: pixelated; }
+.info-box {
+  background: var(--surface-1); border: 0.5px solid var(--border);
+  border-radius: 8px; padding: 12px 14px; font-size: 12px; line-height: 1.65;
+}
+.info-box h3 { font-size: 13px; font-weight: 500; margin: 0 0 6px; color: var(--text-primary); }
+.sep { border: none; border-top: 0.5px solid var(--border); margin: 7px 0; }
+.fd { display: flex; justify-content: space-between; margin: 3px 0; font-size: 12px; }
+.lbl { color: var(--text-secondary); }
+.num { font-family: var(--font-mono); color: var(--text-accent); }
+.divider { border: none; border-top: 0.5px solid var(--border); margin: 14px 0; }
+.ctrl { display: flex; align-items: center; gap: 10px; font-size: 12px; margin: 6px 0; }
+.ctrl label { color: var(--text-secondary); min-width: 90px; }
+.ctrl input[type=range] { flex: 1; }
+.ctrl span { font-family: var(--font-mono); color: var(--text-accent); min-width: 36px; text-align: right; }
+.toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+.switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider-sw {
+  position: absolute; inset: 0; border-radius: 20px;
+  background: var(--border-strong); cursor: pointer; transition: background .2s;
+}
+.slider-sw:before {
+  content: ''; position: absolute;
+  width: 14px; height: 14px; left: 3px; top: 3px;
+  border-radius: 50%; background: var(--surface-2); transition: transform .2s;
+}
+.switch input:checked + .slider-sw { background: var(--fill-accent); }
+.switch input:checked + .slider-sw:before { transform: translateX(16px); }
+.leyenda { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
+.lkey { display: flex; align-items: center; gap: 4px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.note { font-size: 11px; color: var(--text-secondary); margin-top: 6px; }
+</style>
+
+<div id="wrap">
+  <!-- toggle principal -->
+  <div class="toggle-row">
+    <label class="switch">
+      <input type="checkbox" id="chk-ruido">
+      <span class="slider-sw"></span>
+    </label>
+    <span id="toggle-lbl">Mostrar campo de ruido junto a la grilla</span>
+  </div>
+
+  <!-- fila superior -->
+  <div class="row-top" id="fila-top">
+    <!-- izquierda: pasos + grilla -->
+    <div>
+      <div class="pasos" id="controles"></div>
+      <canvas id="c-grilla" width="320" height="320"></canvas>
+      <div class="leyenda">
+        <div class="lkey"><div class="dot" style="background:#6B9BF2"></div><span>Vector gradiente</span></div>
+        <div class="lkey"><div class="dot" style="background:#F2A623"></div><span>Tu punto</span></div>
+        <div class="lkey"><div class="dot" style="background:#5CA882"></div><span>Desplazamiento</span></div>
+        <div class="lkey"><div class="dot" style="background:#E25C5C"></div><span>Celda activa</span></div>
+      </div>
+    </div>
+    <!-- derecha: info box -->
+    <div class="info-box" id="info"></div>
+  </div>
+
+  <!-- campo de ruido (oculto por defecto) -->
+  <div id="seccion-ruido" style="display:none">
+    <div class="divider"></div>
+    <div class="ctrl">
+      <label>escala</label>
+      <input type="range" id="sl-escala" min="4" max="80" value="24" step="1">
+      <span id="lbl-escala">24</span>
+    </div>
+    <div class="ctrl">
+      <label>octavas</label>
+      <input type="range" id="sl-octavas" min="1" max="6" value="1" step="1">
+      <span id="lbl-octavas">1</span>
+    </div>
+    <div class="ctrl">
+      <label>persistencia</label>
+      <input type="range" id="sl-persist" min="10" max="90" value="50" step="1">
+      <span id="lbl-persist">0.50</span>
+    </div>
+    <div style="position:relative; margin-top:8px;">
+      <canvas id="c-ruido" width="640" height="220"></canvas>
+      <div id="crosshair" style="display:none;position:absolute;border:1.5px solid rgba(226,92,92,0.8);border-radius:2px;pointer-events:none;"></div>
+    </div>
+    <p class="note">Caja roja = celda activa de la grilla. Pasá el mouse por el campo para ver el valor de ruido.</p>
+  </div>
+</div>
+
+<script>
+const SEMILLA = 42;
+function hashEsquina(x, y) {
+  let n = x*374761393 + y*668265263 + SEMILLA*2654435761;
+  n = (n ^ (n >>> 13)) * 1274126177;
+  return (n ^ (n >>> 16)) >>> 0;
+}
+const DIRS = [[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+function vecEsq(x,y){ return DIRS[hashEsquina(x,y)&7]; }
+function suav(t){ return t*t*t*(t*(t*6-15)+10); }
+function lerp(a,b,t){ return a+t*(b-a); }
+function pp(vx,vy,dx,dy){ return vx*dx+vy*dy; }
+function ruido(gx,gy){
+  const xi=Math.floor(gx),yi=Math.floor(gy),xf=gx-xi,yf=gy-yi;
+  const gAA=pp(...vecEsq(xi,yi),xf,yf),gBA=pp(...vecEsq(xi+1,yi),xf-1,yf);
+  const gAB=pp(...vecEsq(xi,yi+1),xf,yf-1),gBB=pp(...vecEsq(xi+1,yi+1),xf-1,yf-1);
+  const u=suav(xf),v=suav(yf);
+  return lerp(lerp(gAA,gBA,u),lerp(gAB,gBB,u),v);
+}
+function fbm(gx,gy,oct,pers){
+  let tot=0,amp=1,freq=1,mx=0;
+  for(let i=0;i<oct;i++){tot+=ruido(gx*freq,gy*freq)*amp;mx+=amp;amp*=pers;freq*=2;}
+  return tot/mx;
+}
+
+// ── grilla ──
+const cG=document.getElementById('c-grilla');
+const ctxG=cG.getContext('2d');
+const WG=cG.width,HG=cG.height;
+const CELDAS=5,TAM=WG/CELDAS;
+let mouse={x:WG/2+20,y:HG/2+30};
+let pasoActivo=0;
+
+function g2c(cx,cy){return{gx:cx/TAM,gy:cy/TAM};}
+function flecha(ctx,x1,y1,x2,y2,t=5){
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  const a=Math.atan2(y2-y1,x2-x1);
+  ctx.beginPath();ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-t*Math.cos(a-.45),y2-t*Math.sin(a-.45));
+  ctx.lineTo(x2-t*Math.cos(a+.45),y2-t*Math.sin(a+.45));
+  ctx.closePath();ctx.fillStyle=ctx.strokeStyle;ctx.fill();
+}
+function ptMouse(label){
+  ctxG.beginPath();ctxG.arc(mouse.x,mouse.y,6,0,Math.PI*2);
+  ctxG.fillStyle='#F2A623';ctxG.fill();
+  ctxG.strokeStyle='rgba(255,255,255,0.5)';ctxG.lineWidth=1.5;ctxG.stroke();
+  if(label){ctxG.fillStyle='#F2A623';ctxG.font='bold 10px var(--font-mono,monospace)';ctxG.fillText(label,mouse.x+9,mouse.y-6);}
+}
+function fondo(){
+  ctxG.clearRect(0,0,WG,HG);
+  const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  for(let gy=0;gy<CELDAS;gy++)for(let gx=0;gx<CELDAS;gx++){
+    ctxG.fillStyle=(gx+gy)%2===0?(dark?'rgba(255,255,255,0.02)':'rgba(0,0,0,0.015)'):'transparent';
+    ctxG.fillRect(gx*TAM,gy*TAM,TAM,TAM);
+  }
+  ctxG.strokeStyle=dark?'rgba(255,255,255,0.12)':'rgba(0,0,0,0.12)';ctxG.lineWidth=0.5;
+  for(let i=0;i<=CELDAS;i++){
+    ctxG.beginPath();ctxG.moveTo(i*TAM,0);ctxG.lineTo(i*TAM,HG);ctxG.stroke();
+    ctxG.beginPath();ctxG.moveTo(0,i*TAM);ctxG.lineTo(WG,i*TAM);ctxG.stroke();
+  }
+}
+function vecs(res){
+  for(let gy=0;gy<=CELDAS;gy++)for(let gx=0;gx<=CELDAS;gx++){
+    const[vx,vy]=vecEsq(gx,gy),px=gx*TAM,py=gy*TAM,L=TAM*0.3;
+    const eR=res&&res.some(([rx,ry])=>rx===gx&&ry===gy);
+    ctxG.strokeStyle=eR?'#6B9BF2':'rgba(107,155,242,0.35)';ctxG.lineWidth=eR?2:1;
+    flecha(ctxG,px,py,px+vx*L,py+vy*L,eR?6:4);
+    ctxG.beginPath();ctxG.arc(px,py,eR?4:2.5,0,Math.PI*2);
+    ctxG.fillStyle=eR?'#6B9BF2':'rgba(107,155,242,0.5)';ctxG.fill();
+  }
+}
+
+function dGrilla(){
+  fondo();vecs(null);
+  const{gx,gy}=g2c(mouse.x,mouse.y);
+  ptMouse(`(${gx.toFixed(2)},${gy.toFixed(2)})`);
+}
+function dCelda(){
+  const{gx,gy}=g2c(mouse.x,mouse.y);
+  const xi=Math.floor(gx),yi=Math.floor(gy);
+  fondo();
+  ctxG.fillStyle='rgba(226,92,92,0.12)';ctxG.fillRect(xi*TAM,yi*TAM,TAM,TAM);
+  ctxG.strokeStyle='#E25C5C';ctxG.lineWidth=2;ctxG.strokeRect(xi*TAM+1,yi*TAM+1,TAM-2,TAM-2);
+  vecs([[xi,yi],[xi+1,yi],[xi,yi+1],[xi+1,yi+1]]);ptMouse();
+  ctxG.font='10px var(--font-mono,monospace)';ctxG.fillStyle='#E25C5C';
+  [[xi,yi],[xi+1,yi],[xi,yi+1],[xi+1,yi+1]].forEach(([ex,ey])=>{
+    ctxG.textAlign=ex===xi?'left':'right';ctxG.textBaseline=ey===yi?'top':'bottom';
+    ctxG.fillText(`(${ex},${ey})`,ex*TAM+(ex===xi?3:-3),ey*TAM+(ey===yi?3:-3));
+  });
+  ctxG.textAlign='left';ctxG.textBaseline='alphabetic';
+  document.getElementById('d-celda').innerHTML=`
+    <div class="fd"><span class="lbl">Celda:</span><span class="num">(${xi},${yi})</span></div>
+    <div class="fd"><span class="lbl">xf:</span><span class="num">${(gx-xi).toFixed(3)}</span></div>
+    <div class="fd"><span class="lbl">yf:</span><span class="num">${(gy-yi).toFixed(3)}</span></div>`;
+}
+function dDesp(){
+  const{gx,gy}=g2c(mouse.x,mouse.y);
+  const xi=Math.floor(gx),yi=Math.floor(gy),xf=gx-xi,yf=gy-yi;
+  fondo();ctxG.fillStyle='rgba(226,92,92,0.07)';ctxG.fillRect(xi*TAM,yi*TAM,TAM,TAM);
+  vecs([[xi,yi],[xi+1,yi],[xi,yi+1],[xi+1,yi+1]]);
+  [[xi,yi,xf,yf],[xi+1,yi,xf-1,yf],[xi,yi+1,xf,yf-1],[xi+1,yi+1,xf-1,yf-1]].forEach(([ex,ey])=>{
+    ctxG.strokeStyle='rgba(92,168,130,0.75)';ctxG.lineWidth=1.5;flecha(ctxG,ex*TAM,ey*TAM,mouse.x,mouse.y,5);
+  });
+  ptMouse();
+  const esq=[[xi,yi,xf,yf],[xi+1,yi,xf-1,yf],[xi,yi+1,xf,yf-1],[xi+1,yi+1,xf-1,yf-1]];
+  document.getElementById('d-desp').innerHTML=esq.map(([ex,ey,dx,dy])=>{
+    return`<div class="fd"><span class="lbl">(${ex},${ey})→punto:</span><span class="num">(${dx.toFixed(2)},${dy.toFixed(2)})</span></div>`;
+  }).join('');
+}
+function dDot(){
+  const{gx,gy}=g2c(mouse.x,mouse.y);
+  const xi=Math.floor(gx),yi=Math.floor(gy),xf=gx-xi,yf=gy-yi;
+  fondo();ctxG.fillStyle='rgba(226,92,92,0.07)';ctxG.fillRect(xi*TAM,yi*TAM,TAM,TAM);
+  const esq=[[xi,yi,xf,yf],[xi+1,yi,xf-1,yf],[xi,yi+1,xf,yf-1],[xi+1,yi+1,xf-1,yf-1]];
+  esq.forEach(([ex,ey,dx,dy])=>{
+    const[vx,vy]=vecEsq(ex,ey),dot=pp(vx,vy,dx,dy),L=TAM*0.3,px=ex*TAM,py=ey*TAM;
+    ctxG.strokeStyle='#6B9BF2';ctxG.lineWidth=2;flecha(ctxG,px,py,px+vx*L,py+vy*L,6);
+    ctxG.strokeStyle='rgba(92,168,130,0.6)';ctxG.lineWidth=1.2;flecha(ctxG,px,py,mouse.x,mouse.y,4);
+    ctxG.beginPath();ctxG.arc(px,py,5,0,Math.PI*2);
+    ctxG.fillStyle=dot>0?'#5CA882':dot<0?'#E25C5C':'#888';ctxG.fill();
+  });
+  ptMouse();
+  document.getElementById('d-dot').innerHTML=esq.map(([ex,ey,dx,dy])=>{
+    const[vx,vy]=vecEsq(ex,ey),dot=pp(vx,vy,dx,dy);
+    const c=dot>0?'#5CA882':dot<0?'#E25C5C':'#888';
+    return`<div class="fd"><span class="lbl">(${ex},${ey}):</span><span class="num" style="color:${c}">${dot.toFixed(3)}</span></div>`;
+  }).join('');
+}
+function dInterp(){
+  const{gx,gy}=g2c(mouse.x,mouse.y);
+  const xi=Math.floor(gx),yi=Math.floor(gy),xf=gx-xi,yf=gy-yi;
+  const gAA=pp(...vecEsq(xi,yi),xf,yf),gBA=pp(...vecEsq(xi+1,yi),xf-1,yf);
+  const gAB=pp(...vecEsq(xi,yi+1),xf,yf-1),gBB=pp(...vecEsq(xi+1,yi+1),xf-1,yf-1);
+  const u=suav(xf),v=suav(yf),x1=lerp(gAA,gBA,u),x2=lerp(gAB,gBB,u),r=lerp(x1,x2,v);
+  const n01=(r+1)/2;
+  fondo();
+  const rv=Math.round(220*(1-n01)+60*n01),g2=Math.round(60*(1-n01)+168*n01),bv=Math.round(92*(1-n01)+130*n01);
+  ctxG.fillStyle=`rgba(${rv},${g2},${bv},0.25)`;ctxG.fillRect(xi*TAM,yi*TAM,TAM,TAM);
+  ctxG.strokeStyle=`rgba(${rv},${g2},${bv},0.9)`;ctxG.lineWidth=2;ctxG.strokeRect(xi*TAM+1,yi*TAM+1,TAM-2,TAM-2);
+  ctxG.strokeStyle='rgba(242,166,35,0.45)';ctxG.setLineDash([3,3]);ctxG.lineWidth=1.2;
+  ctxG.beginPath();ctxG.moveTo(xi*TAM,yi*TAM);ctxG.lineTo((xi+1)*TAM,yi*TAM);ctxG.stroke();
+  ctxG.beginPath();ctxG.moveTo(xi*TAM,(yi+1)*TAM);ctxG.lineTo((xi+1)*TAM,(yi+1)*TAM);ctxG.stroke();
+  ctxG.setLineDash([]);
+  ctxG.strokeStyle='rgba(242,166,35,0.7)';ctxG.lineWidth=2;
+  ctxG.beginPath();ctxG.moveTo(mouse.x,yi*TAM);ctxG.lineTo(mouse.x,(yi+1)*TAM);ctxG.stroke();
+  [yi*TAM,(yi+1)*TAM].forEach(py=>{ctxG.beginPath();ctxG.arc(mouse.x,py,4,0,Math.PI*2);ctxG.fillStyle='#F2A623';ctxG.fill();});
+  vecs([[xi,yi],[xi+1,yi],[xi,yi+1],[xi+1,yi+1]]);ptMouse();
+  document.getElementById('d-interp').innerHTML=`
+    <div class="fd"><span class="lbl">u (xf=${xf.toFixed(2)} suavizado):</span><span class="num">${u.toFixed(3)}</span></div>
+    <div class="fd"><span class="lbl">v (yf=${yf.toFixed(2)} suavizado):</span><span class="num">${v.toFixed(3)}</span></div>
+    <div class="sep"></div>
+    <div class="fd"><span class="lbl">g_AA / g_BA:</span><span class="num">${gAA.toFixed(3)} / ${gBA.toFixed(3)}</span></div>
+    <div class="fd"><span class="lbl">x1 (mezcla abajo):</span><span class="num">${x1.toFixed(3)}</span></div>
+    <div class="fd"><span class="lbl">g_AB / g_BB:</span><span class="num">${gAB.toFixed(3)} / ${gBB.toFixed(3)}</span></div>
+    <div class="fd"><span class="lbl">x2 (mezcla arriba):</span><span class="num">${x2.toFixed(3)}</span></div>
+    <div class="sep"></div>
+    <div class="fd"><span class="lbl" style="font-weight:500">Ruido final:</span><span class="num" style="font-size:14px">${r.toFixed(4)}</span></div>`;
+}
+
+const PASOS=[
+  {label:'1. La grilla',fn:dGrilla,
+   desc:`<h3>La grilla de vectores</h3><p class="lbl" style="font-size:12px">Cada punto entero de la grilla tiene un vector de dirección fija (según la semilla). Mové el mouse.</p>`},
+  {label:'2. Tu celda',fn:dCelda,
+   desc:`<h3>Encontrar la celda</h3><p class="lbl" style="font-size:12px">Tu punto cae en una celda. Identificamos las 4 esquinas y la posición relativa dentro de ella.</p><div class="sep"></div><div id="d-celda"></div>`},
+  {label:'3. Desplazamientos',fn:dDesp,
+   desc:`<h3>Vectores de desplazamiento</h3><p class="lbl" style="font-size:12px">Desde cada esquina hasta tu punto. Miden "qué tan lejos estás de cada esquina".</p><div class="sep"></div><div id="d-desp"></div>`},
+  {label:'4. Producto punto',fn:dDot,
+   desc:`<h3>Influencia de cada esquina</h3><p class="lbl" style="font-size:12px"><span style="color:#6B9BF2">gradiente</span> · <span style="color:#5CA882">desplazamiento</span>. Verde = empuja hacia tu punto. Rojo = en contra.</p><div class="sep"></div><div id="d-dot"></div>`},
+  {label:'5. Interpolación',fn:dInterp,
+   desc:`<h3>Interpolación suave</h3><p class="lbl" style="font-size:12px">Mezclamos las 4 influencias: primero en X, después en Y. La curva 6t⁵−15t⁴+10t³ evita bordes visibles.</p><div class="sep"></div><div id="d-interp"></div>`},
+];
+
+const cont=document.getElementById('controles');
+PASOS.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.className='paso-btn'+(i===0?' activo':'');
+  b.textContent=p.label;
+  b.onclick=()=>{
+    pasoActivo=i;
+    document.querySelectorAll('.paso-btn').forEach((bb,j)=>bb.classList.toggle('activo',j===i));
+    document.getElementById('info').innerHTML=p.desc;
+    p.fn();
+    if(mostrarRuido) actualizarCrosshair();
+  };
+  cont.appendChild(b);
+});
+document.getElementById('info').innerHTML=PASOS[0].desc;
+PASOS[0].fn();
+
+cG.addEventListener('mousemove',e=>{
+  const r=cG.getBoundingClientRect(),s=cG.width/r.width;
+  mouse.x=Math.max(5,Math.min(WG-5,(e.clientX-r.left)*s));
+  mouse.y=Math.max(5,Math.min(HG-5,(e.clientY-r.top)*s));
+  PASOS[pasoActivo].fn();
+  if(mostrarRuido) actualizarCrosshair();
+});
+
+// ── ruido ──
+const cR=document.getElementById('c-ruido');
+const ctxR=cR.getContext('2d');
+const WR=cR.width,HR=cR.height;
+let escala=24,octavas=1,persistencia=0.5,mostrarRuido=false;
+
+function dibujarRuido(){
+  const img=ctxR.createImageData(WR,HR);
+  for(let y=0;y<HR;y++)for(let x=0;x<WR;x++){
+    const v=fbm(x/escala,y/escala,octavas,persistencia);
+    const g=Math.floor(((v+1)/2)*255);
+    const i=(y*WR+x)*4;
+    img.data[i]=img.data[i+1]=img.data[i+2]=g;img.data[i+3]=255;
+  }
+  ctxR.putImageData(img,0,0);
+  actualizarCrosshair();
+}
+
+function actualizarCrosshair(){
+  const{gx,gy}=g2c(mouse.x,mouse.y);
+  const xi=Math.floor(gx),yi=Math.floor(gy);
+  const ch=document.getElementById('crosshair');
+  const rEl=cR.getBoundingClientRect();
+  const sx=rEl.width/WR,sy=rEl.height/HR;
+  ch.style.display='block';
+  ch.style.left=(xi*escala*sx)+'px';
+  ch.style.top=(yi*escala*sy)+'px';
+  ch.style.width=(escala*sx)+'px';
+  ch.style.height=(escala*sy)+'px';
+}
+
+document.getElementById('sl-escala').addEventListener('input',function(){
+  escala=+this.value;document.getElementById('lbl-escala').textContent=this.value;dibujarRuido();
+});
+document.getElementById('sl-octavas').addEventListener('input',function(){
+  octavas=+this.value;document.getElementById('lbl-octavas').textContent=this.value;dibujarRuido();
+});
+document.getElementById('sl-persist').addEventListener('input',function(){
+  persistencia=this.value/100;document.getElementById('lbl-persist').textContent=(this.value/100).toFixed(2);dibujarRuido();
+});
+cR.addEventListener('mousemove',e=>{
+  const r=cR.getBoundingClientRect(),s=cR.width/r.width;
+  const px=(e.clientX-r.left)*s,py=(e.clientY-r.top)*s;
+  const v=fbm(px/escala,py/escala,octavas,persistencia);
+  cR.title=`ruido(${(px/escala).toFixed(2)}, ${(py/escala).toFixed(2)}) = ${v.toFixed(4)}`;
+});
+
+// ── toggle ──
+document.getElementById('chk-ruido').addEventListener('change',function(){
+  mostrarRuido=this.checked;
+  const sec=document.getElementById('seccion-ruido');
+  const lbl=document.getElementById('toggle-lbl');
+  if(mostrarRuido){
+    sec.style.display='block';
+    lbl.textContent='Ocultar campo de ruido';
+    dibujarRuido();
+  } else {
+    sec.style.display='none';
+    lbl.textContent='Mostrar campo de ruido junto a la grilla';
+    document.getElementById('crosshair').style.display='none';
+  }
+});
+</script>
