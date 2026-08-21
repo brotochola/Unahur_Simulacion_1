@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Perlin Noise 2D — grilla</title>
+  <title>Perlin Noise 2D — Reglas & Texturas Periódicas</title>
   <style>
     :root {
       --bg: #0b0d12;
@@ -33,7 +33,7 @@
     }
 
     .wrap {
-      max-width: 980px;
+      max-width: 1020px;
       margin: 0 auto;
     }
 
@@ -65,7 +65,7 @@
     header p {
       color: var(--muted);
       font-size: 13.5px;
-      max-width: 640px;
+      max-width: 720px;
     }
 
     .row-top {
@@ -75,12 +75,8 @@
       align-items: start;
     }
 
-    @media (max-width:720px) {
+    @media (max-width:768px) {
       .row-top {
-        grid-template-columns: 1fr;
-      }
-
-      .knobs {
         grid-template-columns: 1fr;
       }
     }
@@ -110,20 +106,21 @@
       color: var(--muted);
     }
 
-    .interp-pick select {
+    .interp-pick select,
+    .knob select {
       background: var(--panel-2);
       border: 1px solid var(--line);
       color: var(--text);
       font-family: var(--mono);
       font-size: 12px;
       border-radius: 6px;
-      padding: 6px 8px;
+      padding: 5px 8px;
     }
 
     .knobs {
       display: grid;
-      grid-template-columns: 1fr 1fr auto;
-      gap: 8px 14px;
+      grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+      gap: 8px 12px;
       align-items: center;
       margin-bottom: 10px;
     }
@@ -136,7 +133,7 @@
 
     .knob .val {
       color: var(--accent);
-      min-width: 36px;
+      min-width: 38px;
       text-align: right;
     }
 
@@ -279,10 +276,10 @@
 <body>
   <div class="wrap">
     <header>
-      <div class="eyebrow">unidad 1 · <b>perlin 2d</b></div>
-      <h1>Cómo se arma un valor de Perlin</h1>
-      <p>La grilla ya muestra el campo de ruido (gris = resultado). Los pasos dibujan encima cómo sale ese número:
-        vectores, desplazamientos, producto punto e interpolación. Mové el mouse.</p>
+      <div class="eyebrow">unidad 1 · <b>perlin 2d avanzado</b></div>
+      <h1>Perlin con Reglas de Vectores y Textura Periódica</h1>
+      <p>Probá reemplazar el hash pseudo-aleatorio por ecuaciones algebraicas/trigonométricas para orientar los vectores
+        o hacé que el ruido se repita cíclicamente (seamless tileable texture).</p>
     </header>
 
     <div class="row-top">
@@ -298,6 +295,22 @@
           </label>
         </div>
         <div class="knobs">
+          <label class="knob">modo vector
+            <select id="sel-modo-vec">
+              <option value="hash" selected>Hash (Random)</option>
+              <option value="lineal">Lineal (A*x + B*y)</option>
+              <option value="trig">Seno/Coseno</option>
+              <option value="radial">Vórtice Radial</option>
+            </select>
+          </label>
+          <label class="knob">factor A
+            <input type="range" id="sl-factor-a" min="-180" max="180" value="45" step="5">
+            <span class="val" id="lbl-factor-a">45</span>
+          </label>
+          <label class="knob">factor B
+            <input type="range" id="sl-factor-b" min="-180" max="180" value="30" step="5">
+            <span class="val" id="lbl-factor-b">30</span>
+          </label>
           <label class="knob">contraste
             <input type="range" id="sl-contraste" min="25" max="400" value="100" step="5">
             <span class="val" id="lbl-contraste">1.00</span>
@@ -306,6 +319,20 @@
             <input type="range" id="sl-escala" min="24" max="160" value="80" step="1">
             <span class="val" id="lbl-escala">80</span>
           </label>
+          <label class="knob">mag. base
+            <input type="range" id="sl-mag-base" min="0" max="500" value="100" step="5">
+            <span class="val" id="lbl-mag-base">1.00</span>
+          </label>
+          <label class="knob">mag. var
+            <input type="range" id="sl-mag-var" min="0" max="1000" value="0" step="10">
+            <span class="val" id="lbl-mag-var">0.00</span>
+          </label>
+          <label class="knob knob-check"><input type="checkbox" id="chk-seamless"> periódico (tile)</label>
+          <label class="knob">período (celdas)
+            <input type="range" id="sl-periodo" min="2" max="12" value="4" step="1">
+            <span class="val" id="lbl-periodo">4</span>
+          </label>
+          <label class="knob knob-check"><input type="checkbox" id="chk-clamp" checked> clamp [-1,1]</label>
           <label class="knob knob-check"><input type="checkbox" id="chk-debug" checked> debug</label>
         </div>
         <canvas id="c-grilla" width="400" height="400"></canvas>
@@ -338,8 +365,56 @@
       n = (n ^ (n >>> 13)) * 1274126177;
       return (n ^ (n >>> 16)) >>> 0;
     }
-    const DIRS = [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
-    function vecEsq(x, y) { return DIRS[hashEsquina(x, y) & 7]; }
+
+    let modoVector = 'hash';
+    let factorA = 45;
+    let factorB = 30;
+    let magBase = 1.0;
+    let magVar = 0.0;
+    let esSeamless = false;
+    let periodoCeldas = 4;
+    let clampOutput = true;
+
+    function wrapGrid(coord, p) {
+      if (!esSeamless || p <= 0) return coord;
+      return ((coord % p) + p) % p;
+    }
+
+    function vecEsq(x, y) {
+      const gx = wrapGrid(x, periodoCeldas);
+      const gy = wrapGrid(y, periodoCeldas);
+
+      let angDeg = 0;
+      let randMag = 0;
+
+      if (modoVector === 'hash') {
+        const h1 = hashEsquina(gx, gy);
+        const h2 = hashEsquina(gx + 101, gy + 503);
+        angDeg = (h1 / 4294967295) * 360;
+        randMag = h2 / 4294967295;
+      } else if (modoVector === 'lineal') {
+        angDeg = gx * factorA + gy * factorB;
+        randMag = Math.abs(Math.sin(gx * 0.5 + gy * 0.5));
+      } else if (modoVector === 'trig') {
+        const radA = factorA * (Math.PI / 180);
+        const radB = factorB * (Math.PI / 180);
+        angDeg = (Math.sin(gx * radA) + Math.cos(gy * radB)) * 180;
+        randMag = (Math.sin(gx + gy) + 1) / 2;
+      } else if (modoVector === 'radial') {
+        const cx = periodoCeldas / 2;
+        const cy = periodoCeldas / 2;
+        const dx = gx - cx;
+        const dy = gy - cy;
+        angDeg = Math.atan2(dy, dx) * (180 / Math.PI) + (gx * factorA) + (gy * factorB);
+        randMag = Math.min(1, Math.sqrt(dx * dx + dy * dy) / cx);
+      }
+
+      const angRad = angDeg * (Math.PI / 180);
+      const mag = magBase + (randMag * magVar);
+
+      return [Math.cos(angRad) * mag, Math.sin(angRad) * mag];
+    }
+
     function lerp(a, b, t) { return a + t * (b - a); }
     function smoothstep(t) { return t * t * (3 - 2 * t); }
     function smootherstep(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
@@ -350,7 +425,10 @@
     }
     function pp(vx, vy, dx, dy) { return vx * dx + vy * dy; }
     function ruido(gx, gy) {
-      const xi = Math.floor(gx), yi = Math.floor(gy), xf = gx - xi, yf = gy - yi;
+      const xi = Math.floor(gx);
+      const yi = Math.floor(gy);
+      const xf = gx - xi;
+      const yf = gy - yi;
       const gAA = pp(...vecEsq(xi, yi), xf, yf), gBA = pp(...vecEsq(xi + 1, yi), xf - 1, yf);
       const gAB = pp(...vecEsq(xi, yi + 1), xf, yf - 1), gBB = pp(...vecEsq(xi + 1, yi + 1), xf - 1, yf - 1);
       const u = fade(xf), v = fade(yf);
@@ -370,14 +448,21 @@
 
     const noiseImg = ctxG.createImageData(WG, HG);
     function ruidoVista(gx, gy) {
-      return Math.max(-1, Math.min(1, ruido(gx, gy) * contraste));
+      const v = ruido(gx, gy) * contraste;
+      return clampOutput ? Math.max(-1, Math.min(1, v)) : v;
     }
     function rebuildNoise() {
-      for (let y = 0; y < HG; y++)for (let x = 0; x < WG; x++) {
-        const v = ruidoVista(x / escala, y / escala);
-        const g = Math.floor(((v + 1) / 2) * 255);
-        const i = (y * WG + x) * 4;
-        noiseImg.data[i] = g; noiseImg.data[i + 1] = g; noiseImg.data[i + 2] = g; noiseImg.data[i + 3] = 255;
+      for (let y = 0; y < HG; y++) {
+        for (let x = 0; x < WG; x++) {
+          const v = ruidoVista(x / escala, y / escala);
+          const g = Math.floor(((v + 1) / 2) * 255);
+          const clampedG = Math.max(0, Math.min(255, g));
+          const i = (y * WG + x) * 4;
+          noiseImg.data[i] = clampedG;
+          noiseImg.data[i + 1] = clampedG;
+          noiseImg.data[i + 2] = clampedG;
+          noiseImg.data[i + 3] = 255;
+        }
       }
     }
     rebuildNoise();
@@ -392,14 +477,28 @@
       ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
     }
     function labelCanvas(text, x, y, color, align, baseline) {
+      const lines = String(text).split('\n');
+      const lineH = 12;
       ctxG.font = FONT;
       ctxG.textAlign = align || 'left';
-      ctxG.textBaseline = baseline || 'alphabetic';
+      const base = baseline || 'alphabetic';
+      ctxG.textBaseline = base;
+      let startY = y;
+      if (lines.length > 1) {
+        if (base === 'bottom') startY = y - (lines.length - 1) * lineH;
+        else if (base === 'middle') startY = y - ((lines.length - 1) * lineH) / 2;
+      }
       ctxG.lineWidth = 3;
       ctxG.strokeStyle = 'rgba(11,13,18,0.9)';
-      ctxG.strokeText(text, x, y);
       ctxG.fillStyle = color;
-      ctxG.fillText(text, x, y);
+      for (let i = 0; i < lines.length; i++) {
+        const yy = startY + i * lineH;
+        ctxG.strokeText(lines[i], x, yy);
+        ctxG.fillText(lines[i], x, yy);
+      }
+    }
+    function labelXY(xVal, yVal) {
+      return xVal + '\n' + yVal;
     }
     function ptMouse(extra) {
       ctxG.beginPath(); ctxG.arc(mouse.x, mouse.y, 6, 0, Math.PI * 2);
@@ -408,14 +507,16 @@
       const { gx, gy } = g2c(mouse.x, mouse.y);
       const n = ruidoVista(gx, gy);
       const lx = mouse.x + 10, ly = mouse.y - 8;
-      if (extra) labelCanvas(extra, lx, ly, '#F2A623');
-      labelCanvas('n=' + n.toFixed(3), lx, ly + (extra ? 13 : 0), '#e7e9ee');
+      let dy = 0;
+      if (extra) {
+        labelCanvas(extra, lx, ly, '#F2A623');
+        dy = String(extra).split('\n').length * 12;
+      }
+      labelCanvas('n=' + n.toFixed(3), lx, ly + dy, '#e7e9ee');
     }
     function fondo() {
       ctxG.putImageData(noiseImg, 0, 0);
       if (!debug) return;
-      // ctxG.fillStyle = 'rgba(11,13,18,0.42)';
-      // ctxG.fillRect(0, 0, WG, HG);
       ctxG.strokeStyle = 'rgba(231,233,238,0.18)'; ctxG.lineWidth = 0.5;
       const nx = Math.ceil(WG / escala), ny = Math.ceil(HG / escala);
       for (let i = 0; i <= nx; i++) {
@@ -424,11 +525,20 @@
       for (let i = 0; i <= ny; i++) {
         ctxG.beginPath(); ctxG.moveTo(0, i * escala); ctxG.lineTo(WG, i * escala); ctxG.stroke();
       }
+
+      if (esSeamless) {
+        ctxG.strokeStyle = 'rgba(192, 132, 252, 0.6)';
+        ctxG.lineWidth = 1.5;
+        ctxG.setLineDash([4, 4]);
+        const px = periodoCeldas * escala;
+        ctxG.strokeRect(0, 0, px, px);
+        ctxG.setLineDash([]);
+      }
     }
     function vecs(res) {
       const nx = Math.ceil(WG / escala), ny = Math.ceil(HG / escala);
-      for (let gy = 0; gy <= ny; gy++)for (let gx = 0; gx <= nx; gx++) {
-        const [vx, vy] = vecEsq(gx, gy), px = gx * escala, py = gy * escala, L = escala * 0.3;
+      for (let gy = 0; gy <= ny; gy++) for (let gx = 0; gx <= nx; gx++) {
+        const [vx, vy] = vecEsq(gx, gy), px = gx * escala, py = gy * escala, L = escala * 0.25;
         const eR = res && res.some(([rx, ry]) => rx === gx && ry === gy);
         ctxG.strokeStyle = eR ? '#6B9BF2' : 'rgba(107,155,242,0.35)'; ctxG.lineWidth = eR ? 2 : 1;
         flecha(ctxG, px, py, px + vx * L, py + vy * L, eR ? 6 : 4);
@@ -458,7 +568,7 @@
       if (!debug) return;
       vecs(null);
       const { gx, gy } = g2c(mouse.x, mouse.y);
-      ptMouse('(' + gx.toFixed(2) + ',' + gy.toFixed(2) + ')');
+      ptMouse(labelXY(gx.toFixed(2), gy.toFixed(2)));
     }
     function dCelda() {
       const { gx, gy } = g2c(mouse.x, mouse.y);
@@ -471,7 +581,7 @@
       [[xi, yi], [xi + 1, yi], [xi, yi + 1], [xi + 1, yi + 1]].forEach(([ex, ey]) => {
         labelEsquina(ex, ey, xi, yi, nombreEsquina(ex, ey, xi, yi), '#E25C5C');
       });
-      ptMouse('parte X=' + xf.toFixed(2) + '  parte Y=' + yf.toFixed(2));
+      ptMouse(labelXY('X ' + xf.toFixed(2), 'Y ' + yf.toFixed(2)));
       document.getElementById('d-celda').innerHTML =
         '<div class="fd"><span class="lbl">Esquina abajo-izquierda de la celda</span><span class="num">(' + xi + ', ' + yi + ')</span></div>' +
         '<div class="fd"><span class="lbl">Parte decimal en X (0 = izquierda, 1 = derecha)</span><span class="num">' + xf.toFixed(3) + '</span></div>' +
@@ -489,7 +599,7 @@
         ctxG.strokeStyle = 'rgba(92,168,130,0.75)'; ctxG.lineWidth = 1.5; flecha(ctxG, ex * escala, ey * escala, mouse.x, mouse.y, 5);
       });
       esq.forEach(([ex, ey, dx, dy]) => {
-        labelEsquina(ex, ey, xi, yi, '(' + dx.toFixed(2) + ', ' + dy.toFixed(2) + ')', '#5CA882');
+        labelEsquina(ex, ey, xi, yi, labelXY(dx.toFixed(2), dy.toFixed(2)), '#5CA882');
       });
       ptMouse();
       document.getElementById('d-desp').innerHTML = esq.map(([ex, ey, dx, dy]) => {
@@ -504,7 +614,7 @@
       if (!debug) return;
       ctxG.fillStyle = 'rgba(226,92,92,0.07)'; ctxG.fillRect(xi * escala, yi * escala, escala, escala);
       esq.forEach(([ex, ey, dx, dy]) => {
-        const [vx, vy] = vecEsq(ex, ey), dot = pp(vx, vy, dx, dy), L = escala * 0.3, px = ex * escala, py = ey * escala;
+        const [vx, vy] = vecEsq(ex, ey), dot = pp(vx, vy, dx, dy), L = escala * 0.25, px = ex * escala, py = ey * escala;
         ctxG.strokeStyle = '#6B9BF2'; ctxG.lineWidth = 2; flecha(ctxG, px, py, px + vx * L, py + vy * L, 6);
         ctxG.strokeStyle = 'rgba(92,168,130,0.6)'; ctxG.lineWidth = 1.2; flecha(ctxG, px, py, mouse.x, mouse.y, 4);
         ctxG.beginPath(); ctxG.arc(px, py, 5, 0, Math.PI * 2);
@@ -573,63 +683,38 @@
       {
         label: '1. La grilla', fn: dGrilla,
         desc:
-          '<h3>La grilla de vectores</h3>' +
-          '<p class="lbl">Imaginá una hoja cuadriculada. En cada cruce de líneas (cada punto con coordenadas enteras) guardamos una flecha fija, llamada <b>vector gradiente</b>. Esa flecha apunta en una de ocho direcciones posibles (arriba, abajo, izquierda, derecha y las diagonales).</p>' +
-          '<p class="lbl">Cuál dirección le toca a cada cruce lo decide una función de mezcla (hash) a partir de las coordenadas del cruce y de una <b>semilla</b> numérica. Con la misma semilla siempre salen las mismas flechas, así el mapa se puede reproducir.</p>' +
-          '<div class="formula">dirección en el cruce (columna, fila) =\n' +
-          'una de 8 direcciones, según hash(columna, fila, semilla)</div>' +
-          '<p class="hint">El fondo gris ya es el resultado completo del algoritmo (el valor de ruido en cada píxel). El número junto al cursor es ese valor en el punto donde estás.</p>'
+          '<h3>Campos de Vectores Deterministas o Cíclicos</h3>' +
+          '<p class="lbl">Elegí el modo de vector: <b>Hash</b> para ruido convencional, <b>Lineal</b>/<b>Trig</b> para flujo ordenado, o <b>Radial</b> para vórtices.</p>' +
+          '<p class="lbl">Al marcar <b>periódico (tile)</b>, las coordenadas de las esquinas hacen wrap (módulo N), logrando que el borde superior e izquierdo enganchen perfectamente con el inferior y derecho (línea violeta punteada).</p>'
       },
       {
         label: '2. Tu celda', fn: dCelda,
         desc:
           '<h3>Encontrar la celda</h3>' +
-          '<p class="lbl">El punto del mouse cae dentro de un cuadrado de la grilla. Ese cuadrado es la <b>celda activa</b>. Sus cuatro vértices son cruces enteros:</p>' +
-          '<div class="formula">abajo-izquierda, abajo-derecha,\narriba-izquierda, arriba-derecha</div>' +
-          '<p class="lbl">Además medimos <b>dónde estás dentro</b> del cuadrado. La <b>parte decimal en X</b> vale 0 si estás pegado al borde izquierdo y se acerca a 1 si estás pegado al derecho. La <b>parte decimal en Y</b> vale 0 abajo y se acerca a 1 arriba. Esas fracciones (siempre entre 0 y 1) se usan en los pasos siguientes para mezclar.</p>' +
+          '<p class="lbl">Posición relativa decimal del cursor dentro del cuadrado activo.</p>' +
           '<div class="sep"></div><div id="d-celda"></div>'
       },
       {
         label: '3. Desplazamientos', fn: dDesp,
         desc:
           '<h3>Vectores de desplazamiento</h3>' +
-          '<p class="lbl">Desde cada una de las cuatro esquinas dibujamos una flecha hasta el punto del mouse. Esa flecha es el <b>vector de desplazamiento</b> de esa esquina: dice “cuánto hay que caminar, en X y en Y, desde la esquina hasta el punto”.</p>' +
-          '<p class="lbl">Las componentes se miden relativas a la celda (no en píxeles de pantalla). Por eso, si la esquina está a la derecha del punto, la componente X del desplazamiento es negativa; si está arriba, la componente Y es negativa.</p>' +
-          '<p class="hint">Si el punto está cerca de una esquina, ese vector de desplazamiento es corto. Si está lejos, es largo. Eso importa en el paso siguiente.</p>' +
+          '<p class="lbl">Distancias relativas desde los 4 vértices enteros al punto del mouse.</p>' +
           '<div class="sep"></div><div id="d-desp"></div>'
       },
       {
         label: '4. Producto punto', fn: dDot,
         desc:
           '<h3>Influencia de cada esquina</h3>' +
-          '<p class="lbl">En cada esquina ya tenemos dos flechas:</p>' +
-          '<p class="lbl">1. El <span style="color:#6B9BF2"><b>vector gradiente</b></span> (azul): la dirección fija que vive en ese cruce de la grilla.</p>' +
-          '<p class="lbl">2. El <span style="color:#5CA882"><b>vector de desplazamiento</b></span> (verde): desde esa esquina hasta el punto del mouse.</p>' +
-          '<p class="lbl">El <b>producto punto</b> combina esas dos flechas en un solo número: se multiplican las componentes X entre sí, las componentes Y entre sí, y se suman esos dos productos.</p>' +
+          '<p class="lbl">Multiplicación escalar del vector gradiente activo por el vector desplazamiento.</p>' +
           '<div class="formula">influencia = (gradienteX × desplazamientoX)\n' +
           '           + (gradienteY × desplazamientoY)</div>' +
-          '<p class="lbl">Ese número se llama <b>influencia de la esquina</b>. Lo calculamos para las cuatro:</p>' +
-          '<div class="formula">influencia abajo-izquierda\ninfluencia abajo-derecha\ninfluencia arriba-izquierda\ninfluencia arriba-derecha</div>' +
-          '<p class="hint">Si la influencia es positiva (verde), esa esquina “empuja” el valor del ruido en una dirección. Si es negativa (roja), empuja en la opuesta. Todavía no hay un único resultado: hay cuatro números que hay que combinar en el siguiente paso.</p>' +
           '<div class="sep"></div><div id="d-dot"></div>'
       },
       {
         label: '5. Interpolación', fn: dInterp,
         desc:
-          '<h3>Cómo se mezclan las cuatro influencias</h3>' +
-          '<p class="lbl">No promediamos las cuatro influencias a ojo. Primero convertimos la parte decimal en X y en Y con una <b>curva de suavizado</b> (la elegís en el menú “mezcla”). Eso da un <b>factor horizontal</b> y un <b>factor vertical</b>, ambos entre 0 y 1.</p>' +
-          '<p class="lbl">Después usamos <b>mezcla lineal</b>: dados dos números A y B y un factor t entre 0 y 1, el resultado es A si t = 0, B si t = 1, y un valor intermedio si t está en el medio (por ejemplo, el promedio si t = 0.5).</p>' +
-          '<div class="formula">mezcla lineal(A, B, t) = A + t × (B − A)</div>' +
-          '<p class="lbl">El orden concreto es este:</p>' +
-          '<p class="lbl"><b>1.</b> En el borde inferior, mezclamos la influencia de abajo-izquierda con la de abajo-derecha usando el factor horizontal. Eso da la <b>mezcla del borde inferior</b>.</p>' +
-          '<p class="lbl"><b>2.</b> En el borde superior, mezclamos arriba-izquierda con arriba-derecha con el mismo factor horizontal. Eso da la <b>mezcla del borde superior</b>.</p>' +
-          '<p class="lbl"><b>3.</b> Por último, mezclamos el resultado inferior con el superior usando el factor vertical. Ese número es el <b>valor final de ruido</b> en el punto.</p>' +
-          '<p class="hint">En el dibujo, la línea naranja vertical marca dónde estás en horizontal. Los puntos naranja arriba y abajo son las mezclas de cada borde; el valor final interpola entre ellos según el factor vertical.</p>' +
-          '<p class="lbl"><b>Curvas de suavizado</b> (menú “mezcla”):</p>' +
-          '<div class="formula">sin suavizar (identidad):  factor = parte decimal\n' +
-          'smoothstep:               factor = 3t² − 2t³\n' +
-          'smootherstep:             factor = 6t⁵ − 15t⁴ + 10t³</div>' +
-          '<p class="hint">Sin suavizar, el cambio de una celda a la siguiente se nota a simple vista. smoothstep hace el cruce más suave. smootherstep (la curva clásica de Perlin) lo suaviza todavía más.</p>' +
+          '<h3>Interpolación final</h3>' +
+          '<p class="lbl">Suavizado con curvas bicúbicas/biquínticas entre las cuatro esquinas.</p>' +
           '<div class="sep"></div><div id="d-interp"></div>'
       },
     ];
@@ -662,6 +747,23 @@
       rebuildNoise();
       PASOS[pasoActivo].fn();
     });
+    document.getElementById('sel-modo-vec').addEventListener('change', function () {
+      modoVector = this.value;
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
+    document.getElementById('sl-factor-a').addEventListener('input', function () {
+      factorA = +this.value;
+      document.getElementById('lbl-factor-a').textContent = this.value;
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
+    document.getElementById('sl-factor-b').addEventListener('input', function () {
+      factorB = +this.value;
+      document.getElementById('lbl-factor-b').textContent = this.value;
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
     document.getElementById('sl-contraste').addEventListener('input', function () {
       contraste = this.value / 100;
       document.getElementById('lbl-contraste').textContent = contraste.toFixed(2);
@@ -671,6 +773,34 @@
     document.getElementById('sl-escala').addEventListener('input', function () {
       escala = +this.value;
       document.getElementById('lbl-escala').textContent = this.value;
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
+    document.getElementById('sl-mag-base').addEventListener('input', function () {
+      magBase = this.value / 100;
+      document.getElementById('lbl-mag-base').textContent = magBase.toFixed(2);
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
+    document.getElementById('sl-mag-var').addEventListener('input', function () {
+      magVar = this.value / 100;
+      document.getElementById('lbl-mag-var').textContent = magVar.toFixed(2);
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
+    document.getElementById('chk-seamless').addEventListener('change', function () {
+      esSeamless = this.checked;
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
+    document.getElementById('sl-periodo').addEventListener('input', function () {
+      periodoCeldas = +this.value;
+      document.getElementById('lbl-periodo').textContent = this.value;
+      rebuildNoise();
+      PASOS[pasoActivo].fn();
+    });
+    document.getElementById('chk-clamp').addEventListener('change', function () {
+      clampOutput = this.checked;
       rebuildNoise();
       PASOS[pasoActivo].fn();
     });

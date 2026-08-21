@@ -30,6 +30,7 @@
 - [Game terrain generation is pretty simple, actually (YouTube)](https://www.youtube.com/watch?v=QF2Nj1zME40)
 - [Worley noise (YouTube)](https://www.youtube.com/watch?v=4066MndcyCk)
 - [Más sobre PErlin Noise](https://www.youtube.com/watch?v=sChQCdbLdHE)
+- [Producto punto](https://www.youtube.com/watch?v=tNJLlDqyRXw)
 
 ## Unidad 2 — Falling sand
 
