@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <!--
+  =============================================================
+  SIMULADOR DE ARENA A PARTIR DE UNA IMAGEN — "FALLING SAND"
+  Herramienta didáctica: imagen → granos, piedra pre-Play,
+  chunks, backends SoA vs ImageData, panel FPS/stats.
+  Sin dependencias externas. Abrir con file://
+  =============================================================
+  -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Simulador de arena — de imagen a autómata celular</title>
+  <style>
+    :root {
+      --color-fondo: #1c1712;
+      --color-panel: #262019;
+      --color-panel-alt: #201a13;
+      --color-borde: #4a3d2a;
+      --color-texto: #f0e6d2;
+      --color-texto-tenue: #a5967a;
+      --color-arena: #e0a856;
+      --color-arena-oscura: #a85f2b;
+      --color-noche: #4f8683;
+      --fuente-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Courier New", monospace;
+      --fuente-texto: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --radio: 6px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--color-fondo);
+      color: var(--color-texto);
+      font-family: var(--fuente-texto);
+      line-height: 1.55;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--color-noche);
+      outline-offset: 2px;
+    }
+
+    .franja-estratos {
+      height: 16px;
+      background: linear-gradient(to bottom,
+        var(--color-arena) 0% 22%,
+        var(--color-arena-oscura) 22% 38%,
+        var(--color-panel) 38% 46%,
+        var(--color-noche) 46% 58%,
+        var(--color-arena-oscura) 58% 78%,
+        var(--color-arena) 78% 100%);
+      border-bottom: 1px solid var(--color-borde);
+    }
+
+    header {
+      padding: 2rem clamp(1rem, 4vw, 3rem) 1.5rem;
+      border-bottom: 1px solid var(--color-borde);
+    }
+
+    header h1 {
+      font-family: var(--fuente-mono);
+      font-size: clamp(1.4rem, 2.6vw, 2.1rem);
+      margin: 0 0 0.5rem;
+      color: var(--color-arena);
+    }
+
+    header .subtitulo {
+      color: var(--color-texto-tenue);
+      max-width: 62ch;
+      margin: 0;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) 1fr;
+      gap: 1.5rem;
+      padding: 1.5rem clamp(1rem, 4vw, 3rem);
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .panel-controles {
+      background: var(--color-panel);
+      border: 1px solid var(--color-borde);
+      border-radius: var(--radio);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+      position: sticky;
+      top: 1rem;
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
+    }
+
+    .grupo-control > label:first-child,
+    .grupo-control > .titulo-grupo {
+      display: block;
+      font-family: var(--fuente-mono);
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-texto-tenue);
+      margin-bottom: 0.35rem;
+    }
+
+    .grupo-control input[type="number"] {
+      width: 100%;
+      background: var(--color-panel-alt);
+      border: 1px solid var(--color-borde);
+      color: var(--color-texto);
+      border-radius: 4px;
+      padding: 0.45rem 0.55rem;
+      font-size: 0.95rem;
+    }
+
+    .grupo-control input[type="file"] {
+      width: 100%;
+      color: var(--color-texto-tenue);
+      font-size: 0.85rem;
+    }
+
+    .grupo-control input[type="file"]::file-selector-button {
+      font-family: var(--fuente-mono);
+      background: var(--color-panel-alt);
+      color: var(--color-texto);
+      border: 1px solid var(--color-borde);
+      border-radius: 4px;
+      padding: 0.4rem 0.65rem;
+      margin-right: 0.6rem;
+      cursor: pointer;
+    }
+
+    .ayuda {
+      font-size: 0.78rem;
+      color: var(--color-texto-tenue);
+      margin: 0.35rem 0 0;
+    }
+
+    .fila-doble {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+    }
+
+    .fila-doble label {
+      display: block;
+      font-family: var(--fuente-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: var(--color-texto-tenue);
+      margin-bottom: 0.25rem;
+    }
+
+    .fila-check {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-start;
+      margin: 0.4rem 0;
+    }
+
+    .fila-check input {
+      margin-top: 0.2rem;
+      accent-color: var(--color-arena);
+      flex-shrink: 0;
+    }
+
+    .fila-check label {
+      font-size: 0.85rem;
+      color: var(--color-texto);
+      cursor: pointer;
+    }
+
+    .aviso {
+      background: rgba(224, 168, 86, 0.12);
+      border: 1px solid var(--color-arena-oscura);
+      color: var(--color-arena);
+      padding: 0.5rem 0.7rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      margin: 0.5rem 0 0;
+    }
+
+    button {
+      font-family: var(--fuente-mono);
+      font-size: 0.85rem;
+      background: var(--color-arena);
+      color: #201808;
+      border: none;
+      border-radius: 4px;
+      padding: 0.65rem 0.9rem;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    button:hover:not(:disabled) { filter: brightness(1.1); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    button.secundario {
+      background: transparent;
+      border: 1px solid var(--color-arena-oscura);
+      color: var(--color-arena);
+    }
+
+    button.activo {
+      background: var(--color-noche);
+      border-color: var(--color-noche);
+      color: var(--color-texto);
+    }
+
+    input[type="range"] {
+      accent-color: var(--color-arena);
+      width: 100%;
+    }
+
+    .panel-visualizacion {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .contenedor-canvas {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    .bloque-canvas h2 {
+      font-family: var(--fuente-mono);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-texto-tenue);
+      margin: 0 0 0.5rem;
+      font-weight: 500;
+    }
+
+    #previewImagen {
+      max-width: 160px;
+      max-height: 160px;
+      border: 1px solid var(--color-borde);
+      border-radius: 4px;
+      object-fit: contain;
+      background: repeating-conic-gradient(#2a2419 0% 25%, #221d15 0% 50%) 50% / 16px 16px;
+    }
+
+    #canvasMundo {
+      background: #0f0c08;
+      border: 1px solid var(--color-borde);
+      border-radius: 4px;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      max-width: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .estadisticas {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 0.55rem 1.2rem;
+      font-family: var(--fuente-mono);
+      font-size: 0.82rem;
+      color: var(--color-texto-tenue);
+      border-top: 1px dashed var(--color-borde);
+      padding-top: 0.75rem;
+    }
+
+    .stat-label {
+      display: block;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 0.1rem;
+    }
+
+    .estadisticas strong {
+      color: var(--color-arena);
+      font-size: 0.95rem;
+    }
+
+    .franja-estratos-fina {
+      height: 4px;
+      max-width: 4rem;
+      margin: 0 clamp(1rem, 4vw, 3rem);
+      background: linear-gradient(to right, var(--color-arena), var(--color-arena-oscura), var(--color-noche));
+      border-radius: 2px;
+    }
+
+    .panel-teoria {
+      margin: 1.5rem clamp(1rem, 4vw, 3rem) 3rem;
+      padding-top: 1.25rem;
+    }
+
+    .panel-teoria > h2 {
+      font-family: var(--fuente-mono);
+      color: var(--color-arena);
+      font-size: 1.2rem;
+    }
+
+    .panel-teoria > p.intro {
+      color: var(--color-texto-tenue);
+      max-width: 70ch;
+    }
+
+    .concepto {
+      display: grid;
+      grid-template-columns: 2.4rem 1fr;
+      gap: 0.75rem;
+      margin: 1.5rem 0;
+      max-width: 76ch;
+    }
+
+    .concepto .numero {
+      font-family: var(--fuente-mono);
+      color: var(--color-arena-oscura);
+      font-size: 1.05rem;
+    }
+
+    .concepto h3 { margin: 0 0 0.4rem; font-size: 1.02rem; }
+    .concepto p, .concepto ul { margin: 0.3rem 0; }
+    .concepto ul { padding-left: 1.2rem; }
+    .concepto li { margin-bottom: 0.3rem; }
+
+    code {
+      font-family: var(--fuente-mono);
+      background: var(--color-panel-alt);
+      border: 1px solid var(--color-borde);
+      padding: 0.05rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.88em;
+    }
+
+    footer {
+      padding: 1.2rem clamp(1rem, 4vw, 3rem) 2rem;
+      color: var(--color-texto-tenue);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--color-borde);
+    }
+  </style>
+</head>
+<body>
+  <div class="franja-estratos" aria-hidden="true"></div>
+
+  <header>
+    <h1>arena.simula() — de imagen a autómata celular</h1>
+    <p class="subtitulo">
+      Cada píxel opaco se convierte en arena que cae. Dibujá piedra antes de
+      Play, activá chunks, y compará backends SoA vs ImageData midiendo FPS.
+    </p>
+  </header>
+
+  <main>
+    <section class="panel-controles" aria-label="Controles">
+
+      <div class="grupo-control">
+        <label for="inputArchivo">1 · Imagen de origen</label>
+        <input type="file" id="inputArchivo" accept="image/*">
+        <p class="ayuda">PNG con transparencia recomendado (alfa = arena vs aire).</p>
+        <p id="infoArchivo" class="ayuda"></p>
+        <p id="avisoTransparencia" class="aviso" hidden></p>
+      </div>
+
+      <div class="grupo-control">
+        <label for="inputAnchoImagen">2 · Ancho de imagen (granos)</label>
+        <input type="number" id="inputAnchoImagen" value="60" min="4" max="4000" step="1">
+        <p class="ayuda">El alto se calcula manteniendo la proporción.</p>
+      </div>
+
+      <div class="grupo-control">
+        <span class="titulo-grupo">3 · Tamaño del mundo (celdas)</span>
+        <div class="fila-doble">
+          <div>
+            <label for="inputAnchoMundo">Ancho</label>
+            <input type="number" id="inputAnchoMundo" value="140" min="10" max="4000" step="1">
+          </div>
+          <div>
+            <label for="inputAltoMundo">Alto</label>
+            <input type="number" id="inputAltoMundo" value="140" min="10" max="4000" step="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="grupo-control">
+        <label for="inputZoom">4 · Zoom (px de pantalla por celda)</label>
+        <input type="number" id="inputZoom" value="4" min="1" max="20" step="1">
+        <p class="ayuda">Tamaño visual del canvas = mundo × zoom.</p>
+      </div>
+
+      <button id="botonConvertir" disabled>Convertir imagen en arena</button>
+
+      <div class="grupo-control">
+        <span class="titulo-grupo">5 · Reproducción</span>
+        <div class="fila-doble">
+          <button id="botonPlay" class="secundario" disabled>▶ Play</button>
+          <button id="botonReiniciar" class="secundario" disabled>↺ Reiniciar</button>
+        </div>
+        <label for="sliderVelocidad" style="margin-top:0.7rem;display:block;font-family:var(--fuente-mono);font-size:0.76rem;text-transform:uppercase;color:var(--color-texto-tenue);">
+          Velocidad: <span id="etiquetaVelocidad">30 pasos/seg</span>
+        </label>
+        <input type="range" id="sliderVelocidad" min="1" max="120" value="30">
+      </div>
+
+      <div class="grupo-control">
+        <span class="titulo-grupo">6 · Pincel (solo en pausa)</span>
+        <div class="fila-doble">
+          <button type="button" id="botonPiedra" class="secundario activo">Piedra</button>
+          <button type="button" id="botonBorrar" class="secundario">Borrar</button>
+        </div>
+        <label for="sliderRadio" style="margin-top:0.7rem;display:block;font-family:var(--fuente-mono);font-size:0.76rem;text-transform:uppercase;color:var(--color-texto-tenue);">
+          Radio: <span id="etiquetaRadio">2</span>
+        </label>
+        <input type="range" id="sliderRadio" min="1" max="8" value="2">
+        <p class="ayuda">Dibujá piedra antes de Play para ver cómo se deforma la arena.</p>
+      </div>
+
+      <div class="grupo-control">
+        <span class="titulo-grupo">7 · Chunks</span>
+        <div class="fila-check">
+          <input type="checkbox" id="checkChunks" checked>
+          <label for="checkChunks">Usar chunks 16×16 (solo regiones activas)</label>
+        </div>
+        <div class="fila-check">
+          <input type="checkbox" id="checkDebugChunks">
+          <label for="checkDebugChunks">Debug: grilla y tint de chunks activos</label>
+        </div>
+        <p class="ayuda">Desactivá chunks para forzar full-scan y comparar FPS.</p>
+      </div>
+
+      <div class="grupo-control">
+        <span class="titulo-grupo">8 · Backend / render (comparar FPS)</span>
+        <div class="fila-check">
+          <input type="checkbox" id="checkReusar" checked>
+          <label for="checkReusar">Reutilizar ImageData (no crear buffer cada frame)</label>
+        </div>
+        <div class="fila-check">
+          <input type="checkbox" id="checkImageData">
+          <label for="checkImageData">Simular sobre ImageData (alpha = ocupación)</label>
+        </div>
+        <p class="ayuda">
+          SoA = ocupado + colorR/G/B. ImageData = RGBA; arena α=255, piedra α=200, aire α=0.
+        </p>
+      </div>
+    </section>
+
+    <section class="panel-visualizacion" aria-label="Visualización">
+      <div class="contenedor-canvas">
+        <div class="bloque-canvas">
+          <h2>Imagen original</h2>
+          <img id="previewImagen" alt="Imagen original" hidden>
+        </div>
+        <div class="bloque-canvas">
+          <h2>Mundo de simulación</h2>
+          <canvas id="canvasMundo" width="10" height="10"></canvas>
+        </div>
+      </div>
+
+      <div class="estadisticas" aria-label="Estadísticas">
+        <div>
+          <span class="stat-label" title="Fotogramas de pantalla por segundo">FPS (pantalla)</span>
+          <strong id="statFps">—</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Pasos de simulación ejecutados por segundo">Pasos/s reales</span>
+          <strong id="statPasosS">—</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Contador de pasos lógicos">Paso</span>
+          <strong id="statPaso">0</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Celdas con arena">Granos de arena</span>
+          <strong id="statGranos">0</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Celdas con piedra estática">Piedras</span>
+          <strong id="statPiedras">0</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Celdas que el motor miró en el último paso">Celdas visitadas / paso</span>
+          <strong id="statVisitadas">0</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Chunks simulados (0 si chunks off)">Chunks activos</span>
+          <strong id="statChunks">0</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Tiempo medio del último paso de simulación">ms / paso (sim)</span>
+          <strong id="statMsPaso">—</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Tiempo del último dibujo">ms dibujo</span>
+          <strong id="statMsDibujo">—</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Representación de datos activa">Modo activo</span>
+          <strong id="statModo">SoA · reuso ON</strong>
+        </div>
+        <div>
+          <span class="stat-label" title="Estado de reproducción">Estado</span>
+          <strong id="statEstado">esperando imagen…</strong>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="franja-estratos-fina" aria-hidden="true"></div>
+
+  <section class="panel-teoria" aria-label="Teoría">
+    <h2>Cómo funciona: Falling Sand</h2>
+    <p class="intro">Material de cátedra — cada idea apunta al código.</p>
+
+    <div class="concepto">
+      <span class="numero">01</span>
+      <div>
+        <h3>Autómata celular</h3>
+        <p>
+          Grilla de celdas (aire / arena / piedra). En cada paso, cada celda
+          decide mirando solo a sus vecinas. El comportamiento global emerge.
+        </p>
+      </div>
+    </div>
+
+    <div class="concepto">
+      <span class="numero">02</span>
+      <div>
+        <h3>Reglas de un grano (<code>procesarCelda</code>)</h3>
+        <ul>
+          <li>Abajo vacío → cae.</li>
+          <li>Si no, diagonales; empate → al azar.</li>
+          <li>Piedra es sólida y nunca se mueve; la arena choca con ella.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="concepto">
+      <span class="numero">03</span>
+      <div>
+        <h3>Recorrido abajo → arriba</h3>
+        <p>Evita que un grano se mueva varias celdas en el mismo paso.</p>
+      </div>
+    </div>
+
+    <div class="concepto">
+      <span class="numero">04</span>
+      <div>
+        <h3>Alternancia L↔R</h3>
+        <p>Cancela el sesgo cuando dos granos compiten por el mismo hueco.</p>
+      </div>
+    </div>
+
+    <div class="concepto">
+      <span class="numero">05</span>
+      <div>
+        <h3>Imagen, mundo y piedra</h3>
+        <p>
+          La imagen va centrada arriba. <code>convertir</code> no inicia Play:
+          quedás en pausa para dibujar piedra con el pincel. La arena se
+          acomoda alrededor y la forma se deforma distinto.
+        </p>
+      </div>
+    </div>
+
+    <div class="concepto">
+      <span class="numero">06</span>
+      <div>
+        <h3>Chunks 16×16 (<code>CHUNK_SIZE</code>)</h3>
+        <p>
+          Sin chunks: cada paso visita <code>ancho × alto</code> celdas.
+          Con chunks solo se visitan regiones activas. Al mover un grano se
+          despierta el chunk destino y vecinos si cruza un borde. Tras cada
+          paso: <code>chunkActivo = chunkDespertado</code>. Si no hay
+          movimiento y no quedan chunks activos → pausa automática.
+        </p>
+      </div>
+    </div>
+
+    <div class="concepto">
+      <span class="numero">07</span>
+      <div>
+        <h3>SoA vs ImageData</h3>
+        <p>
+          <strong>SoA</strong>: arrays <code>ocupado</code> (0/1/2) +
+          <code>colorR/G/B</code>; cada frame se copian a un ImageData para
+          dibujar. Reutilizar el buffer (<code>checkReusar</code>) evita
+          presión de GC por <code>createImageData</code> cada frame.
+        </p>
+        <p>
+          <strong>ImageData como mundo</strong> (<code>checkImageData</code>):
+          la verdad es el buffer RGBA — α 0 = aire, 255 = arena, 200 = piedra.
+          Los helpers (<code>estaVacio</code>, <code>esArena</code>,
+          <code>moverGrano</code>, etc.) abstraen ambos backends.
+        </p>
+      </div>
+    </div>
+
+    <div class="concepto">
+      <span class="numero">08</span>
+      <div>
+        <h3>Para clase</h3>
+        <ul>
+          <li>Chunks ON vs OFF en mundo grande: ¿cuánto cambia ms/paso?</li>
+          <li>SoA+create vs SoA+reuso vs ImageData: ¿dónde está el cuello?</li>
+          <li>Dibujá un embudo de piedra: ¿cómo se deforma la imagen?</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Herramienta educativa de cátedra — HTML/CSS/JS sin dependencias.
+  </footer>
+
+  <script>
+  (() => {
+    'use strict';
+
+    /* ========== A. Constantes ========== */
+    const LIMITE_MIN = 10;
+    const LIMITE_MAX = 4000;
+    const UMBRAL_ALFA = 128;
+    const CHUNK_SIZE = 16;
+    const MAT_AIRE = 0;
+    const MAT_ARENA = 1;
+    const MAT_PIEDRA = 2;
+    const ALFA_ARENA = 255;
+    const ALFA_PIEDRA = 200;
+    const PIEDRA_R = 110, PIEDRA_G = 110, PIEDRA_B = 120;
+    const ZOOM_MIN = 1, ZOOM_MAX = 20;
+
+    /* ========== B. DOM ========== */
+    const $ = (id) => document.getElementById(id);
+    const el = {
+      inputArchivo: $('inputArchivo'),
+      infoArchivo: $('infoArchivo'),
+      avisoTransparencia: $('avisoTransparencia'),
+      previewImagen: $('previewImagen'),
+      inputAnchoImagen: $('inputAnchoImagen'),
+      inputAnchoMundo: $('inputAnchoMundo'),
+      inputAltoMundo: $('inputAltoMundo'),
+      inputZoom: $('inputZoom'),
+      botonConvertir: $('botonConvertir'),
+      botonPlay: $('botonPlay'),
+      botonReiniciar: $('botonReiniciar'),
+      sliderVelocidad: $('sliderVelocidad'),
+      etiquetaVelocidad: $('etiquetaVelocidad'),
+      botonPiedra: $('botonPiedra'),
+      botonBorrar: $('botonBorrar'),
+      sliderRadio: $('sliderRadio'),
+      etiquetaRadio: $('etiquetaRadio'),
+      checkChunks: $('checkChunks'),
+      checkDebugChunks: $('checkDebugChunks'),
+      checkReusar: $('checkReusar'),
+      checkImageData: $('checkImageData'),
+      canvasMundo: $('canvasMundo'),
+      statFps: $('statFps'),
+      statPasosS: $('statPasosS'),
+      statPaso: $('statPaso'),
+      statGranos: $('statGranos'),
+      statPiedras: $('statPiedras'),
+      statVisitadas: $('statVisitadas'),
+      statChunks: $('statChunks'),
+      statMsPaso: $('statMsPaso'),
+      statMsDibujo: $('statMsDibujo'),
+      statModo: $('statModo'),
+      statEstado: $('statEstado'),
+    };
+
+    const ctx = el.canvasMundo.getContext('2d');
+    const canvasLogico = document.createElement('canvas');
+    const ctxLogico = canvasLogico.getContext('2d', { willReadFrequently: true });
+
+    /* ========== C. Estado global ========== */
+    const estado = {
+      imagen: null,
+      mundo: null,
+      datosImagen: null,
+      anchoImg: 0,
+      altoImg: 0,
+      corriendo: false,
+      paso: 0,
+      pasosPorSeg: 30,
+      acumMs: 0,
+      ultimoTs: null,
+      idAnim: null,
+      zoom: 4,
+      usarChunks: true,
+      debugChunks: false,
+      reusarImageData: true,
+      modoImageData: false,
+      pincel: 'piedra',
+      radio: 2,
+      pintando: false,
+      imageDataReusado: null,
+      visitadas: 0,
+      chunksActivos: 0,
+      msPaso: 0,
+      msDibujo: 0,
+      fps: 0,
+      pasosReales: 0,
+      framesVentana: 0,
+      pasosVentana: 0,
+      inicioVentana: 0,
+      granos: 0,
+      piedras: 0,
+      textoEstado: 'esperando imagen…',
+    };
+
+    /* ========== D. Helpers de celda (ambos backends) ========== */
+    function idx(mundo, x, y) { return y * mundo.ancho + x; }
+    function idxChunk(mundo, cx, cy) { return cy * mundo.chunksX + cx; }
+
+    function estaVacio(m, i) {
+      return m.modoImageData ? m.pixels[i * 4 + 3] === 0 : m.ocupado[i] === MAT_AIRE;
+    }
+
+    function esArena(m, i) {
+      return m.modoImageData ? m.pixels[i * 4 + 3] === ALFA_ARENA : m.ocupado[i] === MAT_ARENA;
+    }
+
+    function esPiedra(m, i) {
+      return m.modoImageData ? m.pixels[i * 4 + 3] === ALFA_PIEDRA : m.ocupado[i] === MAT_PIEDRA;
+    }
+
+    function borrarCelda(m, i) {
+      if (m.modoImageData) {
+        const p = m.pixels, b = i * 4;
+        p[b] = p[b + 1] = p[b + 2] = p[b + 3] = 0;
+      } else {
+        m.ocupado[i] = MAT_AIRE;
+        m.colorR[i] = m.colorG[i] = m.colorB[i] = 0;
+      }
+    }
+
+    function ponerArena(m, i, r, g, b) {
+      if (m.modoImageData) {
+        const p = m.pixels, base = i * 4;
+        p[base] = r; p[base + 1] = g; p[base + 2] = b; p[base + 3] = ALFA_ARENA;
+      } else {
+        m.ocupado[i] = MAT_ARENA;
+        m.colorR[i] = r; m.colorG[i] = g; m.colorB[i] = b;
+      }
+    }
+
+    function ponerPiedra(m, i) {
+      if (m.modoImageData) {
+        const p = m.pixels, base = i * 4;
+        p[base] = PIEDRA_R; p[base + 1] = PIEDRA_G; p[base + 2] = PIEDRA_B; p[base + 3] = ALFA_PIEDRA;
+      } else {
+        m.ocupado[i] = MAT_PIEDRA;
+        m.colorR[i] = PIEDRA_R; m.colorG[i] = PIEDRA_G; m.colorB[i] = PIEDRA_B;
+      }
+    }
+
+    function moverGrano(m, from, to) {
+      if (m.modoImageData) {
+        const p = m.pixels, o = from * 4, d = to * 4;
+        p[d] = p[o]; p[d + 1] = p[o + 1]; p[d + 2] = p[o + 2]; p[d + 3] = p[o + 3];
+        p[o] = p[o + 1] = p[o + 2] = p[o + 3] = 0;
+      } else {
+        m.ocupado[to] = MAT_ARENA;
+        m.colorR[to] = m.colorR[from];
+        m.colorG[to] = m.colorG[from];
+        m.colorB[to] = m.colorB[from];
+        m.ocupado[from] = MAT_AIRE;
+      }
+    }
+
+    /* ========== E. Chunks ========== */
+    function despertarChunk(m, cx, cy) {
+      if (cx < 0 || cy < 0 || cx >= m.chunksX || cy >= m.chunksY) return;
+      m.chunkDespertado[idxChunk(m, cx, cy)] = 1;
+    }
+
+    function despertarCelda(m, x, y) {
+      const cx = (x / CHUNK_SIZE) | 0;
+      const cy = (y / CHUNK_SIZE) | 0;
+      despertarChunk(m, cx, cy);
+      const lx = x % CHUNK_SIZE, ly = y % CHUNK_SIZE;
+      // Orillas: despertar vecinos (incl. diagonales de esquina).
+      if (lx === 0) {
+        despertarChunk(m, cx - 1, cy);
+        if (ly === 0) despertarChunk(m, cx - 1, cy - 1);
+        if (ly === CHUNK_SIZE - 1) despertarChunk(m, cx - 1, cy + 1);
+      }
+      if (lx === CHUNK_SIZE - 1) {
+        despertarChunk(m, cx + 1, cy);
+        if (ly === 0) despertarChunk(m, cx + 1, cy - 1);
+        if (ly === CHUNK_SIZE - 1) despertarChunk(m, cx + 1, cy + 1);
+      }
+      if (ly === 0) despertarChunk(m, cx, cy - 1);
+      if (ly === CHUNK_SIZE - 1) despertarChunk(m, cx, cy + 1);
+    }
+
+    // Tras un paso: si un chunk tuvo actividad, sus 8 vecinos también
+    // entran al próximo frame. Evita “paredes” en bordes de chunk cuando
+    // la arena del vecino se corre y deja hueco.
+    function expandirDespertadosAVecinos(m) {
+      const origen = m.chunkDespertado.slice();
+      for (let cy = 0; cy < m.chunksY; cy++) {
+        for (let cx = 0; cx < m.chunksX; cx++) {
+          if (!origen[idxChunk(m, cx, cy)]) continue;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              despertarChunk(m, cx + dx, cy + dy);
+            }
+          }
+        }
+      }
+    }
+
+    function crearMundo(ancho, alto, modoImageData) {
+      const chunksX = Math.ceil(ancho / CHUNK_SIZE);
+      const chunksY = Math.ceil(alto / CHUNK_SIZE);
+      const nChunks = chunksX * chunksY;
+      const total = ancho * alto;
+      const base = {
+        ancho, alto, chunksX, chunksY,
+        chunkActivo: new Uint8Array(nChunks),
+        chunkDespertado: new Uint8Array(nChunks),
+        modoImageData: !!modoImageData,
+      };
+      if (modoImageData) {
+        const imageData = new ImageData(ancho, alto);
+        return {
+          ...base,
+          imageData,
+          pixels: imageData.data,
+          ocupado: null,
+          colorR: null,
+          colorG: null,
+          colorB: null,
+        };
+      }
+      return {
+        ...base,
+        ocupado: new Uint8Array(total),
+        colorR: new Uint8ClampedArray(total),
+        colorG: new Uint8ClampedArray(total),
+        colorB: new Uint8ClampedArray(total),
+        imageData: null,
+        pixels: null,
+      };
+    }
+
+    function activarChunksConContenido(m) {
+      m.chunkActivo.fill(0);
+      m.chunkDespertado.fill(0);
+      const total = m.ancho * m.alto;
+      for (let i = 0; i < total; i++) {
+        if (!estaVacio(m, i)) {
+          despertarCelda(m, i % m.ancho, (i / m.ancho) | 0);
+        }
+      }
+      m.chunkActivo.set(m.chunkDespertado);
+      m.chunkDespertado.fill(0);
+    }
+
+    function hayChunksActivos(m) {
+      for (let i = 0; i < m.chunkActivo.length; i++) {
+        if (m.chunkActivo[i]) return true;
+      }
+      return false;
+    }
+
+    /* ========== F. Imagen → mundo ========== */
+    function contarMateriales(m) {
+      let granos = 0, piedras = 0;
+      const total = m.ancho * m.alto;
+      for (let i = 0; i < total; i++) {
+        if (esArena(m, i)) granos++;
+        else if (esPiedra(m, i)) piedras++;
+      }
+      return { granos, piedras };
+    }
+
+    function colocarImagen(m, datos, aw, ah) {
+      const ox = Math.floor((m.ancho - aw) / 2);
+      for (let y = 0; y < ah; y++) {
+        for (let x = 0; x < aw; x++) {
+          const pi = (y * aw + x) * 4;
+          if (datos.data[pi + 3] >= UMBRAL_ALFA) {
+            ponerArena(m, idx(m, ox + x, y), datos.data[pi], datos.data[pi + 1], datos.data[pi + 2]);
+          }
+        }
+      }
+    }
+
+    function soaAImageData(src) {
+      const dst = crearMundo(src.ancho, src.alto, true);
+      const total = src.ancho * src.alto;
+      for (let i = 0; i < total; i++) {
+        if (src.ocupado[i] === MAT_ARENA) {
+          ponerArena(dst, i, src.colorR[i], src.colorG[i], src.colorB[i]);
+        } else if (src.ocupado[i] === MAT_PIEDRA) {
+          ponerPiedra(dst, i);
+        }
+      }
+      dst.chunkActivo.set(src.chunkActivo);
+      return dst;
+    }
+
+    function imageDataASoa(src) {
+      const dst = crearMundo(src.ancho, src.alto, false);
+      const total = src.ancho * src.alto;
+      for (let i = 0; i < total; i++) {
+        if (esArena(src, i)) {
+          const b = i * 4;
+          ponerArena(dst, i, src.pixels[b], src.pixels[b + 1], src.pixels[b + 2]);
+        } else if (esPiedra(src, i)) {
+          ponerPiedra(dst, i);
+        }
+      }
+      dst.chunkActivo.set(src.chunkActivo);
+      return dst;
+    }
+
+    /* ========== G. Simulación ========== */
+    function procesarCelda(m, x, y) {
+      const i = idx(m, x, y);
+      if (!esArena(m, i)) return false;
+
+      const abajo = idx(m, x, y + 1);
+      if (estaVacio(m, abajo)) {
+        moverGrano(m, i, abajo);
+        despertarCelda(m, x, y);
+        despertarCelda(m, x, y + 1);
+        return true;
+      }
+
+      const izq = x > 0 && estaVacio(m, idx(m, x - 1, y + 1));
+      const der = x < m.ancho - 1 && estaVacio(m, idx(m, x + 1, y + 1));
+
+      if (izq && der) {
+        const dx = Math.random() < 0.5 ? -1 : 1;
+        moverGrano(m, i, idx(m, x + dx, y + 1));
+        despertarCelda(m, x, y);
+        despertarCelda(m, x + dx, y + 1);
+        return true;
+      }
+      if (izq) {
+        moverGrano(m, i, idx(m, x - 1, y + 1));
+        despertarCelda(m, x, y);
+        despertarCelda(m, x - 1, y + 1);
+        return true;
+      }
+      if (der) {
+        moverGrano(m, i, idx(m, x + 1, y + 1));
+        despertarCelda(m, x, y);
+        despertarCelda(m, x + 1, y + 1);
+        return true;
+      }
+      return false;
+    }
+
+    function ejecutarPaso(m, nPaso, usarChunks) {
+      let movio = false;
+      let visitadas = 0;
+      let chunksAct = 0;
+      const ltr = nPaso % 2 === 0;
+      m.chunkDespertado.fill(0);
+
+      if (!usarChunks) {
+        for (let y = m.alto - 2; y >= 0; y--) {
+          if (ltr) {
+            for (let x = 0; x < m.ancho; x++) {
+              visitadas++;
+              if (procesarCelda(m, x, y)) movio = true;
+            }
+          } else {
+            for (let x = m.ancho - 1; x >= 0; x--) {
+              visitadas++;
+              if (procesarCelda(m, x, y)) movio = true;
+            }
+          }
+        }
+      } else {
+        // Mismo orden que full-scan (filas enteras, abajo→arriba).
+        // Solo se saltean celdas cuyo chunk está inactivo. Si se recorriera
+        // “chunk completo y después el de al lado”, la arena forma costuras
+        // en los bordes (solo “gotea” por la fila inferior del chunk).
+        const snap = m.chunkActivo.slice();
+        for (let i = 0; i < snap.length; i++) {
+          if (snap[i]) chunksAct++;
+        }
+        for (let y = m.alto - 2; y >= 0; y--) {
+          const cy = (y / CHUNK_SIZE) | 0;
+          if (ltr) {
+            for (let x = 0; x < m.ancho; x++) {
+              const cx = (x / CHUNK_SIZE) | 0;
+              if (!snap[idxChunk(m, cx, cy)]) continue;
+              visitadas++;
+              if (procesarCelda(m, x, y)) movio = true;
+            }
+          } else {
+            for (let x = m.ancho - 1; x >= 0; x--) {
+              const cx = (x / CHUNK_SIZE) | 0;
+              if (!snap[idxChunk(m, cx, cy)]) continue;
+              visitadas++;
+              if (procesarCelda(m, x, y)) movio = true;
+            }
+          }
+        }
+        expandirDespertadosAVecinos(m);
+      }
+
+      m.chunkActivo.set(m.chunkDespertado);
+      m.chunkDespertado.fill(0);
+      estado.visitadas = visitadas;
+      estado.chunksActivos = usarChunks ? chunksAct : 0;
+      return movio;
+    }
+
+    /* ========== H. Render ========== */
+    function prepararLogico(w, h) {
+      canvasLogico.width = w;
+      canvasLogico.height = h;
+      estado.imageDataReusado = ctxLogico.createImageData(w, h);
+    }
+
+    function ajustarCanvasVisible(w, h) {
+      el.canvasMundo.width = w * estado.zoom;
+      el.canvasMundo.height = h * estado.zoom;
+    }
+
+    function imageDataParaSoa(m) {
+      if (estado.reusarImageData && estado.imageDataReusado &&
+          estado.imageDataReusado.width === m.ancho &&
+          estado.imageDataReusado.height === m.alto) {
+        estado.imageDataReusado.data.fill(0);
+        return estado.imageDataReusado;
+      }
+      return ctxLogico.createImageData(m.ancho, m.alto);
+    }
+
+    function volcarSoa(m, img) {
+      const d = img.data;
+      for (let i = 0; i < m.ancho * m.alto; i++) {
+        if (m.ocupado[i] === MAT_AIRE) continue;
+        const b = i * 4;
+        d[b] = m.colorR[i];
+        d[b + 1] = m.colorG[i];
+        d[b + 2] = m.colorB[i];
+        d[b + 3] = 255;
+      }
+    }
+
+    function overlayChunks(m) {
+      if (!estado.debugChunks) return;
+      const z = estado.zoom;
+      ctx.save();
+      for (let cy = 0; cy < m.chunksY; cy++) {
+        for (let cx = 0; cx < m.chunksX; cx++) {
+          const x0 = cx * CHUNK_SIZE * z;
+          const y0 = cy * CHUNK_SIZE * z;
+          const w = Math.min(CHUNK_SIZE, m.ancho - cx * CHUNK_SIZE) * z;
+          const h = Math.min(CHUNK_SIZE, m.alto - cy * CHUNK_SIZE) * z;
+          const activo = m.chunkActivo[idxChunk(m, cx, cy)];
+          if (activo) {
+            ctx.fillStyle = 'rgba(79,134,131,0.22)';
+            ctx.fillRect(x0, y0, w, h);
+          }
+          ctx.strokeStyle = activo ? 'rgba(224,168,86,0.7)' : 'rgba(74,61,42,0.45)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+        }
+      }
+      ctx.restore();
+    }
+
+    function dibujar() {
+      const m = estado.mundo;
+      if (!m) return;
+      const t0 = performance.now();
+
+      if (m.modoImageData) {
+        ctxLogico.putImageData(m.imageData, 0, 0);
+      } else {
+        const img = imageDataParaSoa(m);
+        volcarSoa(m, img);
+        ctxLogico.putImageData(img, 0, 0);
+      }
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, el.canvasMundo.width, el.canvasMundo.height);
+      ctx.drawImage(
+        canvasLogico, 0, 0, m.ancho, m.alto,
+        0, 0, el.canvasMundo.width, el.canvasMundo.height
+      );
+      overlayChunks(m);
+      estado.msDibujo = performance.now() - t0;
+    }
+
+    function textoModo() {
+      if (estado.modoImageData) return 'ImageData (alpha)';
+      return 'SoA · reuso ' + (estado.reusarImageData ? 'ON' : 'OFF');
+    }
+
+    function refrescarContadores() {
+      if (!estado.mundo) {
+        estado.granos = 0;
+        estado.piedras = 0;
+        return;
+      }
+      const c = contarMateriales(estado.mundo);
+      estado.granos = c.granos;
+      estado.piedras = c.piedras;
+    }
+
+    function actualizarStats() {
+      el.statPaso.textContent = estado.paso;
+      el.statGranos.textContent = estado.granos;
+      el.statPiedras.textContent = estado.piedras;
+      el.statVisitadas.textContent = estado.visitadas;
+      el.statChunks.textContent = estado.usarChunks ? estado.chunksActivos : 'off';
+      el.statMsPaso.textContent = estado.msPaso ? estado.msPaso.toFixed(2) : '—';
+      el.statMsDibujo.textContent = estado.msDibujo ? estado.msDibujo.toFixed(2) : '—';
+      el.statFps.textContent = estado.fps ? estado.fps.toFixed(0) : '—';
+      el.statPasosS.textContent = estado.pasosReales ? estado.pasosReales.toFixed(0) : '—';
+      el.statModo.textContent = textoModo();
+      el.statEstado.textContent = estado.textoEstado;
+    }
+
+    /* ========== I. Pincel de piedra (solo pausa) ========== */
+    function celdaDesdePointer(e) {
+      const rect = el.canvasMundo.getBoundingClientRect();
+      const sx = el.canvasMundo.width / rect.width;
+      const sy = el.canvasMundo.height / rect.height;
+      const px = (e.clientX - rect.left) * sx;
+      const py = (e.clientY - rect.top) * sy;
+      return { x: Math.floor(px / estado.zoom), y: Math.floor(py / estado.zoom) };
+    }
+
+    function pintarBrocha(cx, cy) {
+      const m = estado.mundo;
+      if (!m || estado.corriendo) return;
+      const r = estado.radio;
+      const r2 = r * r;
+      let cambio = false;
+
+      for (let dy = -r + 1; dy < r; dy++) {
+        for (let dx = -r + 1; dx < r; dx++) {
+          if (dx * dx + dy * dy >= r2) continue;
+          const x = cx + dx, y = cy + dy;
+          if (x < 0 || y < 0 || x >= m.ancho || y >= m.alto) continue;
+          const i = idx(m, x, y);
+
+          if (estado.pincel === 'piedra') {
+            if (!esPiedra(m, i)) {
+              if (esArena(m, i)) estado.granos--;
+              ponerPiedra(m, i);
+              estado.piedras++;
+              despertarCelda(m, x, y);
+              cambio = true;
+            }
+          } else if (!estaVacio(m, i)) {
+            if (esArena(m, i)) estado.granos--;
+            if (esPiedra(m, i)) estado.piedras--;
+            borrarCelda(m, i);
+            despertarCelda(m, x, y);
+            cambio = true;
+          }
+        }
+      }
+
+      if (cambio) {
+        for (let i = 0; i < m.chunkDespertado.length; i++) {
+          if (m.chunkDespertado[i]) m.chunkActivo[i] = 1;
+        }
+        m.chunkDespertado.fill(0);
+        dibujar();
+        actualizarStats();
+      }
+    }
+
+    /* ========== J. Bucle principal ========== */
+    function ventanaStats(ts, pasos) {
+      if (!estado.inicioVentana) estado.inicioVentana = ts;
+      estado.framesVentana++;
+      estado.pasosVentana += pasos;
+      const elapsed = ts - estado.inicioVentana;
+      if (elapsed >= 500) {
+        estado.fps = (estado.framesVentana * 1000) / elapsed;
+        estado.pasosReales = (estado.pasosVentana * 1000) / elapsed;
+        estado.framesVentana = 0;
+        estado.pasosVentana = 0;
+        estado.inicioVentana = ts;
+      }
+    }
+
+    function bucle(ts) {
+      if (!estado.corriendo) return;
+      if (estado.ultimoTs === null) estado.ultimoTs = ts;
+      estado.acumMs += ts - estado.ultimoTs;
+      estado.ultimoTs = ts;
+
+      const intervalo = 1000 / estado.pasosPorSeg;
+      let pasos = 0;
+      let movio = false;
+      let tSim = 0;
+
+      while (estado.acumMs >= intervalo && pasos < 50) {
+        const t0 = performance.now();
+        const hubo = ejecutarPaso(estado.mundo, estado.paso, estado.usarChunks);
+        tSim += performance.now() - t0;
+        movio = movio || hubo;
+        estado.paso++;
+        estado.acumMs -= intervalo;
+        pasos++;
+      }
+
+      if (pasos > 0) {
+        estado.msPaso = tSim / pasos;
+        refrescarContadores();
+        dibujar();
+        ventanaStats(ts, pasos);
+        actualizarStats();
+
+        const estable = !movio && (!estado.usarChunks || !hayChunksActivos(estado.mundo));
+        if (estable) {
+          pausar('estable');
+          return;
+        }
+      } else {
+        ventanaStats(ts, 0);
+        actualizarStats();
+      }
+
+      estado.idAnim = requestAnimationFrame(bucle);
+    }
+
+    function play() {
+      if (!estado.mundo) return;
+      if (estado.usarChunks && !hayChunksActivos(estado.mundo)) {
+        activarChunksConContenido(estado.mundo);
+      }
+      estado.corriendo = true;
+      estado.ultimoTs = null;
+      estado.inicioVentana = 0;
+      estado.framesVentana = 0;
+      estado.pasosVentana = 0;
+      el.botonPlay.textContent = '⏸ Pausar';
+      estado.textoEstado = 'cayendo…';
+      estado.idAnim = requestAnimationFrame(bucle);
+      actualizarStats();
+    }
+
+    function pausar(motivo) {
+      estado.corriendo = false;
+      if (estado.idAnim) cancelAnimationFrame(estado.idAnim);
+      el.botonPlay.textContent = '▶ Play';
+      if (motivo === 'estable') {
+        estado.textoEstado = 'estable — sin movimiento';
+      } else if (estado.mundo) {
+        estado.textoEstado = 'en pausa — podés dibujar piedra';
+      }
+      actualizarStats();
+    }
+
+    /* ========== K. Imagen y controles UI ========== */
+    function leerInt(input, min, max) {
+      let v = parseInt(input.value, 10);
+      if (Number.isNaN(v)) v = min;
+      v = Math.max(min, Math.min(max, v));
+      input.value = v;
+      return v;
+    }
+
+    function dimsImagen(deseado, img, mw, mh) {
+      const prop = img.naturalHeight / img.naturalWidth;
+      let w = Math.max(1, Math.min(deseado, mw));
+      let h = Math.max(1, Math.round(w * prop));
+      if (h > mh) { h = mh; w = Math.max(1, Math.round(h / prop)); }
+      return { ancho: w, alto: h };
+    }
+
+    function remuestrear(img, w, h) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, w, h);
+      return g.getImageData(0, 0, w, h);
+    }
+
+    function syncFlags() {
+      estado.usarChunks = el.checkChunks.checked;
+      estado.debugChunks = el.checkDebugChunks.checked;
+      estado.reusarImageData = el.checkReusar.checked;
+      estado.modoImageData = el.checkImageData.checked;
+      el.checkReusar.disabled = estado.modoImageData;
+      if (estado.modoImageData) {
+        el.checkReusar.checked = true;
+        estado.reusarImageData = true;
+      }
+    }
+
+    function onArchivo(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          estado.imagen = img;
+          el.previewImagen.src = img.src;
+          el.previewImagen.hidden = false;
+          el.infoArchivo.textContent = file.name + ' — ' + img.naturalWidth + '×' + img.naturalHeight + 'px';
+          el.avisoTransparencia.hidden = true;
+          el.botonConvertir.disabled = false;
+          estado.textoEstado = 'imagen lista para convertir';
+          actualizarStats();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function avisoAlfa(datos) {
+      let tiene = false;
+      for (let i = 3; i < datos.data.length; i += 4) {
+        if (datos.data[i] < 255) { tiene = true; break; }
+      }
+      if (tiene) { el.avisoTransparencia.hidden = true; return; }
+      el.avisoTransparencia.hidden = false;
+      el.avisoTransparencia.textContent =
+        'Sin transparencia: todos los píxeles serán arena. Usá PNG con fondo transparente para huecos.';
+    }
+
+    function convertir() {
+      if (!estado.imagen) return;
+      pausar('pausa');
+      syncFlags();
+
+      const mw = leerInt(el.inputAnchoMundo, LIMITE_MIN, LIMITE_MAX);
+      const mh = leerInt(el.inputAltoMundo, LIMITE_MIN, LIMITE_MAX);
+      const awDes = leerInt(el.inputAnchoImagen, 4, mw);
+      estado.zoom = leerInt(el.inputZoom, ZOOM_MIN, ZOOM_MAX);
+
+      const dim = dimsImagen(awDes, estado.imagen, mw, mh);
+      const datos = remuestrear(estado.imagen, dim.ancho, dim.alto);
+      avisoAlfa(datos);
+
+      estado.datosImagen = datos;
+      estado.anchoImg = dim.ancho;
+      estado.altoImg = dim.alto;
+
+      prepararLogico(mw, mh);
+      ajustarCanvasVisible(mw, mh);
+
+      estado.mundo = crearMundo(mw, mh, estado.modoImageData);
+      colocarImagen(estado.mundo, datos, dim.ancho, dim.alto);
+      activarChunksConContenido(estado.mundo);
+
+      estado.paso = 0;
+      estado.visitadas = 0;
+      estado.chunksActivos = 0;
+      estado.msPaso = 0;
+      refrescarContadores();
+      dibujar();
+      actualizarStats();
+
+      el.botonPlay.disabled = false;
+      el.botonReiniciar.disabled = false;
+      estado.textoEstado = 'en pausa — dibujá piedra o dale Play';
+      actualizarStats();
+    }
+
+    function reiniciar() {
+      if (!estado.datosImagen || !estado.mundo) return;
+      pausar('pausa');
+      syncFlags();
+      const w = estado.mundo.ancho, h = estado.mundo.alto;
+      prepararLogico(w, h);
+      ajustarCanvasVisible(w, h);
+      estado.mundo = crearMundo(w, h, estado.modoImageData);
+      colocarImagen(estado.mundo, estado.datosImagen, estado.anchoImg, estado.altoImg);
+      activarChunksConContenido(estado.mundo);
+      estado.paso = 0;
+      estado.visitadas = 0;
+      estado.chunksActivos = 0;
+      estado.msPaso = 0;
+      refrescarContadores();
+      dibujar();
+      estado.textoEstado = 'en pausa — dibujá piedra o dale Play';
+      actualizarStats();
+    }
+
+    function onToggleImageData() {
+      const quiere = el.checkImageData.checked;
+      if (!estado.mundo) {
+        syncFlags();
+        actualizarStats();
+        return;
+      }
+      const corria = estado.corriendo;
+      if (corria) pausar('pausa');
+
+      if (quiere && !estado.mundo.modoImageData) {
+        estado.mundo = soaAImageData(estado.mundo);
+      } else if (!quiere && estado.mundo.modoImageData) {
+        estado.mundo = imageDataASoa(estado.mundo);
+      }
+
+      syncFlags();
+      prepararLogico(estado.mundo.ancho, estado.mundo.alto);
+      refrescarContadores();
+      dibujar();
+      if (corria) play();
+      else {
+        estado.textoEstado = 'en pausa — dibujá piedra o dale Play';
+        actualizarStats();
+      }
+    }
+
+    function init() {
+      el.inputArchivo.addEventListener('change', onArchivo);
+      el.botonConvertir.addEventListener('click', convertir);
+      el.botonPlay.addEventListener('click', () => {
+        if (estado.corriendo) pausar('pausa');
+        else play();
+      });
+      el.botonReiniciar.addEventListener('click', reiniciar);
+      el.sliderVelocidad.addEventListener('input', () => {
+        estado.pasosPorSeg = Number(el.sliderVelocidad.value);
+        el.etiquetaVelocidad.textContent = estado.pasosPorSeg + ' pasos/seg';
+      });
+      el.inputZoom.addEventListener('change', () => {
+        estado.zoom = leerInt(el.inputZoom, ZOOM_MIN, ZOOM_MAX);
+        if (estado.mundo) {
+          ajustarCanvasVisible(estado.mundo.ancho, estado.mundo.alto);
+          dibujar();
+        }
+      });
+      el.checkChunks.addEventListener('change', () => {
+        syncFlags();
+        if (estado.mundo && estado.usarChunks) activarChunksConContenido(estado.mundo);
+        if (estado.mundo) { dibujar(); actualizarStats(); }
+      });
+      el.checkDebugChunks.addEventListener('change', () => {
+        syncFlags();
+        if (estado.mundo) dibujar();
+      });
+      el.checkReusar.addEventListener('change', () => {
+        syncFlags();
+        actualizarStats();
+        if (estado.mundo && !estado.modoImageData) dibujar();
+      });
+      el.checkImageData.addEventListener('change', onToggleImageData);
+      el.botonPiedra.addEventListener('click', () => {
+        estado.pincel = 'piedra';
+        el.botonPiedra.classList.add('activo');
+        el.botonBorrar.classList.remove('activo');
+      });
+      el.botonBorrar.addEventListener('click', () => {
+        estado.pincel = 'borrar';
+        el.botonBorrar.classList.add('activo');
+        el.botonPiedra.classList.remove('activo');
+      });
+      el.sliderRadio.addEventListener('input', () => {
+        estado.radio = Number(el.sliderRadio.value);
+        el.etiquetaRadio.textContent = String(estado.radio);
+      });
+
+      el.canvasMundo.addEventListener('pointerdown', (e) => {
+        if (!estado.mundo || estado.corriendo) return;
+        estado.pintando = true;
+        el.canvasMundo.setPointerCapture(e.pointerId);
+        const { x, y } = celdaDesdePointer(e);
+        pintarBrocha(x, y);
+        e.preventDefault();
+      });
+      el.canvasMundo.addEventListener('pointermove', (e) => {
+        if (!estado.pintando) return;
+        const { x, y } = celdaDesdePointer(e);
+        pintarBrocha(x, y);
+        e.preventDefault();
+      });
+      const finPintar = (e) => {
+        estado.pintando = false;
+        try { el.canvasMundo.releasePointerCapture(e.pointerId); } catch (_) { /* ok */ }
+      };
+      el.canvasMundo.addEventListener('pointerup', finPintar);
+      el.canvasMundo.addEventListener('pointercancel', finPintar);
+
+      syncFlags();
+      actualizarStats();
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>

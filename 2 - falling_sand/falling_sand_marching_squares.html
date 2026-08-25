@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>SAND // FIELD — falling sand + marching squares</title>
+<style>
+  :root{
+    --bg: #06090a;
+    --panel: #0c1214;
+    --panel-line: #16211f;
+    --phosphor: #4bffa0;
+    --phosphor-dim: #1e6b48;
+    --amber: #ffb347;
+    --amber-dim: #7a5420;
+    --ink: #cfe8dc;
+    --ink-dim: #6f8a80;
+    --grid-line: rgba(75,255,160,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:'JetBrains Mono','SF Mono',Consolas,monospace;overflow:hidden;}
+  body{
+    display:grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: 100vh;
+  }
+
+  /* ---------- STAGE ---------- */
+  #stage{
+    position:relative;
+    display:flex;align-items:center;justify-content:center;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(75,255,160,0.05), transparent 60%),
+      repeating-linear-gradient(0deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 24px),
+      repeating-linear-gradient(90deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 24px),
+      var(--bg);
+    border-right:1px solid var(--panel-line);
+  }
+  #canvasWrap{position:relative;box-shadow:0 0 60px rgba(75,255,160,0.08);}
+  canvas{display:block;background:#050807;border:1px solid var(--phosphor-dim);}
+  #scanlines{
+    position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode:overlay;
+    opacity:0.5;
+  }
+  #hud{
+    position:absolute; top:12px; left:12px;
+    font-size:10px; letter-spacing:0.08em; color:var(--phosphor);
+    text-transform:uppercase; opacity:0.75; pointer-events:none;
+    line-height:1.6;
+  }
+  #hud b{color:var(--amber);}
+
+  /* ---------- PANEL ---------- */
+  #panel{
+    background:var(--panel);
+    overflow-y:auto;
+    padding:18px 16px 40px;
+    border-left:1px solid var(--panel-line);
+  }
+  #panel::-webkit-scrollbar{width:6px;}
+  #panel::-webkit-scrollbar-thumb{background:var(--phosphor-dim);}
+
+  h1{
+    font-size:13px; letter-spacing:0.16em; margin:0 0 2px; color:var(--phosphor);
+    text-transform:uppercase;
+  }
+  .sub{font-size:9px;color:var(--ink-dim);letter-spacing:0.1em;margin-bottom:18px;text-transform:uppercase;}
+
+  .grp{
+    border:1px solid var(--panel-line);
+    border-radius:2px;
+    margin-bottom:12px;
+    padding:10px 12px 12px;
+    background:linear-gradient(180deg, rgba(75,255,160,0.02), transparent);
+  }
+  .grp legend, .grp .grp-title{
+    font-size:10px; letter-spacing:0.14em; color:var(--amber);
+    text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:6px;
+  }
+  .grp-title::before{content:'▸'; color:var(--phosphor-dim); font-size:9px;}
+
+  .row{display:flex; align-items:center; justify-content:space-between; margin:7px 0; gap:8px;}
+  .row label{font-size:10.5px; color:var(--ink); flex:1; letter-spacing:0.02em;}
+  .row .val{font-size:10px; color:var(--phosphor); min-width:38px; text-align:right; font-variant-numeric:tabular-nums;}
+  input[type=range]{
+    flex:1.4; -webkit-appearance:none; height:2px; background:var(--phosphor-dim);
+    outline:none; border-radius:2px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:10px; height:10px; border-radius:50%;
+    background:var(--phosphor); cursor:pointer; box-shadow:0 0 6px rgba(75,255,160,0.7);
+  }
+  select{
+    background:#081210; color:var(--ink); border:1px solid var(--phosphor-dim);
+    font-family:inherit; font-size:10.5px; padding:4px 6px; flex:1.4; border-radius:2px;
+  }
+  .toggle{display:flex;gap:6px;}
+  .toggle button{
+    flex:1; background:#081210; color:var(--ink-dim); border:1px solid var(--phosphor-dim);
+    font-family:inherit; font-size:9.5px; letter-spacing:0.06em; padding:6px 4px; cursor:pointer;
+    border-radius:2px; text-transform:uppercase;
+  }
+  .toggle button.active{background:var(--phosphor-dim); color:var(--phosphor); border-color:var(--phosphor);}
+
+  .actions{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:4px;}
+  .actions button{
+    background:#081210; color:var(--phosphor); border:1px solid var(--phosphor-dim);
+    font-family:inherit; font-size:10px; letter-spacing:0.06em; padding:8px 4px; cursor:pointer;
+    border-radius:2px; text-transform:uppercase;
+  }
+  .actions button:hover{background:var(--phosphor-dim); color:#04150c;}
+  .actions button.wide{grid-column:1/3;}
+  .actions button.warn{color:var(--amber); border-color:var(--amber-dim);}
+  .actions button.warn:hover{background:var(--amber-dim); color:#1a0f00;}
+
+  .hint{font-size:9px; color:var(--ink-dim); line-height:1.5; margin-top:6px;}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="canvasWrap">
+    <canvas id="c"></canvas>
+    <div id="scanlines"></div>
+    <div id="hud">SAND // FIELD<br>cells <b id="hudCells">–</b> · iso <b id="hudIso">–</b> · <b id="hudState">RUN</b></div>
+  </div>
+</div>
+
+<div id="panel">
+  <h1>Sand // Field</h1>
+  <div class="sub">falling-sand continuo · render marching squares</div>
+
+  <div class="grp">
+    <div class="grp-title">Simulación</div>
+    <div class="row"><label>Tamaño de celda (px)</label><input id="cellPx" type="range" min="3" max="14" step="1" value="6"><span class="val" id="cellPxVal"></span></div>
+    <div class="row"><label>Flow rate</label><input id="flowRate" type="range" min="1" max="255" step="1" value="70"><span class="val" id="flowRateVal"></span></div>
+    <div class="row"><label>Umbral de reposo</label><input id="restThresh" type="range" min="0" max="40" step="1" value="4"><span class="val" id="restThreshVal"></span></div>
+    <div class="row"><label>Spread lateral</label><input id="spread" type="range" min="0" max="100" step="1" value="35"><span class="val" id="spreadVal"></span></div>
+    <div class="row"><label>Pasos por frame</label><input id="stepsPerFrame" type="range" min="1" max="6" step="1" value="1"><span class="val" id="stepsPerFrameVal"></span></div>
+  </div>
+
+  <div class="grp">
+    <div class="grp-title">Pincel</div>
+    <div class="row"><label>Radio</label><input id="brushSize" type="range" min="1" max="18" step="1" value="5"><span class="val" id="brushSizeVal"></span></div>
+    <div class="row"><label>Valor</label><input id="brushVal" type="range" min="0" max="255" step="1" value="255"><span class="val" id="brushValVal"></span></div>
+    <div class="hint">click / drag = agrega · shift+click = borra</div>
+  </div>
+
+  <div class="grp">
+    <div class="grp-title">Marching squares</div>
+    <div class="row"><label>Isovalor</label><input id="iso" type="range" min="1" max="254" step="1" value="128"><span class="val" id="isoVal"></span></div>
+    <div class="row"><label>Interp. de arista</label>
+      <select id="interpMode">
+        <option value="lerp">lerp</option>
+        <option value="smoothstep">smoothstep</option>
+        <option value="smootherstep">smootherstep</option>
+        <option value="pow">pow(t,k)</option>
+        <option value="midpoint">midpoint fijo</option>
+      </select>
+    </div>
+    <div class="row"><label>Exponente k (pow)</label><input id="powK" type="range" min="10" max="600" step="1" value="100"><span class="val" id="powKVal"></span></div>
+    <div class="row"><label>Blur pre-pass</label><input id="blur" type="range" min="0" max="4" step="1" value="0"><span class="val" id="blurVal"></span></div>
+    <div class="row"><label>Grosor de línea</label><input id="lineWidth" type="range" min="5" max="40" step="1" value="15"><span class="val" id="lineWidthVal"></span></div>
+    <div class="row"><label>Multi-nivel</label>
+      <div class="toggle"><button data-t="multi" data-v="0" class="active">off</button><button data-t="multi" data-v="1">on</button></div>
+    </div>
+    <div class="row"><label>Paso entre niveles</label><input id="levelStep" type="range" min="8" max="64" step="1" value="32"><span class="val" id="levelStepVal"></span></div>
+  </div>
+
+  <div class="grp">
+    <div class="grp-title">Vista</div>
+    <div class="row"><label>Modo</label>
+      <div class="toggle">
+        <button data-t="view" data-v="contour" class="active">contorno</button>
+        <button data-t="view" data-v="raw">raw</button>
+        <button data-t="view" data-v="both">ambos</button>
+      </div>
+    </div>
+    <div class="row"><label>Paleta</label>
+      <div class="toggle">
+        <button data-t="palette" data-v="phosphor" class="active">phosphor</button>
+        <button data-t="palette" data-v="heat">heat</button>
+      </div>
+    </div>
+    <div class="row"><label>Opacidad de relleno</label><input id="fillOpacity" type="range" min="0" max="100" step="1" value="18"><span class="val" id="fillOpacityVal"></span></div>
+    <div class="row"><label>Scanlines</label>
+      <div class="toggle"><button data-t="scan" data-v="1" class="active">on</button><button data-t="scan" data-v="0">off</button></div>
+    </div>
+  </div>
+
+  <div class="grp">
+    <div class="grp-title">Transporte</div>
+    <div class="actions">
+      <button id="btnPlay">Pausa</button>
+      <button id="btnStep">Step ▸</button>
+      <button id="btnClear" class="warn">Clear</button>
+      <button id="btnNoise" class="warn">Noise</button>
+      <button id="btnRain" class="wide">Rain (spawn arriba)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('canvasWrap');
+  const STAGE_W = 780, STAGE_H = 620;
+  canvas.width = STAGE_W; canvas.height = STAGE_H;
+
+  // ---------------- state / params ----------------
+  const P = {
+    cellPx: 6, flowRate: 70, restThresh: 4, spread: 0.35, stepsPerFrame: 1,
+    brushSize: 5, brushVal: 255,
+    iso: 128, interpMode: 'lerp', powK: 1.0, blur: 0, lineWidth: 1.5,
+    multi: false, levelStep: 32,
+    view: 'contour', palette: 'phosphor', fillOpacity: 0.18, scan: true,
+    playing: true, raining: false
+  };
+
+  let cols, rows, grid, blurredField;
+
+  function buildGrid(){
+    cols = Math.floor(STAGE_W / P.cellPx);
+    rows = Math.floor(STAGE_H / P.cellPx);
+    const old = grid, oldCols = cols, oldRows = rows; // (no resize-preserve; fresh grid)
+    grid = new Float32Array(cols*rows);
+    blurredField = new Float32Array(cols*rows);
+    document.getElementById('hudCells').textContent = cols+'×'+rows;
+  }
+  buildGrid();
+
+  // ---------------- simulation ----------------
+  function simulate(){
+    const flow = P.flowRate, rest = P.restThresh, spreadRate = P.spread;
+    for(let y=rows-2; y>=0; y--){
+      const ltr = Math.random() < 0.5;
+      for(let i=0;i<cols;i++){
+        const x = ltr ? i : (cols-1-i);
+        const idx = y*cols+x;
+        let amt = grid[idx];
+        if(amt <= rest) continue;
+
+        const belowIdx = (y+1)*cols+x;
+        const belowVal = grid[belowIdx];
+        const capBelow = 255 - belowVal;
+        if(capBelow > rest){
+          const t = Math.min(flow, amt, capBelow);
+          grid[idx] -= t; grid[belowIdx] += t;
+          amt = grid[idx];
+          if(amt <= rest) continue;
+        } else {
+          const first = Math.random() < 0.5 ? -1 : 1;
+          const dirs = [first, -first];
+          for(const dx of dirs){
+            const nx = x+dx;
+            if(nx < 0 || nx >= cols) continue;
+            const dIdx = (y+1)*cols+nx;
+            const dVal = grid[dIdx];
+            const cap = 255 - dVal;
+            if(cap > rest){
+              const t = Math.min(flow, amt, cap);
+              grid[idx] -= t; grid[dIdx] += t;
+              amt = grid[idx];
+              break;
+            }
+          }
+        }
+
+        if(spreadRate > 0 && amt > rest){
+          const first = Math.random() < 0.5 ? -1 : 1;
+          const dirs = [first, -first];
+          for(const dx of dirs){
+            const nx = x+dx;
+            if(nx < 0 || nx >= cols) continue;
+            const sIdx = y*cols+nx;
+            const sVal = grid[sIdx];
+            const diff = amt - sVal;
+            if(diff > rest){
+              const t = Math.min(flow*spreadRate, diff/2);
+              if(t > 0){ grid[idx] -= t; grid[sIdx] += t; amt = grid[idx]; }
+            }
+          }
+        }
+      }
+    }
+    if(P.raining){
+      for(let k=0;k<Math.max(1, Math.floor(cols/40));k++){
+        const x = Math.floor(Math.random()*cols);
+        const idx = x; // row 0
+        grid[idx] = Math.min(255, grid[idx] + 255);
+      }
+    }
+  }
+
+  // ---------------- blur pre-pass ----------------
+  function computeField(){
+    if(P.blur <= 0){ blurredField.set(grid); return blurredField; }
+    const r = P.blur;
+    const tmp = new Float32Array(cols*rows);
+    // horizontal pass
+    for(let y=0;y<rows;y++){
+      const rowOff = y*cols;
+      for(let x=0;x<cols;x++){
+        let sum=0, n=0;
+        for(let k=-r;k<=r;k++){
+          const xx = x+k;
+          if(xx<0||xx>=cols) continue;
+          sum += grid[rowOff+xx]; n++;
+        }
+        tmp[rowOff+x] = sum/n;
+      }
+    }
+    // vertical pass
+    for(let x=0;x<cols;x++){
+      for(let y=0;y<rows;y++){
+        let sum=0, n=0;
+        for(let k=-r;k<=r;k++){
+          const yy = y+k;
+          if(yy<0||yy>=rows) continue;
+          sum += tmp[yy*cols+x]; n++;
+        }
+        blurredField[y*cols+x] = sum/n;
+      }
+    }
+    return blurredField;
+  }
+
+  // ---------------- interpolation shaping ----------------
+  function shape(t){
+    switch(P.interpMode){
+      case 'lerp': return t;
+      case 'smoothstep': return t*t*(3-2*t);
+      case 'smootherstep': return t*t*t*(t*(t*6-15)+10);
+      case 'pow': return Math.pow(t, P.powK);
+      case 'midpoint': return 0.5;
+      default: return t;
+    }
+  }
+
+  // ---------------- color mapping ----------------
+  function heatColor(v, a){
+    const t = v/255;
+    // deep teal -> phosphor green -> amber -> white-hot
+    let r,g,b;
+    if(t < 0.33){ const u=t/0.33; r=6+u*10; g=20+u*80; b=30+u*40; }
+    else if(t < 0.66){ const u=(t-0.33)/0.33; r=16+u*40; g=100+u*120; b=70-u*30; }
+    else { const u=(t-0.66)/0.34; r=56+u*180; g=220+u*30; b=40+u*160; }
+    return `rgba(${r|0},${g|0},${b|0},${a})`;
+  }
+  function phosphorColor(v, a){
+    const t = v/255;
+    return `rgba(${75+t*60|0},${255*Math.min(1,0.3+t*0.9)|0},${140+t*80|0},${a})`;
+  }
+  function colorFor(v,a){ return P.palette==='heat' ? heatColor(v,a) : phosphorColor(v,a); }
+
+  // ---------------- raw grid render (ImageData, fast) ----------------
+  let imgData = null;
+  function renderRaw(field, alpha){
+    if(!imgData || imgData.width !== cols || imgData.height !== rows){
+      imgData = ctx.createImageData(cols, rows);
+    }
+    const d = imgData.data;
+    for(let i=0;i<cols*rows;i++){
+      const v = field[i];
+      let r,g,b;
+      if(P.palette==='heat'){
+        const t=v/255;
+        if(t<0.33){const u=t/0.33; r=6+u*10; g=20+u*80; b=30+u*40;}
+        else if(t<0.66){const u=(t-0.33)/0.33; r=16+u*40; g=100+u*120; b=70-u*30;}
+        else {const u=(t-0.66)/0.34; r=56+u*180; g=220+u*30; b=40+u*160;}
+      } else {
+        const t=v/255; r=(75+t*60); g=255*Math.min(1,0.25+t*0.9); b=(140+t*80);
+      }
+      const o = i*4;
+      d[o]=r; d[o+1]=g; d[o+2]=b; d[o+3]=alpha*255;
+    }
+    // draw scaled via temp canvas
+    const off = renderRaw._off || (renderRaw._off = document.createElement('canvas'));
+    off.width = cols; off.height = rows;
+    off.getContext('2d').putImageData(imgData,0,0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0,0, cols, rows, 0,0, cols*P.cellPx, rows*P.cellPx);
+  }
+
+  // ---------------- marching squares ----------------
+  function edgePoint(v1,v2, x1,y1, x2,y2, iso){
+    let t = (iso - v1) / (v2 - v1);
+    if(!isFinite(t)) t = 0.5;
+    t = Math.max(0, Math.min(1, t));
+    t = shape(t);
+    return [x1 + (x2-x1)*t, y1 + (y2-y1)*t];
+  }
+
+  function marchingSquares(field, iso, alpha){
+    const c = P.cellPx;
+    ctx.strokeStyle = colorFor(Math.min(255,iso+40), alpha);
+    ctx.lineWidth = P.lineWidth;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for(let y=0;y<rows-1;y++){
+      const rowOff = y*cols, rowOff2=(y+1)*cols;
+      for(let x=0;x<cols-1;x++){
+        const tl = field[rowOff+x], tr = field[rowOff+x+1];
+        const bl = field[rowOff2+x], br = field[rowOff2+x+1];
+        const state = (tl>=iso?8:0)|(tr>=iso?4:0)|(br>=iso?2:0)|(bl>=iso?1:0);
+        if(state===0 || state===15) continue;
+
+        const px = x*c, py = y*c;
+        const T = ()=>edgePoint(tl,tr, px,py, px+c,py, iso);
+        const R = ()=>edgePoint(tr,br, px+c,py, px+c,py+c, iso);
+        const B = ()=>edgePoint(bl,br, px,py+c, px+c,py+c, iso);
+        const L = ()=>edgePoint(tl,bl, px,py, px,py+c, iso);
+        const seg = (a,b)=>{ ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); };
+
+        switch(state){
+          case 1: seg(L(),B()); break;
+          case 2: seg(R(),B()); break;
+          case 3: seg(L(),R()); break;
+          case 4: seg(T(),R()); break;
+          case 5: {
+            const avg=(tl+tr+br+bl)/4;
+            if(avg>=iso){ seg(T(),L()); seg(R(),B()); }
+            else { seg(T(),R()); seg(L(),B()); }
+            break;
+          }
+          case 6: seg(T(),B()); break;
+          case 7: seg(T(),L()); break;
+          case 8: seg(T(),L()); break;
+          case 9: seg(T(),B()); break;
+          case 10: {
+            const avg=(tl+tr+br+bl)/4;
+            if(avg>=iso){ seg(T(),R()); seg(L(),B()); }
+            else { seg(T(),L()); seg(R(),B()); }
+            break;
+          }
+          case 11: seg(T(),R()); break;
+          case 12: seg(L(),R()); break;
+          case 13: seg(R(),B()); break;
+          case 14: seg(L(),B()); break;
+        }
+      }
+    }
+    ctx.stroke();
+  }
+
+  // ---------------- draw ----------------
+  function draw(){
+    ctx.clearRect(0,0,STAGE_W,STAGE_H);
+    const field = computeField();
+
+    if(P.view === 'raw' || P.view === 'both'){
+      renderRaw(field, 1.0);
+    }
+    if(P.fillOpacity > 0 && P.view !== 'raw'){
+      renderRaw(field, P.fillOpacity);
+    }
+    if(P.view === 'contour' || P.view === 'both'){
+      if(P.multi){
+        const step = P.levelStep;
+        let n=0;
+        for(let lvl = step; lvl < 255; lvl += step){
+          n++;
+          marchingSquares(field, lvl, 0.35 + 0.5*(lvl===Math.round(P.iso/step)*step ? 1:0));
+        }
+      } else {
+        marchingSquares(field, P.iso, 0.95);
+      }
+    }
+    document.getElementById('hudIso').textContent = P.iso;
+    document.getElementById('hudState').textContent = P.playing ? 'RUN' : 'PAUSE';
+  }
+
+  // ---------------- loop ----------------
+  function tick(){
+    if(P.playing){
+      for(let s=0;s<P.stepsPerFrame;s++) simulate();
+    }
+    draw();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // ---------------- brush interaction ----------------
+  let painting = false, erasing = false;
+  function paintAt(px, py){
+    const gx = Math.floor(px / P.cellPx), gy = Math.floor(py / P.cellPx);
+    const r = P.brushSize;
+    for(let dy=-r; dy<=r; dy++){
+      for(let dx=-r; dx<=r; dx++){
+        if(dx*dx+dy*dy > r*r) continue;
+        const x=gx+dx, y=gy+dy;
+        if(x<0||x>=cols||y<0||y>=rows) continue;
+        const idx = y*cols+x;
+        grid[idx] = erasing ? 0 : Math.max(grid[idx], P.brushVal);
+      }
+    }
+  }
+  function posFromEvent(e){
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    return [cx * (STAGE_W/rect.width), cy * (STAGE_H/rect.height)];
+  }
+  canvas.addEventListener('mousedown', e=>{ painting=true; erasing=e.shiftKey; const [x,y]=posFromEvent(e); paintAt(x,y); });
+  window.addEventListener('mousemove', e=>{ if(!painting) return; const [x,y]=posFromEvent(e); paintAt(x,y); });
+  window.addEventListener('mouseup', ()=> painting=false);
+  canvas.addEventListener('touchstart', e=>{ painting=true; erasing=false; const [x,y]=posFromEvent(e); paintAt(x,y); e.preventDefault(); }, {passive:false});
+  canvas.addEventListener('touchmove', e=>{ if(!painting) return; const [x,y]=posFromEvent(e); paintAt(x,y); e.preventDefault(); }, {passive:false});
+  window.addEventListener('touchend', ()=> painting=false);
+
+  // ---------------- UI wiring ----------------
+  function bindRange(id, key, fmt, onChange){
+    const el = document.getElementById(id);
+    const out = document.getElementById(id+'Val');
+    const update = ()=>{
+      let v = parseFloat(el.value);
+      P[key] = fmt ? fmt(v) : v;
+      out.textContent = el.dataset.disp ? el.dataset.disp(v) : (fmt ? P[key] : v);
+      if(onChange) onChange();
+    };
+    el.addEventListener('input', update);
+    update();
+  }
+
+  bindRange('cellPx','cellPx', v=>v, buildGrid);
+  bindRange('flowRate','flowRate', v=>v);
+  bindRange('restThresh','restThresh', v=>v);
+  bindRange('spread','spread', v=>v/100);
+  document.getElementById('spread').addEventListener('input', e=>{
+    document.getElementById('spreadVal').textContent = (e.target.value/100).toFixed(2);
+  });
+  bindRange('stepsPerFrame','stepsPerFrame', v=>v);
+  bindRange('brushSize','brushSize', v=>v);
+  bindRange('brushVal','brushVal', v=>v);
+  bindRange('iso','iso', v=>v);
+  bindRange('powK','powK', v=>v/100);
+  document.getElementById('powK').addEventListener('input', e=>{
+    document.getElementById('powKVal').textContent = (e.target.value/100).toFixed(2);
+  });
+  bindRange('blur','blur', v=>v);
+  bindRange('lineWidth','lineWidth', v=>v/10);
+  document.getElementById('lineWidth').addEventListener('input', e=>{
+    document.getElementById('lineWidthVal').textContent = (e.target.value/10).toFixed(1);
+  });
+  bindRange('levelStep','levelStep', v=>v);
+  bindRange('fillOpacity','fillOpacity', v=>v/100);
+  document.getElementById('fillOpacity').addEventListener('input', e=>{
+    document.getElementById('fillOpacityVal').textContent = (e.target.value/100).toFixed(2);
+  });
+
+  document.getElementById('interpMode').addEventListener('change', e=>{ P.interpMode = e.target.value; });
+
+  document.querySelectorAll('.toggle button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const t = btn.dataset.t, v = btn.dataset.v;
+      document.querySelectorAll(`.toggle button[data-t="${t}"]`).forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      if(t==='multi') P.multi = v==='1';
+      if(t==='view') P.view = v;
+      if(t==='palette') P.palette = v;
+      if(t==='scan') document.getElementById('scanlines').style.display = v==='1' ? 'block' : 'none';
+    });
+  });
+
+  document.getElementById('btnPlay').addEventListener('click', e=>{
+    P.playing = !P.playing;
+    e.target.textContent = P.playing ? 'Pausa' : 'Play ▸';
+  });
+  document.getElementById('btnStep').addEventListener('click', ()=>{ if(!P.playing) simulate(); });
+  document.getElementById('btnClear').addEventListener('click', ()=>{ grid.fill(0); });
+  document.getElementById('btnNoise').addEventListener('click', ()=>{
+    for(let i=0;i<grid.length;i++) grid[i] = Math.random()<0.5 ? 0 : Math.random()*255;
+  });
+  document.getElementById('btnRain').addEventListener('click', function(){
+    P.raining = !P.raining;
+    this.style.color = P.raining ? '#4bffa0' : '';
+    this.textContent = P.raining ? 'Rain (activo — click para parar)' : 'Rain (spawn arriba)';
+  });
+
+  // initial seed: a couple of mounds so there's something to see immediately
+  (function seed(){
+    for(let k=0;k<3;k++){
+      const cx = Math.floor(cols*(0.2+0.3*k)), cy = Math.floor(rows*0.15);
+      const r = 12;
+      for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+        if(dx*dx+dy*dy>r*r) continue;
+        const x=cx+dx,y=cy+dy;
+        if(x<0||x>=cols||y<0||y>=rows) continue;
+        grid[y*cols+x] = 255*(1-Math.sqrt(dx*dx+dy*dy)/r*0.4);
+      }
+    }
+  })();
+
+})();
+</script>
+</body>
+</html>

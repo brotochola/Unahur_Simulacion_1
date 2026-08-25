@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convolución de Kernels + Color Matrix</title>
+<style>
+  :root{
+    --bg: #0f1117;
+    --panel: #171a23;
+    --panel-2: #1e2230;
+    --border: #2b3040;
+    --accent: #6ea8fe;
+    --accent-2: #9b7cf0;
+    --accent-3: #f0a35e;
+    --text: #e6e8ef;
+    --text-dim: #9aa0b4;
+    --good: #4ade80;
+    --warn: #f59e0b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(180deg,#0f1117,#141824 60%,#0f1117);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1{
+    font-size: 1.6rem;
+    margin: 0 0 4px 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .subtitulo{
+    color: var(--text-dim);
+    margin-bottom: 22px;
+    font-size: 0.95rem;
+  }
+  .layout{
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 900px){
+    .layout{ grid-template-columns: 1fr; }
+  }
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  .panel.modulo-kernel{ border-left: 3px solid var(--accent); }
+  .panel.modulo-color{ border-left: 3px solid var(--accent-3); }
+
+  .panel h2{
+    font-size: 1rem;
+    margin: 0 0 12px 0;
+    color: var(--accent);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .panel.modulo-color h2{ color: var(--accent-3); }
+
+  label{
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    display:block;
+    margin-bottom: 6px;
+  }
+  input[type="file"]{
+    width:100%;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  select, button, input[type="number"].campo-ancho{
+    width: 100%;
+    padding: 9px 10px;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+  select:hover, button:hover{
+    border-color: var(--accent);
+  }
+  button.primario{
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    color: #0f1117;
+    font-weight: 600;
+    border: none;
+  }
+  button.primario:hover{ filter: brightness(1.08); }
+  button.primario.color{
+    background: linear-gradient(90deg, var(--accent-3), #e06a4f);
+  }
+  button.secundario{
+    background: transparent;
+  }
+  .fila-botones{
+    display:flex;
+    gap: 8px;
+  }
+  .fila-botones button{ margin-bottom: 0; }
+
+  /* Grilla del kernel (cuadrada NxN) */
+  .kernel-grid{
+    display: inline-grid;
+    gap: 4px;
+    margin: 10px 0;
+  }
+  .kernel-grid input{
+    width: 52px;
+    height: 42px;
+    text-align: center;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+
+  /* Grilla de la color matrix (3 filas x 4 columnas, rectangular) */
+  .matriz-color-grid{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin: 10px 0;
+  }
+  .matriz-color-grid input{
+    height: 40px;
+    text-align: center;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+  }
+  .matriz-color-grid .col-offset{
+    border-left: 2px dashed var(--border);
+  }
+  .encabezados-matriz{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap:4px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    text-align:center;
+    margin-top: 6px;
+  }
+
+  .kernel-grid input:focus, .matriz-color-grid input:focus{
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(110,168,254,0.25);
+  }
+
+  .checkbox-linea{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .checkbox-linea input{ width:auto; margin:0; }
+
+  .canvas-wrap{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 700px){
+    .canvas-wrap{ grid-template-columns: 1fr; }
+  }
+  .canvas-box{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .canvas-box h3{
+    margin: 0 0 10px 0;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  canvas{
+    width: 100%;
+    max-width: 100%;
+    background:
+      linear-gradient(45deg, #1c1f2b 25%, transparent 25%),
+      linear-gradient(-45deg, #1c1f2b 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1c1f2b 75%),
+      linear-gradient(-45deg, transparent 75%, #1c1f2b 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    border-radius: 8px;
+    display:block;
+  }
+
+  .explicacion{
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-dim);
+  }
+  .explicacion b{ color: var(--text); }
+  .explicacion code{
+    background: var(--panel-2);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 0.82rem;
+  }
+  .formula{
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 10px 0;
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    overflow-x:auto;
+    white-space: pre;
+  }
+  .formula.color{ color: var(--accent-3); }
+  .estado{
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 10px;
+    min-height: 18px;
+  }
+  .badge{
+    display:inline-block;
+    background: var(--panel-2);
+    border:1px solid var(--border);
+    color: var(--text-dim);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    margin-left: 6px;
+  }
+  .contador-pipeline{
+    font-size: 0.8rem;
+    color: var(--good);
+    margin-bottom: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🧮 Convolución de Kernels + Color Matrix</h1>
+<p class="subtitulo">Herramienta didáctica — Simulación 1 — Procesamiento de imágenes (operación espacial + operación de color)</p>
+
+<div class="layout">
+
+  <!-- ===================== PANEL IZQUIERDO: CONTROLES ===================== -->
+  <div>
+
+    <div class="panel">
+      <h2>📁 Imagen de entrada</h2>
+      <label for="inputImagen">Elegí una imagen desde tu computadora</label>
+      <input type="file" id="inputImagen" accept="image/*">
+      <div class="fila-botones" style="margin-top:12px;">
+        <button id="btnReiniciar" class="secundario">↺ Reiniciar al original</button>
+      </div>
+      <div class="contador-pipeline" id="contadorPipeline">0 operaciones aplicadas</div>
+    </div>
+
+    <!-- ================= MÓDULO 1: CONVOLUCIÓN (KERNEL ESPACIAL) ================= -->
+    <div class="panel modulo-kernel">
+      <h2>🔲 Módulo 1 — Convolución (kernel espacial)</h2>
+
+      <label for="selectTamano">Tamaño del kernel</label>
+      <select id="selectTamano">
+        <option value="3">3 x 3</option>
+        <option value="5">5 x 5</option>
+        <option value="7">7 x 7</option>
+      </select>
+
+      <label for="selectPreset">Presets</label>
+      <select id="selectPreset">
+        <option value="identidad">Identidad (no modifica)</option>
+        <option value="blur">Desenfoque (Blur / promedio)</option>
+        <option value="blurGauss">Desenfoque Gaussiano</option>
+        <option value="sharpen">Enfoque (Sharpen)</option>
+        <option value="bordesSobelX">Bordes - Sobel X</option>
+        <option value="bordesSobelY">Bordes - Sobel Y</option>
+        <option value="bordesLaplace">Bordes - Laplaciano</option>
+        <option value="relieve">Relieve (Emboss)</option>
+        <option value="cero">Vacío (todo en 0)</option>
+      </select>
+
+      <label>Valores del kernel <span class="badge" id="badgeTamano">3x3</span></label>
+      <div id="contenedorKernel" class="kernel-grid"></div>
+
+      <label for="inputFactor" style="margin-top:8px;">Factor de división (normalización)</label>
+      <input type="number" id="inputFactor" class="campo-ancho" value="1" step="0.1">
+
+      <label for="inputOffset">Offset (se suma al resultado)</label>
+      <input type="number" id="inputOffset" class="campo-ancho" value="0" step="1">
+
+      <div class="fila-botones">
+        <button id="btnNormalizarAuto">Auto-normalizar</button>
+        <button id="btnLimpiarKernel">Poner en 0</button>
+      </div>
+
+      <div class="checkbox-linea" style="margin-top:6px;">
+        <input type="checkbox" id="chkExtenderBordes" checked>
+        <label style="margin:0;" for="chkExtenderBordes">Extender píxeles del borde (clamp)</label>
+      </div>
+
+      <button class="primario" id="btnAplicarKernel">▶ Aplicar convolución</button>
+      <div class="estado" id="estadoKernel" style="margin-top:0;">Cada click vuelve a aplicar el kernel sobre el resultado actual.</div>
+    </div>
+
+    <!-- ================= MÓDULO 2: COLOR MATRIX ================= -->
+    <div class="panel modulo-color">
+      <h2>🎨 Módulo 2 — Color Matrix (mezcla de canales)</h2>
+
+      <label for="selectPresetColor">Presets</label>
+      <select id="selectPresetColor">
+        <option value="identidad">Identidad (no modifica)</option>
+        <option value="grises">Escala de grises</option>
+        <option value="sepia">Sepia</option>
+        <option value="invertir">Invertir colores</option>
+        <option value="soloRojo">Aislar canal Rojo</option>
+        <option value="soloVerde">Aislar canal Verde</option>
+        <option value="soloAzul">Aislar canal Azul</option>
+        <option value="swapRB">Intercambiar R ↔ B</option>
+        <option value="brillo">Brillo +40</option>
+        <option value="contraste">Contraste alto</option>
+        <option value="saturar">Saturar (+50%)</option>
+        <option value="desaturar">Desaturar (-50%)</option>
+        <option value="cero">Vacío (todo en negro)</option>
+      </select>
+
+      <label>Matriz 3x4 (filas = R,G,B de salida — columnas = R,G,B,constante de entrada)</label>
+      <div id="contenedorMatrizColor" class="matriz-color-grid"></div>
+      <div class="encabezados-matriz">
+        <span>× R</span><span>× G</span><span>× B</span><span>+ constante</span>
+      </div>
+
+      <div class="fila-botones" style="margin-top:10px;">
+        <button id="btnLimpiarColor">Poner en 0</button>
+      </div>
+
+      <button class="primario color" id="btnAplicarColor">▶ Aplicar color matrix</button>
+      <div class="estado" id="estadoColor" style="margin-top:0;">Cada click vuelve a aplicar la matriz sobre el resultado actual.</div>
+    </div>
+
+  </div>
+
+  <!-- ===================== PANEL DERECHO: CANVAS + EXPLICACIÓN ===================== -->
+  <div>
+
+    <div class="canvas-wrap">
+      <div class="canvas-box">
+        <h3>Imagen original</h3>
+        <canvas id="canvasOriginal" width="400" height="400"></canvas>
+      </div>
+      <div class="canvas-box">
+        <h3>Resultado (se puede seguir encadenando)</h3>
+        <canvas id="canvasResultado" width="400" height="400"></canvas>
+      </div>
+    </div>
+
+    <div class="panel modulo-kernel" style="margin-top:16px;">
+      <h2>📚 Módulo 1: ¿Qué es una convolución de kernel?</h2>
+      <div class="explicacion">
+        <p>
+          Una <b>convolución</b> recorre cada píxel de la imagen y calcula un nuevo valor a partir
+          de ese píxel y sus <b>vecinos</b>, usando una matriz pequeña llamada <b>kernel</b>. Es una
+          operación <b>espacial</b>: cada canal (R, G, B) se procesa por separado, mirando solo posiciones vecinas.
+        </p>
+        <div class="formula">resultado(x,y) = ( Σ imagen(x+i, y+j) · kernel(i,j) ) / factor + offset</div>
+        <p>
+          El <b>factor</b> normaliza la suma (ej: un kernel de blur que suma 9 se divide por 9 para
+          promediar). El <b>offset</b> se usa en kernels de bordes, para centrar el resultado en
+          gris medio en vez de quedar todo negro. Esta es la misma operación que usan los
+          <b>autómatas celulares</b> (contar vecinos) y las <b>redes neuronales convolucionales</b>.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel modulo-color">
+      <h2>📚 Módulo 2: ¿Qué es una color matrix?</h2>
+      <div class="explicacion">
+        <p>
+          Una <b>color matrix</b> es una operación <b>por píxel</b> (no mira vecinos): toma los
+          canales R, G, B de <i>ese mismo píxel</i> y calcula nuevos valores de R, G, B como una
+          <b>combinación lineal</b> de los originales. Es el mismo concepto que <code>feColorMatrix</code>
+          en SVG o <code>ColorMatrix</code> en Android, aquí simplificado a una matriz <b>3x4</b>
+          (sin canal alfa):
+        </p>
+        <div class="formula color">R' = a·R + b·G + c·B + d
+G' = e·R + f·G + g·B + h
+B' = i·R + j·G + k·B + l</div>
+        <p>
+          La cuarta columna es una <b>constante</b> que se suma (offset), útil para brillo o para
+          centrar operaciones como el contraste. Con esta matriz se pueden hacer escala de grises,
+          sepia, invertir colores, aislar un canal, intercambiar canales, saturar/desaturar, etc.
+        </p>
+        <p>
+          A diferencia del kernel, la color matrix <b>no</b> tiene noción de "tamaño" ni de bordes,
+          porque no mezcla información entre píxeles distintos — solo transforma el color de cada
+          píxel de forma independiente.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>🔗 Encadenando ambos módulos</h2>
+      <div class="explicacion">
+        <p>
+          Los dos módulos comparten el mismo <b>resultado de trabajo</b>: cada vez que aplicás una
+          operación (de cualquiera de los dos módulos), esa operación se aplica sobre lo que ya
+          está en el canvas de "Resultado", no sobre la imagen original. Esto te permite armar
+          pipelines como <code>blur → sepia → sharpen → aislar canal rojo</code> en el orden que
+          quieras, o aplicar el mismo kernel varias veces seguidas (ej: aplicar blur 5 veces para
+          un desenfoque más fuerte). Usá <b>"Reiniciar al original"</b> para volver a empezar.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   CONVOLUCIÓN DE KERNELS + COLOR MATRIX
+   Herramienta didáctica para la materia Simulación 1.
+   Todo el procesamiento se hace con Canvas 2D + JavaScript puro,
+   sin dependencias externas (archivo standalone).
+
+   IDEA CENTRAL DEL PIPELINE:
+   - "canvasOriginal" nunca se modifica: es la referencia para "Reiniciar".
+   - El canvas de "Resultado" es el "lienzo de trabajo": arranca como una copia
+     de la original, y cada operación (kernel o color matrix) lee lo que hay
+     ahí, calcula la salida, y la vuelve a escribir ahí mismo. Así se pueden
+     encadenar operaciones en cualquier orden y cualquier cantidad de veces.
+   ========================================================================= */
+
+// ---- Referencias a elementos del DOM ----
+const inputImagen        = document.getElementById('inputImagen');
+const btnReiniciar       = document.getElementById('btnReiniciar');
+const contadorPipeline   = document.getElementById('contadorPipeline');
+
+// Módulo 1: kernel
+const selectTamano        = document.getElementById('selectTamano');
+const selectPreset        = document.getElementById('selectPreset');
+const contenedorKernel    = document.getElementById('contenedorKernel');
+const badgeTamano         = document.getElementById('badgeTamano');
+const inputFactor         = document.getElementById('inputFactor');
+const inputOffset         = document.getElementById('inputOffset');
+const btnNormalizarAuto   = document.getElementById('btnNormalizarAuto');
+const btnLimpiarKernel    = document.getElementById('btnLimpiarKernel');
+const btnAplicarKernel    = document.getElementById('btnAplicarKernel');
+const chkExtenderBordes   = document.getElementById('chkExtenderBordes');
+const estadoKernel        = document.getElementById('estadoKernel');
+
+// Módulo 2: color matrix
+const selectPresetColor      = document.getElementById('selectPresetColor');
+const contenedorMatrizColor  = document.getElementById('contenedorMatrizColor');
+const btnLimpiarColor        = document.getElementById('btnLimpiarColor');
+const btnAplicarColor        = document.getElementById('btnAplicarColor');
+const estadoColor            = document.getElementById('estadoColor');
+
+const canvasOriginal  = document.getElementById('canvasOriginal');
+const ctxOriginal     = canvasOriginal.getContext('2d');
+const canvasResultado = document.getElementById('canvasResultado');
+const ctxResultado    = canvasResultado.getContext('2d');
+
+// Guardamos la imagen cargada y contamos cuántas operaciones se aplicaron
+let imagenCargada = null;
+let cantidadOperaciones = 0;
+
+// =========================================================================
+// PRESETS DE KERNEL (operación espacial)
+// =========================================================================
+const PRESETS_KERNEL = {
+  identidad: { tamano: 3, valores: [0,0,0, 0,1,0, 0,0,0], factor: 1, offset: 0 },
+  cero:      { tamano: 3, valores: [0,0,0, 0,0,0, 0,0,0], factor: 1, offset: 0 },
+  blur: {
+    tamano: 3,
+    valores: [1,1,1, 1,1,1, 1,1,1],
+    factor: 9, offset: 0
+  },
+  blurGauss: {
+    tamano: 5,
+    valores: [
+      1, 4, 6, 4,1,
+      4,16,24,16,4,
+      6,24,36,24,6,
+      4,16,24,16,4,
+      1, 4, 6, 4,1
+    ],
+    factor: 256, offset: 0
+  },
+  sharpen: {
+    tamano: 3,
+    valores: [0,-1,0, -1,5,-1, 0,-1,0],
+    factor: 1, offset: 0
+  },
+  bordesSobelX: {
+    tamano: 3,
+    valores: [-1,0,1, -2,0,2, -1,0,1],
+    factor: 1, offset: 128
+  },
+  bordesSobelY: {
+    tamano: 3,
+    valores: [-1,-2,-1, 0,0,0, 1,2,1],
+    factor: 1, offset: 128
+  },
+  bordesLaplace: {
+    tamano: 3,
+    valores: [0,-1,0, -1,4,-1, 0,-1,0],
+    factor: 1, offset: 128
+  },
+  relieve: {
+    tamano: 3,
+    valores: [-2,-1,0, -1,1,1, 0,1,2],
+    factor: 1, offset: 128
+  }
+};
+
+// =========================================================================
+// PRESETS DE COLOR MATRIX (operación de color, matriz 3x4: R,G,B,constante)
+// Cada fila es [coefR, coefG, coefB, constante] para el canal de salida correspondiente.
+// =========================================================================
+const PRESETS_COLOR = {
+  identidad: [
+    [1,0,0,0],
+    [0,1,0,0],
+    [0,0,1,0]
+  ],
+  cero: [
+    [0,0,0,0],
+    [0,0,0,0],
+    [0,0,0,0]
+  ],
+  grises: [
+    [0.299,0.587,0.114,0],
+    [0.299,0.587,0.114,0],
+    [0.299,0.587,0.114,0]
+  ],
+  sepia: [
+    [0.393,0.769,0.189,0],
+    [0.349,0.686,0.168,0],
+    [0.272,0.534,0.131,0]
+  ],
+  invertir: [
+    [-1,0,0,255],
+    [0,-1,0,255],
+    [0,0,-1,255]
+  ],
+  soloRojo: [
+    [1,0,0,0],
+    [0,0,0,0],
+    [0,0,0,0]
+  ],
+  soloVerde: [
+    [0,0,0,0],
+    [0,1,0,0],
+    [0,0,0,0]
+  ],
+  soloAzul: [
+    [0,0,0,0],
+    [0,0,0,0],
+    [0,0,1,0]
+  ],
+  swapRB: [
+    [0,0,1,0],
+    [0,1,0,0],
+    [1,0,0,0]
+  ],
+  brillo: [
+    [1,0,0,40],
+    [0,1,0,40],
+    [0,0,1,40]
+  ],
+  contraste: [
+    [1.5,0,0,-64],
+    [0,1.5,0,-64],
+    [0,0,1.5,-64]
+  ],
+  // Saturación: se mezcla cada canal con la luminosidad percibida (0.3R + 0.59G + 0.11B).
+  // s > 1 satura más, s < 1 desatura. Estos presets son casos fijos de esa fórmula general.
+  saturar: [
+    [1.35,-0.295,-0.055,0],
+    [-0.15,1.205,-0.055,0],
+    [-0.15,-0.295,1.445,0]
+  ],
+  desaturar: [
+    [0.65,0.295,0.055,0],
+    [0.15,0.795,0.055,0],
+    [0.15,0.295,0.555,0]
+  ]
+};
+
+// ---- Manejo de carga de imagen ----
+inputImagen.addEventListener('change', (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+
+  const lector = new FileReader();
+  lector.onload = (evento) => {
+    const img = new Image();
+    img.onload = () => {
+      imagenCargada = img;
+      dibujarImagenOriginal(img);
+      cantidadOperaciones = 0;
+      actualizarContador();
+      const nombreEstado = `Imagen cargada: ${img.width}x${img.height}px. Lista para procesar.`;
+      estadoKernel.textContent = nombreEstado;
+      estadoColor.textContent = nombreEstado;
+    };
+    img.src = evento.target.result;
+  };
+  lector.readAsDataURL(archivo);
+});
+
+// Dibuja la imagen original y copia esos mismos píxeles al canvas de resultado
+// (el resultado arranca siendo una copia exacta de la original).
+function dibujarImagenOriginal(img) {
+  const maxLado = 500; // limitamos el tamaño para que el procesamiento sea rápido
+  let w = img.width;
+  let h = img.height;
+  if (w > maxLado || h > maxLado) {
+    const escala = maxLado / Math.max(w, h);
+    w = Math.round(w * escala);
+    h = Math.round(h * escala);
+  }
+
+  canvasOriginal.width = w;
+  canvasOriginal.height = h;
+  canvasResultado.width = w;
+  canvasResultado.height = h;
+
+  ctxOriginal.clearRect(0, 0, w, h);
+  ctxOriginal.drawImage(img, 0, 0, w, h);
+
+  // El resultado arranca igual a la original
+  ctxResultado.clearRect(0, 0, w, h);
+  ctxResultado.drawImage(img, 0, 0, w, h);
+}
+
+// Botón "Reiniciar al original": vuelve a copiar la imagen original al lienzo de trabajo
+btnReiniciar.addEventListener('click', () => {
+  if (!imagenCargada) return;
+  const w = canvasOriginal.width;
+  const h = canvasOriginal.height;
+  ctxResultado.clearRect(0, 0, w, h);
+  ctxResultado.drawImage(canvasOriginal, 0, 0);
+  cantidadOperaciones = 0;
+  actualizarContador();
+});
+
+function actualizarContador() {
+  contadorPipeline.textContent = cantidadOperaciones === 0
+    ? '0 operaciones aplicadas'
+    : `${cantidadOperaciones} operación(es) aplicada(s) en cadena`;
+}
+
+// =========================================================================
+// MÓDULO 1: KERNEL — generación de UI y lógica
+// =========================================================================
+function generarGrillaKernel(tamano, valores) {
+  contenedorKernel.innerHTML = '';
+  contenedorKernel.style.gridTemplateColumns = `repeat(${tamano}, 1fr)`;
+  badgeTamano.textContent = `${tamano}x${tamano}`;
+
+  for (let i = 0; i < tamano * tamano; i++) {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.1';
+    input.value = valores ? valores[i] : 0;
+    input.dataset.indice = i;
+    contenedorKernel.appendChild(input);
+  }
+}
+
+function leerKernelActual() {
+  const inputs = contenedorKernel.querySelectorAll('input');
+  const valores = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+  const tamano = Math.sqrt(valores.length);
+  return { tamano, valores };
+}
+
+selectTamano.addEventListener('change', () => {
+  const nuevoTamano = parseInt(selectTamano.value, 10);
+  const valores = new Array(nuevoTamano * nuevoTamano).fill(0);
+  const centro = Math.floor((nuevoTamano * nuevoTamano) / 2);
+  valores[centro] = 1; // el centro en 1 = identidad
+  generarGrillaKernel(nuevoTamano, valores);
+});
+
+selectPreset.addEventListener('change', () => {
+  const preset = PRESETS_KERNEL[selectPreset.value];
+  if (!preset) return;
+  selectTamano.value = preset.tamano;
+  generarGrillaKernel(preset.tamano, preset.valores);
+  inputFactor.value = preset.factor;
+  inputOffset.value = preset.offset;
+});
+
+btnNormalizarAuto.addEventListener('click', () => {
+  const { valores } = leerKernelActual();
+  const suma = valores.reduce((acc, v) => acc + v, 0);
+  inputFactor.value = suma === 0 ? 1 : suma;
+});
+
+btnLimpiarKernel.addEventListener('click', () => {
+  contenedorKernel.querySelectorAll('input').forEach(inp => inp.value = 0);
+});
+
+btnAplicarKernel.addEventListener('click', () => {
+  if (!imagenCargada) {
+    estadoKernel.textContent = '⚠️ Primero cargá una imagen.';
+    return;
+  }
+  estadoKernel.textContent = 'Procesando...';
+
+  // setTimeout deja que el navegador repinte el mensaje antes de bloquear
+  // el hilo con el cálculo (que puede tardar en imágenes grandes / kernels 7x7).
+  setTimeout(() => {
+    const { tamano, valores } = leerKernelActual();
+    const factor = parseFloat(inputFactor.value) || 1;
+    const offset = parseFloat(inputOffset.value) || 0;
+    const extenderBordes = chkExtenderBordes.checked;
+
+    aplicarConvolucion(tamano, valores, factor, offset, extenderBordes);
+
+    cantidadOperaciones++;
+    actualizarContador();
+    estadoKernel.textContent = `Convolución aplicada (kernel ${tamano}x${tamano}). Podés volver a aplicarla o pasar al módulo de color.`;
+  }, 30);
+});
+
+/**
+ * Aplica la convolución sobre el LIENZO DE TRABAJO actual (canvasResultado)
+ * y escribe el resultado en ese mismo canvas, permitiendo encadenar operaciones.
+ */
+function aplicarConvolucion(tamano, kernel, factor, offset, extenderBordes) {
+  const w = canvasResultado.width;
+  const h = canvasResultado.height;
+
+  // Leemos el estado ACTUAL del lienzo de trabajo (no la imagen original)
+  const datosEntrada = ctxResultado.getImageData(0, 0, w, h);
+  const pixelesEntrada = datosEntrada.data;
+
+  const datosSalida = ctxResultado.createImageData(w, h);
+  const pixelesSalida = datosSalida.data;
+
+  const radio = Math.floor(tamano / 2);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sumaR = 0, sumaG = 0, sumaB = 0;
+
+      for (let ky = -radio; ky <= radio; ky++) {
+        for (let kx = -radio; kx <= radio; kx++) {
+          let px = x + kx;
+          let py = y + ky;
+
+          if (px < 0 || px >= w || py < 0 || py >= h) {
+            if (extenderBordes) {
+              px = Math.min(Math.max(px, 0), w - 1);
+              py = Math.min(Math.max(py, 0), h - 1);
+            } else {
+              continue; // ignoramos vecinos fuera de rango
+            }
+          }
+
+          const indiceKernel = (ky + radio) * tamano + (kx + radio);
+          const pesoKernel = kernel[indiceKernel];
+
+          const indicePixel = (py * w + px) * 4;
+          sumaR += pixelesEntrada[indicePixel]     * pesoKernel;
+          sumaG += pixelesEntrada[indicePixel + 1] * pesoKernel;
+          sumaB += pixelesEntrada[indicePixel + 2] * pesoKernel;
+        }
+      }
+
+      const r = recortar((sumaR / factor) + offset);
+      const g = recortar((sumaG / factor) + offset);
+      const b = recortar((sumaB / factor) + offset);
+
+      const indiceDestino = (y * w + x) * 4;
+      pixelesSalida[indiceDestino]     = r;
+      pixelesSalida[indiceDestino + 1] = g;
+      pixelesSalida[indiceDestino + 2] = b;
+      pixelesSalida[indiceDestino + 3] = 255;
+    }
+  }
+
+  ctxResultado.putImageData(datosSalida, 0, 0);
+}
+
+// =========================================================================
+// MÓDULO 2: COLOR MATRIX — generación de UI y lógica
+// =========================================================================
+function generarGrillaMatrizColor(matriz) {
+  contenedorMatrizColor.innerHTML = '';
+  for (let fila = 0; fila < 3; fila++) {
+    for (let col = 0; col < 4; col++) {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = '0.05';
+      input.value = matriz[fila][col];
+      input.dataset.fila = fila;
+      input.dataset.col = col;
+      if (col === 3) input.classList.add('col-offset');
+      contenedorMatrizColor.appendChild(input);
+    }
+  }
+}
+
+function leerMatrizColorActual() {
+  const inputs = contenedorMatrizColor.querySelectorAll('input');
+  const matriz = [[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+  inputs.forEach(inp => {
+    const f = parseInt(inp.dataset.fila, 10);
+    const c = parseInt(inp.dataset.col, 10);
+    matriz[f][c] = parseFloat(inp.value) || 0;
+  });
+  return matriz;
+}
+
+selectPresetColor.addEventListener('change', () => {
+  const preset = PRESETS_COLOR[selectPresetColor.value];
+  if (!preset) return;
+  generarGrillaMatrizColor(preset);
+});
+
+btnLimpiarColor.addEventListener('click', () => {
+  contenedorMatrizColor.querySelectorAll('input').forEach(inp => inp.value = 0);
+});
+
+btnAplicarColor.addEventListener('click', () => {
+  if (!imagenCargada) {
+    estadoColor.textContent = '⚠️ Primero cargá una imagen.';
+    return;
+  }
+  estadoColor.textContent = 'Procesando...';
+
+  setTimeout(() => {
+    const matriz = leerMatrizColorActual();
+    aplicarColorMatrix(matriz);
+
+    cantidadOperaciones++;
+    actualizarContador();
+    estadoColor.textContent = 'Color matrix aplicada. Podés volver a aplicarla o pasar al módulo de kernel.';
+  }, 30);
+});
+
+/**
+ * Aplica una transformación de color matrix (3x4) sobre el LIENZO DE TRABAJO
+ * actual. A diferencia de la convolución, esta operación es por-píxel: no
+ * mira vecinos, solo combina los canales R,G,B de cada píxel entre sí.
+ *
+ * matriz[0] = [a,b,c,d] -> R' = a*R + b*G + c*B + d
+ * matriz[1] = [e,f,g,h] -> G' = e*R + f*G + g*B + h
+ * matriz[2] = [i,j,k,l] -> B' = i*R + j*G + k*B + l
+ */
+function aplicarColorMatrix(matriz) {
+  const w = canvasResultado.width;
+  const h = canvasResultado.height;
+
+  const datos = ctxResultado.getImageData(0, 0, w, h);
+  const pixeles = datos.data;
+
+  for (let p = 0; p < pixeles.length; p += 4) {
+    const r = pixeles[p];
+    const g = pixeles[p + 1];
+    const b = pixeles[p + 2];
+
+    const rNuevo = matriz[0][0]*r + matriz[0][1]*g + matriz[0][2]*b + matriz[0][3];
+    const gNuevo = matriz[1][0]*r + matriz[1][1]*g + matriz[1][2]*b + matriz[1][3];
+    const bNuevo = matriz[2][0]*r + matriz[2][1]*g + matriz[2][2]*b + matriz[2][3];
+
+    pixeles[p]     = recortar(rNuevo);
+    pixeles[p + 1] = recortar(gNuevo);
+    pixeles[p + 2] = recortar(bNuevo);
+    // el canal alfa (pixeles[p+3]) no se toca
+  }
+
+  ctxResultado.putImageData(datos, 0, 0);
+}
+
+// Recorta un valor al rango válido de un canal de color [0, 255]
+function recortar(valor) {
+  return Math.min(255, Math.max(0, valor));
+}
+
+// =========================================================================
+// Inicialización de la página
+// =========================================================================
+generarGrillaKernel(3, PRESETS_KERNEL.identidad.valores);
+inputFactor.value = PRESETS_KERNEL.identidad.factor;
+inputOffset.value = PRESETS_KERNEL.identidad.offset;
+
+generarGrillaMatrizColor(PRESETS_COLOR.identidad);
+
+</script>
+</body>
+</html>

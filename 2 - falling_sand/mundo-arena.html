@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mundo de Arena — Simulación por Chunks</title>
+<style>
+  :root{
+    --bg: #0a0c0e;
+    --panel: #14171b;
+    --panel-2: #1a1e23;
+    --linea: #262b31;
+    --texto: #e7e4da;
+    --texto-sec: #8b939b;
+    --arena: #d1a552;
+    --arena-osc: #a17f3f;
+    --agua: #3d94b8;
+    --piedra: #6d7580;
+    --borrar: #b25b4a;
+    --mono: ui-monospace, "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--texto);font-family:var(--sans);overflow-x:hidden;}
+  body{padding:18px;}
+  .app{max-width:1400px;margin:0 auto;min-width:0;}
+  header{margin-bottom:16px;border-bottom:1px solid var(--linea);padding-bottom:14px;}
+  header h1{
+    font-family:var(--mono);font-size:19px;font-weight:700;letter-spacing:.04em;
+    margin:0 0 6px 0;text-transform:uppercase;color:var(--texto);
+  }
+  header h1 span{color:var(--arena);}
+  header p{margin:0;color:var(--texto-sec);font-size:13px;line-height:1.5;max-width:760px;}
+  main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start;}
+  @media (max-width: 980px){ main{grid-template-columns:minmax(0,1fr);} }
+
+  .panel-mundo{background:var(--panel);border:1px solid var(--linea);border-radius:6px;padding:14px;min-width:0;}
+  .canvas-wrap{position:relative;overflow:auto;border:1px solid var(--linea);border-radius:4px;background:#000;max-height:74vh;width:100%;min-width:0;}
+  canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;}
+  #overlay{position:absolute;top:0;left:0;pointer-events:none;}
+  .leyenda{display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--texto-sec);}
+  .leyenda span{display:inline-flex;align-items:center;gap:6px;}
+  .sw{width:10px;height:10px;border-radius:2px;display:inline-block;}
+
+  aside.panel-control{display:flex;flex-direction:column;gap:12px;}
+  section.bloque{background:var(--panel);border:1px solid var(--linea);border-radius:6px;padding:12px 14px;}
+  section.bloque h2{
+    font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--texto-sec);margin:0 0 10px 0;font-weight:600;
+  }
+  .fila{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .fila:last-child{margin-bottom:0;}
+  .fila label{font-size:12.5px;color:var(--texto);}
+  .fila small{display:block;color:var(--texto-sec);font-size:10.5px;margin-top:1px;}
+  input[type=number]{
+    width:64px;background:var(--panel-2);border:1px solid var(--linea);color:var(--texto);
+    border-radius:4px;padding:5px 6px;font-family:var(--mono);font-size:12px;
+  }
+  input[type=range]{width:120px;accent-color:var(--arena);}
+  input[type=checkbox]{accent-color:var(--arena);width:15px;height:15px;}
+
+  .materiales{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .btn-mat{
+    display:flex;align-items:center;gap:6px;padding:8px 8px;border-radius:5px;cursor:pointer;
+    border:1px solid var(--linea);background:var(--panel-2);font-family:var(--mono);font-size:11px;color:var(--texto);
+    transition:border-color .12s, background .12s;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .btn-mat .sw{width:12px;height:12px;border-radius:3px;}
+  .btn-mat.activo{border-color:var(--arena);background:#232019;}
+  .btn-mat:hover{border-color:#3a4149;}
+
+  button{
+    font-family:var(--mono);font-size:12px;background:var(--panel-2);color:var(--texto);
+    border:1px solid var(--linea);border-radius:5px;padding:8px 10px;cursor:pointer;
+  }
+  button:hover{border-color:#3a4149;}
+  button.primario{background:var(--arena-osc);border-color:var(--arena-osc);color:#100c04;font-weight:700;}
+  button.primario:hover{background:var(--arena);}
+  .fila-botones{display:flex;gap:8px;flex-wrap:wrap;}
+  .fila-botones button{flex:1;}
+
+  .stats{font-family:var(--mono);font-size:12px;}
+  .stats .fila{padding:3px 0;border-bottom:1px dashed var(--linea);margin-bottom:0;}
+  .stats .fila:last-child{border-bottom:none;}
+  .stats .val{color:var(--arena);}
+
+  .explicacion{font-size:12px;line-height:1.6;color:var(--texto-sec);}
+  .explicacion b{color:var(--texto);}
+  .explicacion code{background:var(--panel-2);padding:1px 5px;border-radius:3px;font-family:var(--mono);color:var(--arena);}
+  .explicacion p{margin:0 0 10px 0;}
+  .explicacion p:last-child{margin-bottom:0;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>Mundo de <span>Arena</span> — Sim. de autómata celular por chunks</h1>
+    <p>
+      La piedra base del mundo se genera con ruido Perlin (fractal, varias octavas). Todo lo demás —arena,
+      agua, o huecos en la piedra— lo definís vos con el mouse. El mundo está dividido en chunks: un chunk
+      que no tuvo cambios en el último paso queda "dormido" y no se simula ni se vuelve a dibujar.
+    </p>
+  </header>
+
+  <main>
+    <div class="panel-mundo">
+      <div class="canvas-wrap" id="envoltorio">
+        <canvas id="lienzo"></canvas>
+        <canvas id="overlay"></canvas>
+      </div>
+      <div class="leyenda">
+        <span><i class="sw" style="background:#0e1013;border:1px solid #333"></i>Aire</span>
+        <span><i class="sw" style="background:#d1a552"></i>Arena</span>
+        <span><i class="sw" style="background:#3d94b8"></i>Agua</span>
+        <span><i class="sw" style="background:#6d7580"></i>Piedra</span>
+        <span><i class="sw" style="background:rgba(209,165,82,.35);border:1px solid var(--arena)"></i>Chunk activo (overlay)</span>
+        <span><i class="sw" style="background:rgba(61,148,184,.35);border:1px solid var(--agua)"></i>Dirty rect (overlay)</span>
+      </div>
+      <div class="leyenda" style="margin-top:4px;">
+        <span>Click izquierdo: pintar · Botón del medio (arrastrar): mover la vista</span>
+      </div>
+    </div>
+
+    <aside class="panel-control">
+
+      <section class="bloque">
+        <h2>Material a colocar</h2>
+        <div class="materiales" id="botonesMaterial"></div>
+        <div class="fila" style="margin-top:10px;">
+          <label>Tamaño de pincel<small>radio en celdas</small></label>
+          <input type="range" id="rangoPincel" min="1" max="18" value="4">
+        </div>
+      </section>
+
+      <section class="bloque">
+        <h2>Generación del mundo (ruido Perlin)</h2>
+        <div class="fila">
+          <label>Semilla</label>
+          <input type="number" id="inSemilla" value="1337" step="1">
+        </div>
+        <div class="fila">
+          <label>Ancho × alto (celdas)</label>
+          <div style="display:flex;gap:6px;">
+            <input type="number" id="inAncho" value="220" min="20" max="1200">
+            <input type="number" id="inAlto" value="140" min="20" max="800">
+          </div>
+        </div>
+        <div class="fila">
+          <label>Tamaño de chunk<small>celdas por lado</small></label>
+          <input type="number" id="inChunk" value="16" min="4" max="128">
+        </div>
+        <div class="fila">
+          <label>Escala del ruido<small>tamaño de las formaciones</small></label>
+          <input type="range" id="inEscala" min="8" max="160" value="40">
+        </div>
+        <div class="fila">
+          <label>Umbral de piedra<small>+ alto = menos piedra</small></label>
+          <input type="range" id="inUmbral" min="-50" max="100" value="0">
+        </div>
+        <div class="fila">
+          <label>Sesgo de profundidad<small>más piedra hacia abajo</small></label>
+          <input type="range" id="inSesgo" min="0" max="100" value="35">
+        </div>
+        <div class="fila-botones" style="margin-top:10px;">
+          <button id="btnCuevas">Cuevas</button>
+          <button id="btnCapas">Capas</button>
+          <button id="btnVacio">Vacío</button>
+        </div>
+        <div class="fila-botones" style="margin-top:8px;">
+          <button class="primario" id="btnRegenerar" style="width:100%;">Regenerar mundo</button>
+        </div>
+      </section>
+
+      <section class="bloque">
+        <h2>Simulación</h2>
+        <div class="fila-botones">
+          <button id="btnPlay">Pausar</button>
+          <button id="btnPaso">Paso único</button>
+        </div>
+        <div class="fila" style="margin-top:10px;">
+          <label>Velocidad<small>pasos de sim. por frame</small></label>
+          <input type="range" id="rangoVelocidad" min="1" max="10" value="1">
+        </div>
+        <div class="fila">
+          <label>Zoom<small>px de pantalla por celda</small></label>
+          <input type="range" id="rangoZoom" min="1" max="8" value="4">
+        </div>
+        <div class="fila">
+          <label>Grilla de chunks activos<small>overlay de depuración</small></label>
+          <input type="checkbox" id="chkOverlay">
+        </div>
+        <div class="fila">
+          <label>Dirty rect por chunk<small>AABB sucio por chunk + overlay</small></label>
+          <input type="checkbox" id="chkDirtyRect">
+        </div>
+        <div class="fila">
+          <label>Emisor automático arriba<small>usa el material seleccionado</small></label>
+          <input type="checkbox" id="chkEmisor">
+        </div>
+      </section>
+
+      <section class="bloque">
+        <h2>Estadísticas</h2>
+        <div class="stats">
+          <div class="fila"><span>FPS</span><span class="val" id="statFps">–</span></div>
+          <div class="fila"><span>Chunks activos / total</span><span class="val" id="statChunks">–</span></div>
+          <div class="fila"><span>Chunks redibujados (últ. frame)</span><span class="val" id="statRedibujo">–</span></div>
+          <div class="fila"><span>Dirty rect</span><span class="val" id="statDirty">–</span></div>
+          <div class="fila"><span>Celdas actualizadas (últ. paso)</span><span class="val" id="statCeldas">–</span></div>
+          <div class="fila"><span>Tiempo de simulación</span><span class="val" id="statTiempoSim">–</span></div>
+          <div class="fila"><span>Celdas totales del mundo</span><span class="val" id="statTotal">–</span></div>
+        </div>
+      </section>
+
+      <section class="bloque">
+        <h2>Cómo funciona</h2>
+        <div class="explicacion">
+          <p><b>Chunks:</b> el mundo se parte en bloques de <code>tamChunk × tamChunk</code> celdas.
+          Un chunk sólo se procesa si está <b>activo</b>. El barrido es por filas globales de abajo hacia arriba
+          (como un mundo monolítico), así la arena/agua cruza bordes de chunk sin “escalones”.
+          Al mover una celda se despiertan vecinos en el borde; fluido quieto en el borde despierta
+          al vecino si del otro lado hay aire u otra interacción posible (wake agresivo).</p>
+          <p><b>Dormir:</b> si en un paso no hubo ningún movimiento dentro de un chunk, ese chunk no se vuelve
+          a marcar activo y queda dormido: no se recorre en el próximo paso ni se vuelve a dibujar. Por eso
+          al generar el mundo el contador de "chunks activos" arranca en 0 —piedra y aire son estáticos— y
+          sólo sube cuando pintás arena o agua.</p>
+          <p><b>Dibujado:</b> buffer <code>ImageData</code> del mundo entero. Por defecto,
+          <code>putImageData</code> del chunk completo si está sucio. Con <b>Dirty rect</b> cada chunk
+          guarda su propio AABB de celdas tocadas y sólo se sube ese sub-rectángulo (overlay cian por chunk).</p>
+          <p><b>Para estresar el rendimiento:</b> agrandá el mundo, probá chunks chicos (más overhead de
+          bordes) contra chunks grandes (menos paralelismo de "sueño"), y activá el emisor automático. El
+          overlay de depuración tiene su propio costo de dibujo — apagalo para medir el rendimiento real.</p>
+        </div>
+      </section>
+
+    </aside>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   TIPOS DE CELDA
+   ============================================================ */
+const AIRE = 0, ARENA = 1, AGUA = 2, PIEDRA = 3;
+
+const COLORES = {
+  [AIRE]:   [14, 16, 19],
+  [ARENA]:  [209, 165, 82],
+  [AGUA]:   [61, 148, 184],
+  [PIEDRA]: [109, 117, 128],
+};
+
+/* ============================================================
+   GENERADOR ALEATORIO Y RUIDO PERLIN (implementación propia,
+   sin dependencias externas, para poder generar el mundo)
+   ============================================================ */
+
+// PRNG determinístico a partir de una semilla (mulberry32)
+function crearAzar(semilla) {
+  let a = semilla >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Ruido Perlin clásico 2D, con tabla de permutación barajada según la semilla
+function crearRuidoPerlin(semilla) {
+  const azar = crearAzar(semilla);
+  const p = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(azar() * (i + 1));
+    const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+  }
+  const perm = new Uint8Array(512);
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const lerp = (t, a, b) => a + t * (b - a);
+  const grad = (hash, x, y) => {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+  };
+
+  return function ruido2D(x, y) {
+    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+    x -= Math.floor(x); y -= Math.floor(y);
+    const u = fade(x), v = fade(y);
+    const a = perm[X] + Y, aa = perm[a], ab = perm[a + 1];
+    const b = perm[X + 1] + Y, ba = perm[b], bb = perm[b + 1];
+    return lerp(v,
+      lerp(u, grad(perm[aa], x, y),     grad(perm[ba], x - 1, y)),
+      lerp(u, grad(perm[ab], x, y - 1), grad(perm[bb], x - 1, y - 1))
+    );
+  };
+}
+
+// Suma varias octavas de ruido para obtener formaciones más orgánicas
+function ruidoFractal(ruido2D, x, y, octavas, persistencia, escala) {
+  let total = 0, amplitud = 1, frecuencia = 1 / escala, ampMax = 0;
+  for (let i = 0; i < octavas; i++) {
+    total += ruido2D(x * frecuencia, y * frecuencia) * amplitud;
+    ampMax += amplitud;
+    amplitud *= persistencia;
+    frecuencia *= 2;
+  }
+  return total / ampMax; // aprox -1..1
+}
+
+// Variación de color determinística por celda, para dar textura a la piedra/arena
+function variacionColor(x, y) {
+  const h = ((x * 374761393 + y * 668265263) ^ (x * 69069 + y)) >>> 0;
+  return (h % 21) - 10; // -10..10
+}
+function fijar255(v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
+
+/* ============================================================
+   ESTADO GLOBAL DEL MUNDO
+   ============================================================ */
+let ANCHO, ALTO, TAM_CHUNK, chunksX, chunksY;
+let grid;                 // Uint8Array: tipo de celda por índice
+let movedVersion;         // Uint32Array: en qué "paso" se movió cada celda por última vez
+let contadorPaso = 0;
+
+let chunkActivo, chunkActivoSiguiente; // Uint8Array de flags por chunk
+const chunksSucios = new Set();        // chunks que hay que redibujar este frame
+let dirtyPorChunk = null;              // Array<{x0,y0,x1,y1}|null> AABB local por chunk
+let dirtyPorChunkUltimoFrame = [];     // snapshot para overlay/stats
+
+let datosImagen;          // ImageData con el buffer de píxeles de todo el mundo
+let ctx, ctxOverlay;
+const lienzo = document.getElementById("lienzo");
+const overlay = document.getElementById("overlay");
+const envoltorio = document.getElementById("envoltorio");
+ctx = lienzo.getContext("2d", { alpha: false });
+ctxOverlay = overlay.getContext("2d");
+
+let zoom = 4;
+
+function idx(x, y) { return y * ANCHO + x; }
+function dentro(x, y) { return x >= 0 && x < ANCHO && y >= 0 && y < ALTO; }
+function chunkIdxDe(cx, cy) { return cy * chunksX + cx; }
+
+/* ============================================================
+   PINTADO DE UNA CELDA EN EL BUFFER DE PÍXELES
+   ============================================================ */
+function pintarPixel(x, y, tipo) {
+  const base = COLORES[tipo];
+  const v = variacionColor(x, y);
+  const i = (y * ANCHO + x) * 4;
+  const d = datosImagen.data;
+  d[i]     = fijar255(base[0] + v);
+  d[i + 1] = fijar255(base[1] + v);
+  d[i + 2] = fijar255(base[2] + v);
+  d[i + 3] = 255;
+}
+
+/* ============================================================
+   NOTIFICACIÓN DE CAMBIOS: despierta chunk propio + vecinos en
+   borde (ortogonales y diagonales). Expande dirty rect por chunk.
+   ============================================================ */
+function expandirDirty(x, y) {
+  const cx = (x / TAM_CHUNK) | 0, cy = (y / TAM_CHUNK) | 0;
+  const ci = chunkIdxDe(cx, cy);
+  let r = dirtyPorChunk[ci];
+  if (!r) {
+    dirtyPorChunk[ci] = { x0: x, y0: y, x1: x, y1: y };
+    return;
+  }
+  if (x < r.x0) r.x0 = x;
+  if (y < r.y0) r.y0 = y;
+  if (x > r.x1) r.x1 = x;
+  if (y > r.y1) r.y1 = y;
+}
+
+function notificarCambio(x, y) {
+  const cx = (x / TAM_CHUNK) | 0, cy = (y / TAM_CHUNK) | 0;
+  const ci = chunkIdxDe(cx, cy);
+  chunkActivoSiguiente[ci] = 1;
+  chunksSucios.add(ci);
+  expandirDirty(x, y);
+
+  const lx = x - cx * TAM_CHUNK, ly = y - cy * TAM_CHUNK;
+  const enIzq = lx === 0, enDer = lx === TAM_CHUNK - 1;
+  const enArr = ly === 0, enAba = ly === TAM_CHUNK - 1;
+
+  if (enIzq && cx > 0) despertar(cx - 1, cy);
+  if (enDer && cx < chunksX - 1) despertar(cx + 1, cy);
+  if (enArr && cy > 0) despertar(cx, cy - 1);
+  if (enAba && cy < chunksY - 1) despertar(cx, cy + 1);
+
+  if (enIzq && enArr && cx > 0 && cy > 0) despertar(cx - 1, cy - 1);
+  if (enDer && enArr && cx < chunksX - 1 && cy > 0) despertar(cx + 1, cy - 1);
+  if (enIzq && enAba && cx > 0 && cy < chunksY - 1) despertar(cx - 1, cy + 1);
+  if (enDer && enAba && cx < chunksX - 1 && cy < chunksY - 1) despertar(cx + 1, cy + 1);
+}
+function despertar(cx, cy) {
+  if (cx < 0 || cy < 0 || cx >= chunksX || cy >= chunksY) return;
+  chunkActivoSiguiente[chunkIdxDe(cx, cy)] = 1;
+}
+
+// Si fluido en borde puede interactuar con la celda del otro lado, mantener vivos ambos chunks
+function despertarBordeSiFluido(x, y) {
+  const cx = (x / TAM_CHUNK) | 0, cy = (y / TAM_CHUNK) | 0;
+  const lx = x - cx * TAM_CHUNK, ly = y - cy * TAM_CHUNK;
+  const enIzq = lx === 0, enDer = lx === TAM_CHUNK - 1;
+  const enArr = ly === 0, enAba = ly === TAM_CHUNK - 1;
+  if (!enIzq && !enDer && !enArr && !enAba) return;
+
+  const tipo = grid[idx(x, y)];
+  let hayInteraccion = false;
+
+  const probar = (nx, ny, ncx, ncy) => {
+    if (!dentro(nx, ny)) return;
+    const t = grid[idx(nx, ny)];
+    // aire: puede entrar; agua bajo arena: puede hundirse / intercambiar
+    if (t === AIRE || (tipo === ARENA && t === AGUA)) {
+      hayInteraccion = true;
+      despertar(ncx, ncy);
+    }
+  };
+
+  if (enIzq) probar(x - 1, y, cx - 1, cy);
+  if (enDer) probar(x + 1, y, cx + 1, cy);
+  if (enArr) probar(x, y - 1, cx, cy - 1);
+  if (enAba) probar(x, y + 1, cx, cy + 1);
+  if (enIzq && enArr) probar(x - 1, y - 1, cx - 1, cy - 1);
+  if (enDer && enArr) probar(x + 1, y - 1, cx + 1, cy - 1);
+  if (enIzq && enAba) probar(x - 1, y + 1, cx - 1, cy + 1);
+  if (enDer && enAba) probar(x + 1, y + 1, cx + 1, cy + 1);
+
+  // Mantener vivo el chunk propio si aún hay algo que cruzar
+  if (hayInteraccion) chunkActivoSiguiente[chunkIdxDe(cx, cy)] = 1;
+}
+
+// Cambia el tipo de una celda "desde afuera" (pincel del mouse, emisor, etc.)
+function cambiarCelda(x, y, tipo) {
+  const i = idx(x, y);
+  if (grid[i] === tipo) return; // ya es ese material, no generamos trabajo de más
+  grid[i] = tipo;
+  pintarPixel(x, y, tipo);
+  notificarCambio(x, y);
+}
+
+/* ============================================================
+   GENERACIÓN DEL MUNDO
+   ============================================================ */
+function generarMundo() {
+  ANCHO = clampInt(document.getElementById("inAncho").value, 20, 1200);
+  ALTO = clampInt(document.getElementById("inAlto").value, 20, 800);
+  TAM_CHUNK = clampInt(document.getElementById("inChunk").value, 4, 128);
+  const semilla = parseInt(document.getElementById("inSemilla").value) || 0;
+  const escala = parseInt(document.getElementById("inEscala").value);
+  const umbral = parseInt(document.getElementById("inUmbral").value) / 100;
+  const sesgo = parseInt(document.getElementById("inSesgo").value) / 100;
+
+  chunksX = Math.ceil(ANCHO / TAM_CHUNK);
+  chunksY = Math.ceil(ALTO / TAM_CHUNK);
+
+  grid = new Uint8Array(ANCHO * ALTO);
+  movedVersion = new Uint32Array(ANCHO * ALTO);
+  contadorPaso = 0;
+
+  chunkActivo = new Uint8Array(chunksX * chunksY);
+  chunkActivoSiguiente = new Uint8Array(chunksX * chunksY);
+  chunksSucios.clear();
+  dirtyPorChunk = new Array(chunksX * chunksY).fill(null);
+  dirtyPorChunkUltimoFrame = [];
+
+  lienzo.width = ANCHO; lienzo.height = ALTO;
+  overlay.width = ANCHO; overlay.height = ALTO;
+  datosImagen = ctx.createImageData(ANCHO, ALTO);
+
+  const ruido2D = crearRuidoPerlin(semilla);
+
+  // Piedra generada con ruido fractal + sesgo de profundidad (más piedra hacia abajo)
+  for (let y = 0; y < ALTO; y++) {
+    for (let x = 0; x < ANCHO; x++) {
+      const n = ruidoFractal(ruido2D, x, y, 4, 0.5, escala);
+      const profundidad = y / ALTO; // 0 arriba, 1 abajo
+      const densidad = n + profundidad * sesgo * 1.4 - sesgo * 0.35;
+      const tipo = densidad > umbral ? PIEDRA : AIRE;
+      grid[idx(x, y)] = tipo;
+      pintarPixel(x, y, tipo);
+    }
+  }
+
+  // El mundo arranca "dormido": piedra y aire son estáticos, nada que simular todavía
+  aplicarZoom();
+  ctx.putImageData(datosImagen, 0, 0);
+  actualizarStatsEstaticas();
+}
+
+function clampInt(v, min, max) {
+  v = parseInt(v);
+  if (isNaN(v)) v = min;
+  return Math.max(min, Math.min(max, v));
+}
+
+/* ============================================================
+   PASO DE SIMULACIÓN
+   ============================================================ */
+let celdasActualizadasUltimoPaso = 0;
+let tiempoSimUltimoPasoMs = 0;
+
+function pasoSimulacion() {
+  const t0 = performance.now();
+  contadorPaso++;
+  celdasActualizadasUltimoPaso = 0;
+
+  let hayActivos = false;
+  let yMin = ALTO, yMax = -1;
+  for (let i = 0; i < chunkActivo.length; i++) {
+    chunkActivo[i] = chunkActivoSiguiente[i];
+    chunkActivoSiguiente[i] = 0;
+    if (!chunkActivo[i]) continue;
+    hayActivos = true;
+    const cy = (i / chunksX) | 0;
+    const y0 = cy * TAM_CHUNK;
+    const y1 = Math.min(y0 + TAM_CHUNK, ALTO) - 1;
+    if (y0 < yMin) yMin = y0;
+    if (y1 > yMax) yMax = y1;
+  }
+  if (!hayActivos) {
+    tiempoSimUltimoPasoMs = performance.now() - t0;
+    return;
+  }
+
+  // Barrido global abajo→arriba (no por chunk aislado): la columna cruza bordes como monolito
+  const dirFila = (contadorPaso % 2 === 0) ? 1 : -1;
+  for (let y = yMax; y >= yMin; y--) {
+    const cy = (y / TAM_CHUNK) | 0;
+    if (dirFila === 1) {
+      for (let x = 0; x < ANCHO; x++) {
+        const cx = (x / TAM_CHUNK) | 0;
+        if (chunkActivo[chunkIdxDe(cx, cy)]) procesarCelda(x, y);
+      }
+    } else {
+      for (let x = ANCHO - 1; x >= 0; x--) {
+        const cx = (x / TAM_CHUNK) | 0;
+        if (chunkActivo[chunkIdxDe(cx, cy)]) procesarCelda(x, y);
+      }
+    }
+  }
+
+  tiempoSimUltimoPasoMs = performance.now() - t0;
+}
+
+function procesarCelda(x, y) {
+  const i = idx(x, y);
+  if (movedVersion[i] === contadorPaso) return; // esta celda ya se movió en este mismo paso
+  const tipo = grid[i];
+  if (tipo === AIRE || tipo === PIEDRA) return;
+  if (tipo === ARENA) procesarArena(x, y, i);
+  else if (tipo === AGUA) procesarAgua(x, y, i);
+}
+
+function procesarArena(x, y) {
+  if (y + 1 < ALTO) {
+    const iAbajo = idx(x, y + 1);
+    const tAbajo = grid[iAbajo];
+    if (tAbajo === AIRE) { moverCelda(x, y, x, y + 1); return; }
+    if (tAbajo === AGUA) { intercambiarCeldas(x, y, x, y + 1); return; } // la arena se hunde en el agua
+  }
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  for (const d of [dir, -dir]) {
+    const nx = x + d, ny = y + 1;
+    if (!dentro(nx, ny)) continue;
+    const t = grid[idx(nx, ny)];
+    if (t === AIRE) { moverCelda(x, y, nx, ny); return; }
+    if (t === AGUA) { intercambiarCeldas(x, y, nx, ny); return; }
+  }
+  despertarBordeSiFluido(x, y);
+}
+
+function procesarAgua(x, y) {
+  if (y + 1 < ALTO && grid[idx(x, y + 1)] === AIRE) { moverCelda(x, y, x, y + 1); return; }
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  for (const d of [dir, -dir]) {
+    const nx = x + d, ny = y + 1;
+    if (dentro(nx, ny) && grid[idx(nx, ny)] === AIRE) { moverCelda(x, y, nx, ny); return; }
+  }
+  // el agua busca su nivel: si no puede caer, se dispersa lateralmente
+  for (const d of [dir, -dir]) {
+    const nx = x + d;
+    if (dentro(nx, y) && grid[idx(nx, y)] === AIRE) { moverCelda(x, y, nx, y); return; }
+  }
+  despertarBordeSiFluido(x, y);
+}
+
+function moverCelda(x, y, nx, ny) {
+  const i = idx(x, y), j = idx(nx, ny);
+  const tipo = grid[i];
+  grid[j] = tipo; grid[i] = AIRE;
+  pintarPixel(x, y, AIRE); pintarPixel(nx, ny, tipo);
+  movedVersion[i] = contadorPaso; movedVersion[j] = contadorPaso;
+  notificarCambio(x, y); notificarCambio(nx, ny);
+  celdasActualizadasUltimoPaso += 2;
+}
+
+function intercambiarCeldas(x, y, nx, ny) {
+  const i = idx(x, y), j = idx(nx, ny);
+  const t1 = grid[i], t2 = grid[j];
+  grid[i] = t2; grid[j] = t1;
+  pintarPixel(x, y, t2); pintarPixel(nx, ny, t1);
+  movedVersion[i] = contadorPaso; movedVersion[j] = contadorPaso;
+  notificarCambio(x, y); notificarCambio(nx, ny);
+  celdasActualizadasUltimoPaso += 2;
+}
+
+/* ============================================================
+   DIBUJADO: chunk completo, o dirty rect AABB por cada chunk sucio
+   ============================================================ */
+let chunksRedibujadosUltimoFrame = 0;
+
+function limpiarDirtyPorChunk() {
+  if (!dirtyPorChunk) return;
+  for (let i = 0; i < dirtyPorChunk.length; i++) dirtyPorChunk[i] = null;
+}
+
+function dibujarFrame() {
+  dirtyPorChunkUltimoFrame = [];
+  for (let ci = 0; ci < dirtyPorChunk.length; ci++) {
+    const r = dirtyPorChunk[ci];
+    if (r) dirtyPorChunkUltimoFrame.push(r);
+  }
+
+  if (usarDirtyRect) {
+    chunksRedibujadosUltimoFrame = 0;
+    for (let ci = 0; ci < dirtyPorChunk.length; ci++) {
+      const r = dirtyPorChunk[ci];
+      if (!r) continue;
+      const w = r.x1 - r.x0 + 1, h = r.y1 - r.y0 + 1;
+      ctx.putImageData(datosImagen, 0, 0, r.x0, r.y0, w, h);
+      chunksRedibujadosUltimoFrame++;
+    }
+  } else {
+    chunksRedibujadosUltimoFrame = chunksSucios.size;
+    for (const ci of chunksSucios) {
+      const cx = ci % chunksX, cy = (ci / chunksX) | 0;
+      const x0 = cx * TAM_CHUNK, y0 = cy * TAM_CHUNK;
+      const w = Math.min(TAM_CHUNK, ANCHO - x0);
+      const h = Math.min(TAM_CHUNK, ALTO - y0);
+      ctx.putImageData(datosImagen, 0, 0, x0, y0, w, h);
+    }
+  }
+  chunksSucios.clear();
+  limpiarDirtyPorChunk();
+}
+
+function dibujarOverlay() {
+  ctxOverlay.clearRect(0, 0, ANCHO, ALTO);
+  if (mostrarOverlay) {
+    ctxOverlay.strokeStyle = "rgba(209,165,82,0.25)";
+    ctxOverlay.lineWidth = 1 / zoom;
+    ctxOverlay.fillStyle = "rgba(209,165,82,0.30)";
+    for (let cy = 0; cy < chunksY; cy++) {
+      for (let cx = 0; cx < chunksX; cx++) {
+        const x0 = cx * TAM_CHUNK, y0 = cy * TAM_CHUNK;
+        const w = Math.min(TAM_CHUNK, ANCHO - x0), h = Math.min(TAM_CHUNK, ALTO - y0);
+        if (chunkActivo[chunkIdxDe(cx, cy)]) ctxOverlay.fillRect(x0, y0, w, h);
+        ctxOverlay.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+      }
+    }
+  }
+  if (usarDirtyRect && dirtyPorChunkUltimoFrame.length) {
+    ctxOverlay.fillStyle = "rgba(61,148,184,0.22)";
+    ctxOverlay.strokeStyle = "rgba(61,148,184,0.85)";
+    ctxOverlay.lineWidth = 1 / zoom;
+    for (const r of dirtyPorChunkUltimoFrame) {
+      const w = r.x1 - r.x0 + 1, h = r.y1 - r.y0 + 1;
+      ctxOverlay.fillRect(r.x0, r.y0, w, h);
+      ctxOverlay.strokeRect(r.x0 + 0.5, r.y0 + 0.5, w - 1, h - 1);
+    }
+  }
+}
+function limpiarOverlay() { ctxOverlay.clearRect(0, 0, ANCHO, ALTO); }
+
+/* ============================================================
+   ZOOM / TAMAÑO EN PANTALLA
+   ============================================================ */
+function aplicarZoom() {
+  const w = ANCHO * zoom, h = ALTO * zoom;
+  lienzo.style.width = w + "px"; lienzo.style.height = h + "px";
+  overlay.style.width = w + "px"; overlay.style.height = h + "px";
+}
+
+/* ============================================================
+   INTERACCIÓN CON EL MOUSE / TOUCH
+   ============================================================ */
+let materialSeleccionado = ARENA;
+let radioPincel = 4;
+let pintando = false;
+let ultimaCeldaPintada = null;
+
+function coordenadasDesdeEvento(ev) {
+  const rect = lienzo.getBoundingClientRect();
+  const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+  const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+  const ex = (clientX - rect.left) * (lienzo.width / rect.width);
+  const ey = (clientY - rect.top) * (lienzo.height / rect.height);
+  return [Math.floor(ex), Math.floor(ey)];
+}
+
+function aplicarPincel(cx, cy) {
+  const r = radioPincel, r2 = r * r;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r2) continue;
+      const x = cx + dx, y = cy + dy;
+      if (dentro(x, y)) cambiarCelda(x, y, materialSeleccionado);
+    }
+  }
+}
+
+// Interpola entre el último punto pintado y el actual para no dejar huecos al mover rápido
+function pintarConInterpolacion(x, y) {
+  if (ultimaCeldaPintada) {
+    const [ax, ay] = ultimaCeldaPintada;
+    const pasos = Math.max(Math.abs(x - ax), Math.abs(y - ay));
+    for (let i = 1; i <= pasos; i++) {
+      const t = i / pasos;
+      aplicarPincel(Math.round(ax + (x - ax) * t), Math.round(ay + (y - ay) * t));
+    }
+  } else {
+    aplicarPincel(x, y);
+  }
+  ultimaCeldaPintada = [x, y];
+}
+
+function iniciarPintado(ev) {
+  if (ev.button !== undefined && ev.button !== 0) return; // sólo botón izquierdo pinta
+  ev.preventDefault();
+  pintando = true;
+  ultimaCeldaPintada = null;
+  const [x, y] = coordenadasDesdeEvento(ev);
+  pintarConInterpolacion(x, y);
+}
+function moverPintado(ev) {
+  if (!pintando) return;
+  ev.preventDefault();
+  const [x, y] = coordenadasDesdeEvento(ev);
+  pintarConInterpolacion(x, y);
+}
+function detenerPintado() { pintando = false; ultimaCeldaPintada = null; }
+
+lienzo.addEventListener("mousedown", iniciarPintado);
+window.addEventListener("mousemove", moverPintado);
+window.addEventListener("mouseup", detenerPintado);
+lienzo.addEventListener("touchstart", iniciarPintado, { passive: false });
+lienzo.addEventListener("touchmove", moverPintado, { passive: false });
+window.addEventListener("touchend", detenerPintado);
+
+/* ============================================================
+   PANEO DEL CANVAS CON EL BOTÓN DEL MEDIO DEL MOUSE
+   El mundo puede ser más grande que la ventana visible: el
+   contenedor recorta con overflow:auto y acá controlamos el
+   scroll manualmente arrastrando con el botón del medio.
+   ============================================================ */
+let paneando = false;
+let paneoInicioX = 0, paneoInicioY = 0;
+let scrollInicioX = 0, scrollInicioY = 0;
+
+envoltorio.addEventListener("mousedown", ev => {
+  if (ev.button !== 1) return; // botón del medio
+  ev.preventDefault();
+  paneando = true;
+  paneoInicioX = ev.clientX; paneoInicioY = ev.clientY;
+  scrollInicioX = envoltorio.scrollLeft; scrollInicioY = envoltorio.scrollTop;
+  envoltorio.style.cursor = "grabbing";
+});
+window.addEventListener("mousemove", ev => {
+  if (!paneando) return;
+  ev.preventDefault();
+  envoltorio.scrollLeft = scrollInicioX - (ev.clientX - paneoInicioX);
+  envoltorio.scrollTop = scrollInicioY - (ev.clientY - paneoInicioY);
+});
+window.addEventListener("mouseup", ev => {
+  if (ev.button === 1 && paneando) {
+    paneando = false;
+    envoltorio.style.cursor = "default";
+  }
+});
+// evita el ícono de autoscroll / apertura de link que algunos navegadores
+// disparan por defecto al soltar el botón del medio
+envoltorio.addEventListener("auxclick", ev => { if (ev.button === 1) ev.preventDefault(); });
+window.addEventListener("mousedown", ev => { if (ev.button === 1) ev.preventDefault(); });
+
+/* ============================================================
+   EMISOR AUTOMÁTICO (para pruebas de estrés continuas)
+   ============================================================ */
+let emisorActivo = false;
+function tickEmisor() {
+  if (!emisorActivo || materialSeleccionado === AIRE) return;
+  const cx = ANCHO >> 1;
+  aplicarPincel(cx, Math.min(2, ALTO - 1));
+}
+
+/* ============================================================
+   BUCLE PRINCIPAL
+   ============================================================ */
+let corriendo = true;
+let velocidad = 1;
+let mostrarOverlay = false;
+let usarDirtyRect = false;
+let ultimoTiempo = performance.now();
+let fpsSuavizado = 60;
+
+function bucle(ahora) {
+  requestAnimationFrame(bucle);
+  const dt = ahora - ultimoTiempo;
+  ultimoTiempo = ahora;
+  if (dt > 0) fpsSuavizado += (1000 / dt - fpsSuavizado) * 0.1;
+
+  if (corriendo) {
+    tickEmisor();
+    for (let s = 0; s < velocidad; s++) pasoSimulacion();
+  }
+
+  dibujarFrame();
+  if (mostrarOverlay || usarDirtyRect) dibujarOverlay();
+  else limpiarOverlay();
+
+  actualizarPanelStats();
+}
+
+/* ============================================================
+   PANEL DE ESTADÍSTICAS Y UI
+   ============================================================ */
+const elFps = document.getElementById("statFps");
+const elChunks = document.getElementById("statChunks");
+const elRedibujo = document.getElementById("statRedibujo");
+const elDirty = document.getElementById("statDirty");
+const elCeldas = document.getElementById("statCeldas");
+const elTiempoSim = document.getElementById("statTiempoSim");
+const elTotal = document.getElementById("statTotal");
+
+function actualizarStatsEstaticas() {
+  elTotal.textContent = (ANCHO * ALTO).toLocaleString("es-AR") + " celdas · " + (chunksX * chunksY) + " chunks";
+}
+
+function actualizarPanelStats() {
+  elFps.textContent = fpsSuavizado.toFixed(0);
+  const activos = chunkActivo.reduce((a, v) => a + v, 0);
+  elChunks.textContent = activos + " / " + (chunksX * chunksY);
+  elRedibujo.textContent = chunksRedibujadosUltimoFrame;
+  if (dirtyPorChunkUltimoFrame.length) {
+    let celdas = 0;
+    for (const r of dirtyPorChunkUltimoFrame) {
+      celdas += (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
+    }
+    elDirty.textContent = dirtyPorChunkUltimoFrame.length + " rects · " + celdas + " px";
+  } else {
+    elDirty.textContent = "–";
+  }
+  elCeldas.textContent = celdasActualizadasUltimoPaso.toLocaleString("es-AR");
+  elTiempoSim.textContent = tiempoSimUltimoPasoMs.toFixed(2) + " ms";
+}
+
+/* --- Selección de material --- */
+const materiales = [
+  { tipo: ARENA, nombre: "Arena", color: "#d1a552" },
+  { tipo: AGUA, nombre: "Agua", color: "#3d94b8" },
+  { tipo: PIEDRA, nombre: "Piedra", color: "#6d7580" },
+  { tipo: AIRE, nombre: "Borrar (aire)", color: "#b25b4a" },
+];
+const contBotonesMaterial = document.getElementById("botonesMaterial");
+materiales.forEach(m => {
+  const btn = document.createElement("div");
+  btn.className = "btn-mat" + (m.tipo === materialSeleccionado ? " activo" : "");
+  btn.innerHTML = `<span class="sw" style="background:${m.color}"></span>${m.nombre}`;
+  btn.addEventListener("click", () => {
+    materialSeleccionado = m.tipo;
+    document.querySelectorAll(".btn-mat").forEach(b => b.classList.remove("activo"));
+    btn.classList.add("activo");
+  });
+  contBotonesMaterial.appendChild(btn);
+});
+
+/* --- Controles generales --- */
+document.getElementById("rangoPincel").addEventListener("input", e => radioPincel = parseInt(e.target.value));
+document.getElementById("rangoVelocidad").addEventListener("input", e => velocidad = parseInt(e.target.value));
+document.getElementById("rangoZoom").addEventListener("input", e => { zoom = parseInt(e.target.value); aplicarZoom(); });
+document.getElementById("chkOverlay").addEventListener("change", e => {
+  mostrarOverlay = e.target.checked;
+  if (!mostrarOverlay && !usarDirtyRect) limpiarOverlay();
+});
+document.getElementById("chkDirtyRect").addEventListener("change", e => {
+  usarDirtyRect = e.target.checked;
+  if (!mostrarOverlay && !usarDirtyRect) limpiarOverlay();
+});
+document.getElementById("chkEmisor").addEventListener("change", e => emisorActivo = e.target.checked);
+
+const btnPlay = document.getElementById("btnPlay");
+btnPlay.addEventListener("click", () => {
+  corriendo = !corriendo;
+  btnPlay.textContent = corriendo ? "Pausar" : "Reanudar";
+});
+document.getElementById("btnPaso").addEventListener("click", () => {
+  tickEmisor();
+  pasoSimulacion();
+});
+
+/* --- Generación de mundo --- */
+document.getElementById("btnRegenerar").addEventListener("click", generarMundo);
+
+function fijarSliders({ escala, umbral, sesgo }) {
+  document.getElementById("inEscala").value = escala;
+  document.getElementById("inUmbral").value = umbral;
+  document.getElementById("inSesgo").value = sesgo;
+}
+document.getElementById("btnCuevas").addEventListener("click", () => {
+  fijarSliders({ escala: 40, umbral: 0, sesgo: 35 });
+  generarMundo();
+});
+document.getElementById("btnCapas").addEventListener("click", () => {
+  fijarSliders({ escala: 130, umbral: -10, sesgo: 70 });
+  generarMundo();
+});
+document.getElementById("btnVacio").addEventListener("click", () => {
+  fijarSliders({ escala: 40, umbral: 100, sesgo: 0 });
+  generarMundo();
+});
+
+/* ============================================================
+   ARRANQUE
+   ============================================================ */
+generarMundo();
+requestAnimationFrame(bucle);
+</script>
+</body>
+</html>
