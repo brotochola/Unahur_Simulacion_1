@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Falling Sand — Benchmark por ejes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #16130f;
+    --bg-panel: #1e1a15;
+    --line: #35301f;
+    --text: #ece5d8;
+    --text-dim: #a99f8c;
+    --text-faint: #766b58;
+    --sand: #d68c3a;
+    --sand-dim: #8a5f2e;
+    --water: #4f92b8;
+    --danger: #c9603f;
+    --ok: #8fbf8a;
+    --radius: 3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(214,140,58,0.08), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 100% 10%, rgba(79,146,184,0.07), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    line-height:1.55;
+    padding:0 0 80px;
+  }
+  h1,h2,h3{font-family:'Space Grotesk', sans-serif; font-weight:700; letter-spacing:-0.01em; margin:0;}
+  code, .mono, table, input, select, button{font-family:'JetBrains Mono', monospace;}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 28px;}
+
+  header.hero{padding:64px 0 40px; border-bottom:1px solid var(--line); margin-bottom:40px;}
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:'JetBrains Mono', monospace; font-size:12.5px; letter-spacing:0.09em; text-transform:uppercase;
+    color:var(--text-faint); margin-bottom:18px;
+  }
+  .eyebrow .dots{display:inline-flex; gap:4px;}
+  .eyebrow .dots span{width:6px; height:6px; border-radius:50%; display:inline-block;}
+  .eyebrow .dots span:nth-child(1){background:var(--sand);}
+  .eyebrow .dots span:nth-child(2){background:var(--water);}
+  .eyebrow .dots span:nth-child(3){background:#79747a;}
+  h1.title{font-size:clamp(32px, 5vw, 48px); line-height:1.05; max-width:920px;}
+  h1.title em{font-style:normal; color:var(--sand);}
+  p.subtitle{color:var(--text-dim); max-width:760px; font-size:16.5px; margin-top:18px;}
+
+  section{margin-bottom:56px;}
+  h2.section-title{font-size:22px; margin-bottom:6px; display:flex; align-items:baseline; gap:12px;}
+  h2.section-title .idx{color:var(--text-faint); font-family:'JetBrains Mono',monospace; font-weight:400; font-size:14px;}
+  p.section-lead{color:var(--text-dim); max-width:780px; margin:10px 0 24px; font-size:15px;}
+
+  .panel{background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius); padding:22px;}
+  .lab{display:grid; grid-template-columns:320px 1fr; gap:20px;}
+  @media (max-width:900px){.lab{grid-template-columns:1fr;}}
+
+  .field{margin-bottom:12px;}
+  .field label{
+    display:block; font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:5px;
+  }
+  .field-row{display:flex; gap:10px;}
+  .field-row .field{flex:1;}
+  input[type=number], select{
+    width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
+    padding:8px 9px; border-radius:var(--radius); font-size:13px;
+  }
+  select option:disabled{color:#555;}
+  input:focus, select:focus, button:focus-visible{outline:2px solid var(--sand); outline-offset:1px;}
+  input[type=range]{width:100%; accent-color:var(--sand);}
+  .checks{display:flex; flex-direction:column; gap:7px; margin:4px 0 12px;}
+  .checks label{
+    display:flex; align-items:flex-start; gap:8px; text-transform:none; letter-spacing:0;
+    font-size:12.5px; color:var(--text-dim); cursor:pointer;
+  }
+  .checks label input{margin-top:3px; accent-color:var(--sand);}
+  .checks label.disabled{opacity:0.4; cursor:not-allowed;}
+  .checks .sub{display:block; font-size:11px; color:var(--text-faint);}
+
+  button{
+    cursor:pointer; border:none; border-radius:var(--radius);
+    font-size:13px; font-weight:500; padding:10px 14px;
+  }
+  button.primary{background:var(--sand); color:#1a1207; width:100%;}
+  button.primary:hover{background:#e5a256;}
+  button.primary:disabled{background:var(--sand-dim); color:#3a2c17; cursor:progress;}
+  button.ghost{background:transparent; border:1px solid var(--line); color:var(--text-dim); width:100%;}
+  button.ghost:hover{border-color:var(--water); color:var(--text);}
+  button.ghost:disabled{opacity:0.45; cursor:not-allowed;}
+  .btn-stack{display:flex; flex-direction:column; gap:8px; margin-top:8px;}
+
+  .hint{font-size:12px; color:var(--text-faint); margin-top:10px; min-height:36px;}
+  .hint.ok{color:var(--ok);}
+  .hint.warn{color:var(--danger);}
+  .progress-line{font-size:12.5px; color:var(--text-faint); margin-top:10px; min-height:18px;}
+  .progress-line b{color:var(--water);}
+
+  .live-panel{display:flex; flex-direction:column; gap:12px;}
+  .canvas-frame{
+    background:#0d0b09; border:1px solid var(--line); border-radius:var(--radius);
+    padding:12px; display:flex; align-items:center; justify-content:center; overflow:auto; min-height:300px;
+  }
+  canvas{image-rendering:pixelated; image-rendering:crisp-edges; max-width:100%; height:auto; border:1px solid #000;}
+  .live-controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+  .legend{display:flex; gap:14px; font-size:12px; color:var(--text-dim); flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .swatch{width:10px; height:10px; border-radius:2px; display:inline-block;}
+
+  .banner{
+    border-left:3px solid var(--water); background:rgba(79,146,184,0.08);
+    padding:12px 16px; font-size:13.5px; color:var(--text-dim); margin-bottom:16px;
+  }
+  .banner b{color:var(--text);}
+  .winners{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;}
+  @media (max-width:700px){.winners{grid-template-columns:1fr;}}
+  .winner-card{
+    background:var(--bg); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; font-size:12.5px;
+  }
+  .winner-card .k{color:var(--text-faint); text-transform:uppercase; font-size:10.5px; letter-spacing:0.05em; margin-bottom:4px;}
+  .winner-card .v{color:var(--sand); font-family:'JetBrains Mono', monospace; font-size:12px;}
+  .winner-card .meta{color:var(--text-dim); margin-top:4px;}
+
+  table{width:100%; border-collapse:collapse; font-size:12px;}
+  thead th{
+    text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint);
+    font-weight:500; padding:8px 8px; border-bottom:1px solid var(--line); white-space:nowrap;
+  }
+  tbody td{padding:8px 8px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:top;}
+  tbody tr.fastest td:nth-child(2){color:var(--sand);}
+  td.num, th.num{text-align:right;}
+  .filter-row{display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap;}
+  .filter-row label{font-size:12px; color:var(--text-faint);}
+  .filter-row select{width:auto; min-width:180px;}
+
+  .grid-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px;}
+  .card{background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px; display:flex; flex-direction:column; gap:8px;}
+  .card .tag{font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-faint);}
+  .card h3{font-size:16px;}
+  .card p{font-size:13.5px; color:var(--text-dim); margin:0;}
+  .card pre{background:var(--bg); border:1px solid var(--line); border-radius:var(--radius); padding:10px 12px; font-size:11.5px; overflow-x:auto; color:#cfead0; margin:0;}
+
+  .cache-table{width:100%; font-size:12.5px; margin-top:8px;}
+  .cache-table td,.cache-table th{padding:5px 8px; border-bottom:1px solid var(--line);}
+  .cache-table th{color:var(--text-faint); text-align:left; font-weight:500; text-transform:uppercase; font-size:10.5px;}
+  .callout{
+    border-left:3px solid var(--water); background:rgba(79,146,184,0.07);
+    padding:12px 16px; border-radius:0 var(--radius) var(--radius) 0; font-size:13.5px; color:var(--text-dim); margin-top:16px;
+  }
+  .callout b{color:var(--text);}
+  footer{color:var(--text-faint); font-size:12px; text-align:center; margin-top:60px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow"><span class="dots"><span></span><span></span><span></span></span> falling sand — benchmark por ejes</div>
+    <h1 class="title">Elegí la combinación, corré, acumulá. <em>Compará solo dentro de la misma clase.</em></h1>
+    <p class="subtitle">
+      Storage (incl. TypedArray dtype, <code>[][]</code>, objeto numérico / <code>"x,y"</code>), materials, layout,
+      bitpacking, bitwise, y micro-opts como checkboxes. Dense vs sparse no compiten.
+      Un entero de material alcanza: no hay SoA paralelo.
+    </p>
+  </header>
+
+  <section>
+    <h2 class="section-title"><span class="idx">01</span> Cómo pensar los ejes</h2>
+    <p class="section-lead">Un “mejor” solo es científico si fijás la clase de algoritmo y, si hay micros, el mismo set de checkboxes.</p>
+    <div class="grid-cards">
+      <div class="card">
+        <div class="tag">storage + dtype</div>
+        <h3>¿Dónde vive el estado?</h3>
+        <p>Array, TypedArray (u8…u64), filas <code>[][]</code>, objeto con clave numérica o <code>"x,y"</code>, Map/Set. Dtype solo aplica a typed.</p>
+      </div>
+      <div class="card">
+        <div class="tag">materials / layout</div>
+        <h3>Física y numeración</h3>
+        <p><code>one</code> vs <code>three</code>. Row / col / Morton → índice o clave. <code>[][]</code> no tiene Morton. <code>obj_xy</code> ignora layout.</p>
+      </div>
+      <div class="card">
+        <div class="tag">pack / bitwise</div>
+        <h3>Encoding vs update</h3>
+        <p>Pack = varias celdas/word. Bitwise = skip/empty sobre el word. <code>u64</code> usa BigInt (JS <code>&amp;</code> es 32-bit).</p>
+      </div>
+      <div class="card">
+        <div class="tag">micro-opts</div>
+        <h3>Checkboxes, no storage</h3>
+        <p>Borde centinela, double buffer (física distinta al in-place), LUT de vecinos. pad/dbl solo dense.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><span class="idx">02</span> Laboratorio</h2>
+    <p class="section-lead">Armá una combo legal, corré, o barre todas las legales. Barrido × micros puede ser largo — el conteo está en el hint.</p>
+
+    <div class="lab">
+      <div class="panel">
+        <div class="field">
+          <label for="selStorage">Storage</label>
+          <select id="selStorage">
+            <option value="objects">Array de objetos</option>
+            <option value="numbers">Array de números</option>
+            <option value="typed">TypedArray</option>
+            <option value="rows_numbers">Array de arrays (números)</option>
+            <option value="rows_objects">Array de arrays (objetos)</option>
+            <option value="obj_num">Objeto clave numérica</option>
+            <option value="obj_xy">Objeto clave "x,y"</option>
+            <option value="map_dense">Map denso</option>
+            <option value="map_sparse">Map escaso</option>
+            <option value="set">Set (ocupación)</option>
+            <option value="set_map">Set + Map</option>
+          </select>
+        </div>
+        <div class="field" id="fieldDtype">
+          <label for="selDtype">Typed dtype</label>
+          <select id="selDtype">
+            <option value="u8">Uint8Array</option>
+            <option value="u16">Uint16Array</option>
+            <option value="u32">Uint32Array</option>
+            <option value="i8">Int8Array</option>
+            <option value="i32">Int32Array</option>
+            <option value="f32">Float32Array</option>
+            <option value="f64">Float64Array</option>
+            <option value="u64">BigUint64Array</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="selMaterials">Materials</label>
+          <select id="selMaterials">
+            <option value="one">1 material (ocupación)</option>
+            <option value="three">3 materiales (+ vacío)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="selLayout">Layout / clave</label>
+          <select id="selLayout">
+            <option value="row">Row-major</option>
+            <option value="col">Column-major</option>
+            <option value="morton">Morton (Z-order)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="selPack">Bitpacking</label>
+          <select id="selPack">
+            <option value="off">off</option>
+            <option value="on">on</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="selBitwise">Bitwise ops</label>
+          <select id="selBitwise">
+            <option value="off">off</option>
+            <option value="on">on</option>
+          </select>
+        </div>
+
+        <div class="field" style="margin-bottom:4px;"><label>Micro-opts</label></div>
+        <div class="checks">
+          <label id="labPad"><input type="checkbox" id="chkPad"> pad
+            <span class="sub">borde centinela, sin inBounds en tryMove (dense)</span></label>
+          <label id="labDbl"><input type="checkbox" id="chkDbl"> dbl
+            <span class="sub">2 buffers: fill(0)+scatter+swap (sin copy loop). No comparar on vs off</span></label>
+          <label id="labLut"><input type="checkbox" id="chkLut"> lut
+            <span class="sub">offsets de vecino precomputados</span></label>
+          <label id="labSpec"><input type="checkbox" id="chkSpec"> spec
+            <span class="sub">hot path inline (numbers/typed sin pack) — techo sin OOP get/set</span></label>
+        </div>
+
+        <div class="field-row">
+          <div class="field"><label for="inW">Ancho</label><input type="number" id="inW" value="200" min="20" max="500"></div>
+          <div class="field"><label for="inH">Alto</label><input type="number" id="inH" value="120" min="20" max="500"></div>
+        </div>
+        <button type="button" class="ghost" id="btnStress" style="margin-bottom:10px;">Preset stress 512×512</button>
+        <div class="field-row">
+          <div class="field"><label for="inWarmup">Warm-up</label><input type="number" id="inWarmup" value="20" min="0" max="500"></div>
+          <div class="field"><label for="inMeasure">Medidos</label><input type="number" id="inMeasure" value="150" min="10" max="2000"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="inReps">Reps</label><input type="number" id="inReps" value="3" min="1" max="10"></div>
+          <div class="field"><label for="inSeed">Semilla</label><input type="number" id="inSeed" value="1337" min="0" max="999999"></div>
+        </div>
+
+        <div class="btn-stack">
+          <button class="primary" id="btnRun">Correr esta combinación</button>
+          <button class="ghost" id="btnSweep">Barrido de legales</button>
+          <button class="ghost" id="btnClear">Limpiar resultados</button>
+        </div>
+        <div class="hint" id="legalHint"></div>
+        <div class="progress-line" id="progressLine">Listo.</div>
+      </div>
+
+      <div class="live-panel panel">
+        <div class="live-controls">
+          <button class="ghost" id="btnPlay" style="width:auto;">▶ Reproducir</button>
+          <button class="ghost" id="btnStep" style="width:auto;">Paso</button>
+          <button class="ghost" id="btnResetLive" style="width:auto;">Reiniciar</button>
+          <span class="mono" id="liveCfg" style="font-size:11px;color:var(--text-faint);flex:1;"></span>
+        </div>
+        <div class="canvas-frame"><canvas id="canvas" width="200" height="120"></canvas></div>
+        <div class="live-controls">
+          <label style="font-size:12px;color:var(--text-faint);">pasos/frame</label>
+          <input type="range" id="speedRange" min="1" max="15" value="2" style="flex:1;">
+          <span class="mono" id="speedVal" style="font-size:12px;color:var(--text-dim);width:20px;">2</span>
+        </div>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--sand)"></span>Arena / ocupado</span>
+          <span><span class="swatch" style="background:var(--water)"></span>Agua</span>
+          <span><span class="swatch" style="background:#79747a"></span>Piedra</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="resultsSection">
+    <h2 class="section-title"><span class="idx">03</span> Resultados acumulados</h2>
+    <p class="section-lead">Filtrá por clase y, si mezclás micros, usá “mismos micros”. Dense vs sparse no se mezclan. <code>dbl</code> on vs off no es el mismo algoritmo.</p>
+    <div class="panel">
+      <div class="banner" id="resultBanner">
+        <b>Honestidad científica:</b> compará rankings dentro de la misma clase y los mismos checkboxes.
+        No hay un único “mejor absoluto”.
+      </div>
+      <div class="filter-row">
+        <label for="selFilter">Filtro</label>
+        <select id="selFilter">
+          <option value="all">Todas</option>
+          <option value="micros">Mismos micros (pad/dbl/lut actuales)</option>
+          <option value="dense_full">Solo dense_full</option>
+          <option value="sparse_particles">Solo sparse_particles</option>
+          <option value="dense_full|one">Dense + one</option>
+          <option value="dense_full|three">Dense + three</option>
+          <option value="sparse_particles|one">Sparse + one</option>
+          <option value="sparse_particles|three">Sparse + three</option>
+        </select>
+        <span class="mono" id="resultCount" style="font-size:12px;color:var(--text-faint);"></span>
+      </div>
+      <div class="winners" id="winnersPanel"></div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Config</th>
+              <th>Clase</th>
+              <th>Micros</th>
+              <th class="num">ms/frame</th>
+              <th class="num">mejor</th>
+              <th class="num">stdev</th>
+              <th class="num">rel.</th>
+              <th class="num">celdas/s</th>
+              <th class="num">B/celda</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr><td colspan="10" style="color:var(--text-faint);">Sin corridas todavía.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><span class="idx">04</span> Legalidad</h2>
+    <p class="section-lead">Si no aplica, el control se apaga. Bitwise sin pack es mentira. SoA <code>material[]+variant[]</code> no está: un entero de material alcanza.</p>
+    <div class="panel">
+      <table class="cache-table">
+        <thead><tr><th>Regla</th><th>Detalle</th></tr></thead>
+        <tbody>
+          <tr><td>Bitpacking on</td><td><code>numbers</code>, o <code>typed</code> unsigned: u8/u16/u32/u64</td></tr>
+          <tr><td>Bitwise on</td><td>pack on + typed unsigned (u64 = BigInt)</td></tr>
+          <tr><td>rows_* + Morton</td><td>Ilegal — 2D no es Z-order</td></tr>
+          <tr><td>obj_xy</td><td>Layout forzado a row (la clave es string)</td></tr>
+          <tr><td>Set</td><td>Solo materials = one</td></tr>
+          <tr><td>pad / dbl</td><td>Solo dense_full</td></tr>
+          <tr><td>dbl clear+swap</td><td>fill(0) write → scatter commits/moves → swap ptr (sin copy loop)</td></tr>
+          <tr><td>spec</td><td>Solo numbers/typed sin pack (dense)</td></tr>
+          <tr><td>Skip-word</td><td>bitwise + layout row; word 8/16/32/64 bits</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <b>Clases:</b> <code>dense_full</code> visita toda la grilla.
+        <code>sparse_particles</code> = map_sparse, set, set_map (itera ocupados).
+        A 200×120 SMI suele ganar; usá <b>Preset stress 512×512</b> si querés presión de caché (Typed suele cerrar el gap).
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><span class="idx">05</span> Storage en una línea</h2>
+    <div class="grid-cards">
+      <div class="card"><div class="tag">objects / numbers</div><h3>Array 1D</h3><pre>cells[idx] = { material }
+material[idx]</pre><p>Un entero de material. Tint live = <code>(x+y)%16</code>. No SoA.</p></div>
+      <div class="card"><div class="tag">typed + dtype</div><h3>TypedArray</h3><pre>Uint8… Float64, BigUint64
+pack: words 8/16/32/64 bit</pre><p>u64 pack/bitwise = BigInt. 1 elemento/celda unpacked desperdicia a propósito.</p></div>
+      <div class="card"><div class="tag">rows_*</div><h3>Array de arrays</h3><pre>row: rows[y][x]
+col: cols[x][y]</pre><p>Un puntero por fila/columna. Morton ilegal.</p></div>
+      <div class="card"><div class="tag">obj_num / obj_xy</div><h3>Objeto plano</h3><pre>obj[idx(layout)]
+obj[x + ',' + y]</pre><p>Ausencia = EMPTY. Numérico usa layout; "x,y" no.</p></div>
+      <div class="card"><div class="tag">map / set</div><h3>Map y Set</h3><pre>denso vs solo ocupados</pre><p>Sparse = otra clase de algoritmo.</p></div>
+      <div class="card"><div class="tag">micros</div><h3>pad · dbl · lut · spec</h3><pre>marco
+fill+scatter+swap
+LUT
+inline loop</pre><p>dbl: 2 buffers, sin copy loop. spec: techo numbers/typed.</p></div>
+    </div>
+  </section>
+
+  <footer>falling sand · ejes + micros · dense ≠ sparse · sin SoA · sin DataView</footer>
+</div>
+
+<script>
+const EMPTY = 0, SAND = 1, WATER = 2, STONE = 3;
+const BG_RGB = [22, 19, 15];
+
+const STORAGES = [
+  'objects', 'numbers', 'typed', 'rows_numbers', 'rows_objects',
+  'obj_num', 'obj_xy', 'map_dense', 'map_sparse', 'set', 'set_map',
+];
+const DTYPES = ['u8', 'u16', 'u32', 'i8', 'i32', 'f32', 'f64', 'u64'];
+const PACKABLE = ['u8', 'u16', 'u32', 'u64'];
+const MATERIALS = ['one', 'three'];
+const LAYOUTS = ['row', 'col', 'morton'];
+const PACKS = ['off', 'on'];
+const BITWISES = ['off', 'on'];
+const DTYPE_CTOR = {
+  u8: Uint8Array, u16: Uint16Array, u32: Uint32Array,
+  i8: Int8Array, i32: Int32Array, f32: Float32Array, f64: Float64Array,
+  u64: BigUint64Array,
+};
+const DTYPE_BYTES = { u8: 1, u16: 2, u32: 4, i8: 1, i32: 4, f32: 4, f64: 8, u64: 8 };
+const WORD_BITS = { u8: 8, u16: 16, u32: 32, u64: 64 };
+
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function nextPow2(n) {
+  let p = 1;
+  while (p < n) p <<= 1;
+  return p;
+}
+
+function morton2D(x, y) {
+  function part1by1(n) {
+    n &= 0x0000ffff;
+    n = (n | (n << 8)) & 0x00ff00ff;
+    n = (n | (n << 4)) & 0x0f0f0f0f;
+    n = (n | (n << 2)) & 0x33333333;
+    n = (n | (n << 1)) & 0x55555555;
+    return n;
+  }
+  return (part1by1(y) << 1) | part1by1(x);
+}
+
+function demorton2D(z) {
+  function compact(n) {
+    n &= 0x55555555;
+    n = (n | (n >> 1)) & 0x33333333;
+    n = (n | (n >> 2)) & 0x0f0f0f0f;
+    n = (n | (n >> 4)) & 0x00ff00ff;
+    n = (n | (n >> 8)) & 0x0000ffff;
+    return n;
+  }
+  return { x: compact(z), y: compact(z >> 1) };
+}
+
+function isSparseStorage(storage) {
+  return storage === 'map_sparse' || storage === 'set' || storage === 'set_map';
+}
+
+function experimentClass(cfg) {
+  return isSparseStorage(cfg.storage) ? 'sparse_particles' : 'dense_full';
+}
+
+function normalizeCfg(cfg) {
+  return {
+    storage: cfg.storage,
+    materials: cfg.materials,
+    layout: cfg.storage === 'obj_xy' ? 'row' : cfg.layout,
+    bitpack: cfg.bitpack || 'off',
+    bitwise: cfg.bitwise || 'off',
+    dtype: cfg.storage === 'typed' ? (cfg.dtype || 'u8') : '-',
+    pad: !!cfg.pad,
+    dbl: !!cfg.dbl,
+    lut: !!cfg.lut,
+    spec: !!cfg.spec,
+  };
+}
+
+function isLegal(raw) {
+  const cfg = normalizeCfg(raw);
+  if (cfg.storage === 'set' && cfg.materials !== 'one') {
+    return { ok: false, reason: 'Set solo con materials=one' };
+  }
+  if ((cfg.storage === 'rows_numbers' || cfg.storage === 'rows_objects') && cfg.layout === 'morton') {
+    return { ok: false, reason: 'rows_* no soporta Morton' };
+  }
+  if (raw.storage === 'obj_xy' && raw.layout !== 'row') {
+    return { ok: false, reason: 'obj_xy fuerza layout=row' };
+  }
+  if ((cfg.pad || cfg.dbl) && experimentClass(cfg) !== 'dense_full') {
+    return { ok: false, reason: 'pad/dbl solo dense_full' };
+  }
+  if (cfg.spec) {
+    const okSpec = (cfg.storage === 'numbers' || cfg.storage === 'typed')
+      && cfg.bitpack === 'off'
+      && experimentClass(cfg) === 'dense_full';
+    if (!okSpec) return { ok: false, reason: 'spec solo numbers/typed sin pack' };
+  }
+  if (cfg.bitpack === 'on') {
+    const packOk = cfg.storage === 'numbers'
+      || (cfg.storage === 'typed' && PACKABLE.includes(cfg.dtype));
+    if (!packOk) return { ok: false, reason: 'Bitpacking: numbers o typed u8/u16/u32/u64' };
+  }
+  if (cfg.bitwise === 'on') {
+    if (!(cfg.bitpack === 'on' && cfg.storage === 'typed' && PACKABLE.includes(cfg.dtype))) {
+      return { ok: false, reason: 'Bitwise requiere pack + typed unsigned' };
+    }
+  }
+  return { ok: true, reason: '' };
+}
+
+function enumerateLegalConfigs() {
+  const out = [];
+  for (const storage of STORAGES) {
+    const dtypes = storage === 'typed' ? DTYPES : ['-'];
+    const layouts = (storage === 'rows_numbers' || storage === 'rows_objects')
+      ? ['row', 'col']
+      : (storage === 'obj_xy' ? ['row'] : LAYOUTS);
+    const pads = isSparseStorage(storage) ? [false] : [false, true];
+    const dbls = isSparseStorage(storage) ? [false] : [false, true];
+    for (const dtype of dtypes) {
+      for (const materials of MATERIALS) {
+        for (const layout of layouts) {
+          for (const bitpack of PACKS) {
+            for (const bitwise of BITWISES) {
+              for (const pad of pads) {
+                for (const dbl of dbls) {
+                  for (const lut of [false, true]) {
+                    for (const spec of [false, true]) {
+                      const cfg = { storage, materials, layout, bitpack, bitwise, dtype, pad, dbl, lut, spec };
+                      if (isLegal(cfg).ok) out.push(normalizeCfg(cfg));
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function microsTag(cfg) {
+  const p = [];
+  if (cfg.pad) p.push('pad');
+  if (cfg.dbl) p.push('dbl');
+  if (cfg.lut) p.push('lut');
+  if (cfg.spec) p.push('spec');
+  return p.length ? p.join('+') : '—';
+}
+
+function configKey(cfg) {
+  const c = normalizeCfg(cfg);
+  return [c.storage, c.dtype, c.materials, c.layout, c.bitpack, c.bitwise, c.pad, c.dbl, c.lut, c.spec].join('|');
+}
+
+function configLabel(cfg) {
+  const c = normalizeCfg(cfg);
+  const dtype = c.storage === 'typed' ? `:${c.dtype}` : '';
+  return `${c.storage}${dtype} · ${c.materials} · ${c.layout} · pack=${c.bitpack} · bitwise=${c.bitwise} · ${microsTag(c)}`;
+}
+
+function estimateBytes(cfg) {
+  const c = normalizeCfg(cfg);
+  if (c.bitpack === 'on') {
+    const bits = c.materials === 'one' ? 1 : 2;
+    return String(bits / 8);
+  }
+  switch (c.storage) {
+    case 'objects':
+    case 'rows_objects': return '~40';
+    case 'numbers':
+    case 'rows_numbers': return '~8';
+    case 'typed': return String(DTYPE_BYTES[c.dtype] || 1);
+    case 'obj_num':
+    case 'obj_xy': return '~hueco';
+    case 'map_dense': return '~24+';
+    case 'map_sparse': return '~24+/ocupada';
+    case 'set': return '~16+/ocupada';
+    case 'set_map': return c.materials === 'three' ? '~40+/ocupada' : '~16+/ocupada';
+    default: return '?';
+  }
+}
+
+const INDEXERS = {
+  row(w, h) {
+    return {
+      w, h, layout: 'row',
+      key(x, y) { return y * w + x; },
+      xy(k) { return { x: k % w, y: (k / w) | 0 }; },
+      maxSlot() { return w * h; },
+      bitIndex(x, y) { return y * w + x; },
+      cellSlot(x, y) { return y * w + x; },
+    };
+  },
+  col(w, h) {
+    return {
+      w, h, layout: 'col',
+      key(x, y) { return x * h + y; },
+      xy(k) { return { x: (k / h) | 0, y: k % h }; },
+      maxSlot() { return w * h; },
+      bitIndex(x, y) { return x * h + y; },
+      cellSlot(x, y) { return x * h + y; },
+    };
+  },
+  morton(w, h) {
+    const side = nextPow2(Math.max(w, h));
+    return {
+      w, h, side, layout: 'morton',
+      key(x, y) { return morton2D(x, y); },
+      xy(k) { return demorton2D(k); },
+      maxSlot() { return side * side; },
+      bitIndex(x, y) { return morton2D(x, y); },
+      cellSlot(x, y) { return morton2D(x, y); },
+    };
+  },
+};
+
+function allocWords(nWords, cfg) {
+  if (cfg.storage === 'typed') {
+    const Ctor = DTYPE_CTOR[cfg.dtype];
+    return new Ctor(nWords);
+  }
+  return new Array(nWords).fill(0);
+}
+
+function cloneWords(src, cfg) {
+  if (cfg.storage === 'typed') return src.slice();
+  return src.slice();
+}
+
+function packGet(buf, bitIndex, width, wordBits, big) {
+  const wi = Math.floor(bitIndex / wordBits);
+  const sh = bitIndex % wordBits;
+  if (big) {
+    const mask = (1n << BigInt(width)) - 1n;
+    return Number((buf[wi] >> BigInt(sh)) & mask);
+  }
+  return (buf[wi] >>> sh) & ((1 << width) - 1);
+}
+
+function packSet(buf, bitIndex, width, val, wordBits, big) {
+  const wi = Math.floor(bitIndex / wordBits);
+  const sh = bitIndex % wordBits;
+  if (big) {
+    const mask = (1n << BigInt(width)) - 1n;
+    const s = BigInt(sh);
+    buf[wi] = (buf[wi] & ~(mask << s)) | ((BigInt(val) & mask) << s);
+    return;
+  }
+  const mask = (1 << width) - 1;
+  let word = (buf[wi] & ~(mask << sh)) | ((val & mask) << sh);
+  if (wordBits === 8) word &= 0xFF;
+  else if (wordBits === 16) word &= 0xFFFF;
+  else word >>>= 0;
+  buf[wi] = word;
+}
+
+class GridBase {
+  constructor(cfg, w, h) {
+    this.cfg = normalizeCfg(cfg);
+    this.w = w;
+    this.h = h;
+    this.pad = this.cfg.pad;
+    this.dbl = this.cfg.dbl;
+    this.lut = this.cfg.lut;
+    this.spec = this.cfg.spec;
+    this.ox = this.pad ? 1 : 0;
+    this.oy = this.pad ? 1 : 0;
+    this.sw = w + this.ox * 2;
+    this.sh = h + this.oy * 2;
+    const layout = this.cfg.layout;
+    this.ix = INDEXERS[layout](this.sw, this.sh);
+    this.simMode = this.cfg.materials === 'one' ? 'binary' : 'material';
+    this.experimentClass = experimentClass(this.cfg);
+    this.bitwise = this.cfg.bitwise === 'on';
+    this.bitpack = this.cfg.bitpack === 'on';
+    this.bitsPerCell = this.cfg.materials === 'one' ? 1 : 2;
+    this.dDown = [0, 1];
+    this.dDL = [-1, 1];
+    this.dDR = [1, 1];
+    this.dL = [-1, 0];
+    this.dR = [1, 0];
+  }
+  sx(x) { return x + this.ox; }
+  sy(y) { return y + this.oy; }
+  /** Logical (x,y) → storage index; skips sx/sy call when !pad */
+  slot(x, y) {
+    return this.pad ? this.ix.cellSlot(x + this.ox, y + this.oy) : this.ix.cellSlot(x, y);
+  }
+  keyAt(x, y) {
+    return this.pad ? this.ix.key(x + this.ox, y + this.oy) : this.ix.key(x, y);
+  }
+  inBounds(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h; }
+  getVariant(_x, _y) { return 0; }
+  isEmpty(x, y) { return this.getMaterial(x, y) === EMPTY; }
+  isWriteEmpty(x, y) { return this.isEmpty(x, y); }
+  occupiedKeys() { return null; }
+  clearWrite() {}
+  beginStep() {
+    if (!this.dbl) return;
+    this.clearWrite();
+    fillPadBorder(this);
+  }
+  endStep() { if (this.dbl) this.swapBuffers(); }
+  commitInit() { if (this.dbl) this.copyWriteToRead(); }
+  copyWriteToRead() {}
+  swapBuffers() {}
+}
+
+class ObjectsGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    const n = this.ix.maxSlot();
+    this.write = this._fresh(n);
+    this.read = this.dbl ? this._fresh(n) : this.write;
+  }
+  _fresh(n) {
+    const a = new Array(n);
+    for (let i = 0; i < n; i++) a[i] = { material: 0 };
+    return a;
+  }
+  getMaterial(x, y) { return this.read[this.slot(x, y)].material; }
+  isWriteEmpty(x, y) { return this.write[this.slot(x, y)].material === EMPTY; }
+  set(x, y, m) { this.write[this.slot(x, y)].material = m; }
+  clearWrite() {
+    for (let i = 0; i < this.write.length; i++) this.write[i].material = 0;
+  }
+  copyWriteToRead() {
+    for (let i = 0; i < this.write.length; i++) this.read[i].material = this.write[i].material;
+  }
+  swapBuffers() { const t = this.read; this.read = this.write; this.write = t; }
+}
+
+class NumbersUnpackedGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    const n = this.ix.maxSlot();
+    this.writeM = new Array(n).fill(0);
+    this.readM = this.dbl ? new Array(n).fill(0) : this.writeM;
+  }
+  getMaterial(x, y) { return this.readM[this.slot(x, y)]; }
+  isWriteEmpty(x, y) { return this.writeM[this.slot(x, y)] === EMPTY; }
+  set(x, y, m) { this.writeM[this.slot(x, y)] = m; }
+  clearWrite() { this.writeM.fill(0); }
+  copyWriteToRead() {
+    for (let i = 0; i < this.writeM.length; i++) this.readM[i] = this.writeM[i];
+  }
+  swapBuffers() {
+    const t = this.readM; this.readM = this.writeM; this.writeM = t;
+  }
+}
+
+class TypedUnpackedGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    const n = this.ix.maxSlot();
+    const Ctor = DTYPE_CTOR[this.cfg.dtype];
+    this.big = this.cfg.dtype === 'u64';
+    this.writeM = new Ctor(n);
+    this.readM = this.dbl ? new Ctor(n) : this.writeM;
+  }
+  _num(v) { return this.big ? Number(v) : v; }
+  _store(v) { return this.big ? BigInt(v) : v; }
+  getMaterial(x, y) { return this._num(this.readM[this.slot(x, y)]); }
+  isWriteEmpty(x, y) { return this._num(this.writeM[this.slot(x, y)]) === EMPTY; }
+  set(x, y, m) { this.writeM[this.slot(x, y)] = this._store(m); }
+  clearWrite() { this.writeM.fill(this.big ? 0n : 0); }
+  copyWriteToRead() { this.readM.set(this.writeM); }
+  swapBuffers() { const t = this.readM; this.readM = this.writeM; this.writeM = t; }
+}
+
+class PackedDenseGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    if (this.cfg.storage === 'typed') {
+      this.wordBits = WORD_BITS[this.cfg.dtype];
+      this.big = this.cfg.dtype === 'u64';
+    } else {
+      this.wordBits = 32;
+      this.big = false;
+    }
+    const bits = this.ix.maxSlot() * this.bitsPerCell;
+    const nWords = Math.ceil(bits / this.wordBits);
+    this.write = allocWords(nWords, this.cfg);
+    this.read = this.dbl ? cloneWords(this.write, this.cfg) : this.write;
+    this.data = this.read;
+  }
+  _bit(x, y) {
+    if (this.bitsPerCell === 1) {
+      return this.pad ? this.ix.bitIndex(x + this.ox, y + this.oy) : this.ix.bitIndex(x, y);
+    }
+    return this.slot(x, y) * 2;
+  }
+  isEmpty(x, y) {
+    return packGet(this.read, this._bit(x, y), this.bitsPerCell, this.wordBits, this.big) === 0;
+  }
+  isWriteEmpty(x, y) {
+    return packGet(this.write, this._bit(x, y), this.bitsPerCell, this.wordBits, this.big) === 0;
+  }
+  getMaterial(x, y) {
+    const v = packGet(this.read, this._bit(x, y), this.bitsPerCell, this.wordBits, this.big);
+    if (this.bitsPerCell === 1) return v ? SAND : EMPTY;
+    return v;
+  }
+  set(x, y, m) {
+    const val = this.bitsPerCell === 1 ? (m !== EMPTY ? 1 : 0) : (m & 3);
+    packSet(this.write, this._bit(x, y), this.bitsPerCell, val, this.wordBits, this.big);
+  }
+  wordIsZero(bitIndex) {
+    const wi = Math.floor(bitIndex / this.wordBits);
+    const w = this.read[wi];
+    return this.big ? w === 0n : w === 0;
+  }
+  clearWrite() {
+    if (this.cfg.storage === 'typed') this.write.fill(this.big ? 0n : 0);
+    else this.write.fill(0);
+  }
+  copyWriteToRead() {
+    if (this.cfg.storage === 'typed') this.read.set(this.write);
+    else { for (let i = 0; i < this.write.length; i++) this.read[i] = this.write[i]; }
+  }
+  swapBuffers() {
+    const t = this.read; this.read = this.write; this.write = t;
+    this.data = this.read;
+  }
+}
+
+class RowsNumbersGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.outerIsY = this.cfg.layout === 'row';
+    this.write = this._fresh();
+    this.read = this.dbl ? this._fresh() : this.write;
+  }
+  _fresh() {
+    const outer = this.outerIsY ? this.sh : this.sw;
+    const inner = this.outerIsY ? this.sw : this.sh;
+    const rows = new Array(outer);
+    for (let i = 0; i < outer; i++) rows[i] = new Array(inner).fill(0);
+    return rows;
+  }
+  _at(store, x, y) {
+    const sx = this.pad ? x + this.ox : x;
+    const sy = this.pad ? y + this.oy : y;
+    return this.outerIsY ? store[sy][sx] : store[sx][sy];
+  }
+  _put(store, x, y, m) {
+    const sx = this.pad ? x + this.ox : x;
+    const sy = this.pad ? y + this.oy : y;
+    if (this.outerIsY) store[sy][sx] = m;
+    else store[sx][sy] = m;
+  }
+  getMaterial(x, y) { return this._at(this.read, x, y); }
+  isWriteEmpty(x, y) { return this._at(this.write, x, y) === EMPTY; }
+  set(x, y, m) { this._put(this.write, x, y, m); }
+  clearWrite() {
+    for (let i = 0; i < this.write.length; i++) this.write[i].fill(0);
+  }
+  copyWriteToRead() {
+    for (let i = 0; i < this.write.length; i++) {
+      const src = this.write[i], dst = this.read[i];
+      for (let j = 0; j < src.length; j++) dst[j] = src[j];
+    }
+  }
+  swapBuffers() { const t = this.read; this.read = this.write; this.write = t; }
+}
+
+class RowsObjectsGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.outerIsY = this.cfg.layout === 'row';
+    this.write = this._fresh();
+    this.read = this.dbl ? this._fresh() : this.write;
+  }
+  _fresh() {
+    const outer = this.outerIsY ? this.sh : this.sw;
+    const inner = this.outerIsY ? this.sw : this.sh;
+    const rows = new Array(outer);
+    for (let i = 0; i < outer; i++) {
+      const row = new Array(inner);
+      for (let j = 0; j < inner; j++) row[j] = { material: 0 };
+      rows[i] = row;
+    }
+    return rows;
+  }
+  _cell(store, x, y) {
+    const sx = this.pad ? x + this.ox : x;
+    const sy = this.pad ? y + this.oy : y;
+    return this.outerIsY ? store[sy][sx] : store[sx][sy];
+  }
+  getMaterial(x, y) { return this._cell(this.read, x, y).material; }
+  isWriteEmpty(x, y) { return this._cell(this.write, x, y).material === EMPTY; }
+  set(x, y, m) { this._cell(this.write, x, y).material = m; }
+  clearWrite() {
+    for (let i = 0; i < this.write.length; i++) {
+      const row = this.write[i];
+      for (let j = 0; j < row.length; j++) row[j].material = 0;
+    }
+  }
+  copyWriteToRead() {
+    for (let i = 0; i < this.write.length; i++) {
+      const src = this.write[i], dst = this.read[i];
+      for (let j = 0; j < src.length; j++) dst[j].material = src[j].material;
+    }
+  }
+  swapBuffers() { const t = this.read; this.read = this.write; this.write = t; }
+}
+
+class ObjNumGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.write = Object.create(null);
+    this.read = this.dbl ? Object.create(null) : this.write;
+  }
+  getMaterial(x, y) {
+    const v = this.read[this.keyAt(x, y)];
+    return v === undefined ? EMPTY : v;
+  }
+  isEmpty(x, y) { return this.read[this.keyAt(x, y)] === undefined; }
+  isWriteEmpty(x, y) {
+    const v = this.write[this.keyAt(x, y)];
+    return v === undefined || v === EMPTY;
+  }
+  set(x, y, m) {
+    const k = this.keyAt(x, y);
+    if (m === EMPTY) delete this.write[k];
+    else this.write[k] = this.simMode === 'binary' ? SAND : m;
+  }
+  clearWrite() { this.write = Object.create(null); }
+  copyWriteToRead() { this.read = Object.assign(Object.create(null), this.write); }
+  swapBuffers() { const t = this.read; this.read = this.write; this.write = t; }
+}
+
+class ObjXyGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.write = Object.create(null);
+    this.read = this.dbl ? Object.create(null) : this.write;
+  }
+  _k(x, y) {
+    const sx = this.pad ? x + this.ox : x;
+    const sy = this.pad ? y + this.oy : y;
+    return sx + ',' + sy;
+  }
+  getMaterial(x, y) {
+    const v = this.read[this._k(x, y)];
+    return v === undefined ? EMPTY : v;
+  }
+  isEmpty(x, y) { return this.read[this._k(x, y)] === undefined; }
+  isWriteEmpty(x, y) {
+    const v = this.write[this._k(x, y)];
+    return v === undefined || v === EMPTY;
+  }
+  set(x, y, m) {
+    const k = this._k(x, y);
+    if (m === EMPTY) delete this.write[k];
+    else this.write[k] = this.simMode === 'binary' ? SAND : m;
+  }
+  clearWrite() { this.write = Object.create(null); }
+  copyWriteToRead() { this.read = Object.assign(Object.create(null), this.write); }
+  swapBuffers() { const t = this.read; this.read = this.write; this.write = t; }
+}
+
+class MapDenseGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.write = new Map();
+    const n = this.ix.maxSlot();
+    for (let i = 0; i < n; i++) this.write.set(i, EMPTY);
+    this.read = this.dbl ? new Map(this.write) : this.write;
+  }
+  getMaterial(x, y) { return this.read.get(this.keyAt(x, y)) || EMPTY; }
+  isWriteEmpty(x, y) {
+    const v = this.write.get(this.keyAt(x, y));
+    return v === undefined || v === EMPTY;
+  }
+  set(x, y, m) { this.write.set(this.keyAt(x, y), m); }
+  clearWrite() {
+    this.write = new Map();
+    const n = this.ix.maxSlot();
+    for (let i = 0; i < n; i++) this.write.set(i, EMPTY);
+  }
+  copyWriteToRead() { this.read = new Map(this.write); }
+  swapBuffers() { const t = this.read; this.read = this.write; this.write = t; }
+}
+
+class MapSparseGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.map = new Map();
+  }
+  isEmpty(x, y) { return !this.map.has(this.keyAt(x, y)); }
+  getMaterial(x, y) {
+    const v = this.map.get(this.keyAt(x, y));
+    return v === undefined ? EMPTY : v;
+  }
+  set(x, y, m) {
+    const k = this.keyAt(x, y);
+    if (m === EMPTY) this.map.delete(k);
+    else this.map.set(k, this.simMode === 'binary' ? SAND : m);
+  }
+  occupiedKeys() { return Array.from(this.map.keys()); }
+}
+
+class SetGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.occ = new Set();
+  }
+  isEmpty(x, y) { return !this.occ.has(this.keyAt(x, y)); }
+  getMaterial(x, y) { return this.isEmpty(x, y) ? EMPTY : SAND; }
+  set(x, y, m) {
+    const k = this.keyAt(x, y);
+    if (m === EMPTY) this.occ.delete(k);
+    else this.occ.add(k);
+  }
+  occupiedKeys() { return Array.from(this.occ.keys()); }
+}
+
+class SetMapGrid extends GridBase {
+  constructor(cfg, w, h) {
+    super(cfg, w, h);
+    this.occ = new Set();
+    this.map = new Map();
+  }
+  isEmpty(x, y) { return !this.occ.has(this.keyAt(x, y)); }
+  getMaterial(x, y) {
+    const k = this.keyAt(x, y);
+    if (!this.occ.has(k)) return EMPTY;
+    if (this.simMode === 'binary') return SAND;
+    return this.map.get(k) || SAND;
+  }
+  set(x, y, m) {
+    const k = this.keyAt(x, y);
+    if (m === EMPTY) {
+      this.occ.delete(k);
+      this.map.delete(k);
+    } else {
+      this.occ.add(k);
+      if (this.simMode === 'material') this.map.set(k, m);
+    }
+  }
+  occupiedKeys() { return Array.from(this.occ.keys()); }
+}
+
+function fillPadBorder(grid) {
+  if (!grid.pad) return;
+  const wall = grid.simMode === 'binary' ? SAND : STONE;
+  const w = grid.w, h = grid.h;
+  for (let x = -1; x <= w; x++) {
+    grid.set(x, -1, wall);
+    grid.set(x, h, wall);
+  }
+  for (let y = 0; y < h; y++) {
+    grid.set(-1, y, wall);
+    grid.set(w, y, wall);
+  }
+}
+
+function createGrid(cfg, w, h) {
+  const c = normalizeCfg(cfg);
+  const legal = isLegal(c);
+  if (!legal.ok) throw new Error(legal.reason);
+  let g;
+  if (c.bitpack === 'on') g = new PackedDenseGrid(c, w, h);
+  else {
+    switch (c.storage) {
+      case 'objects': g = new ObjectsGrid(c, w, h); break;
+      case 'numbers': g = new NumbersUnpackedGrid(c, w, h); break;
+      case 'typed': g = new TypedUnpackedGrid(c, w, h); break;
+      case 'rows_numbers': g = new RowsNumbersGrid(c, w, h); break;
+      case 'rows_objects': g = new RowsObjectsGrid(c, w, h); break;
+      case 'obj_num': g = new ObjNumGrid(c, w, h); break;
+      case 'obj_xy': g = new ObjXyGrid(c, w, h); break;
+      case 'map_dense': g = new MapDenseGrid(c, w, h); break;
+      case 'map_sparse': g = new MapSparseGrid(c, w, h); break;
+      case 'set': g = new SetGrid(c, w, h); break;
+      case 'set_map': g = new SetMapGrid(c, w, h); break;
+      default: throw new Error('unknown storage');
+    }
+  }
+  fillPadBorder(g);
+  g.commitInit();
+  return g;
+}
+
+function paintPattern(setCell, w, h, binary) {
+  for (let x = Math.floor(w * 0.15); x < Math.floor(w * 0.55); x++) {
+    if ((x % 6) < 4) setCell(x, Math.floor(h * 0.55), binary ? SAND : STONE);
+  }
+  for (let x = Math.floor(w * 0.45); x < Math.floor(w * 0.9); x++) {
+    if ((x % 5) < 3) setCell(x, Math.floor(h * 0.75), binary ? SAND : STONE);
+  }
+  for (let y = 0; y < Math.floor(h * 0.3); y++) {
+    for (let x = Math.floor(w * 0.05); x < Math.floor(w * 0.35); x++) {
+      setCell(x, y, SAND);
+    }
+  }
+  for (let y = 0; y < Math.floor(h * 0.22); y++) {
+    for (let x = Math.floor(w * 0.65); x < Math.floor(w * 0.95); x++) {
+      setCell(x, y, binary ? SAND : WATER);
+    }
+  }
+}
+
+function initGrid(grid) {
+  paintPattern((x, y, m) => grid.set(x, y, m), grid.w, grid.h, grid.simMode === 'binary');
+  fillPadBorder(grid);
+  grid.commitInit();
+}
+
+function tryMove(grid, x, y, nx, ny) {
+  if (!grid.pad && !grid.inBounds(nx, ny)) return false;
+  if (!grid.isEmpty(nx, ny)) return false;
+  if (grid.dbl && !grid.isWriteEmpty(nx, ny)) return false;
+  const m = grid.getMaterial(x, y);
+  grid.set(nx, ny, m);
+  grid.set(x, y, EMPTY);
+  return true;
+}
+
+function updateCell(grid, x, y, rng) {
+  const m = grid.getMaterial(x, y);
+  if (m === EMPTY) return;
+
+  if (m === STONE) {
+    if (grid.dbl) grid.set(x, y, STONE);
+    return;
+  }
+
+  const down = grid.lut ? grid.dDown : [0, 1];
+  const dl = grid.lut ? grid.dDL : [-1, 1];
+  const dr = grid.lut ? grid.dDR : [1, 1];
+  const left = grid.lut ? grid.dL : [-1, 0];
+  const right = grid.lut ? grid.dR : [1, 0];
+  let moved = false;
+
+  if (grid.simMode === 'binary' || m === SAND) {
+    if (tryMove(grid, x, y, x + down[0], y + down[1])) return;
+    const dir = rng() < 0.5 ? -1 : 1;
+    const a = dir < 0 ? dl : dr;
+    const b = dir < 0 ? dr : dl;
+    if (tryMove(grid, x, y, x + a[0], y + a[1])) return;
+    moved = tryMove(grid, x, y, x + b[0], y + b[1]);
+    if (!moved && grid.dbl) grid.set(x, y, m);
+    return;
+  }
+
+  if (m === WATER) {
+    if (tryMove(grid, x, y, x + down[0], y + down[1])) return;
+    const dir = rng() < 0.5 ? -1 : 1;
+    const a = dir < 0 ? dl : dr;
+    const b = dir < 0 ? dr : dl;
+    const sideA = dir < 0 ? left : right;
+    const sideB = dir < 0 ? right : left;
+    if (tryMove(grid, x, y, x + a[0], y + a[1])) return;
+    if (tryMove(grid, x, y, x + b[0], y + b[1])) return;
+    if (tryMove(grid, x, y, x + sideA[0], y + sideA[1])) return;
+    moved = tryMove(grid, x, y, x + sideB[0], y + sideB[1]);
+    if (!moved && grid.dbl) grid.set(x, y, m);
+  }
+}
+
+/**
+ * Specialized dense step for numbers/typed unpacked — direct array access.
+ * ponytail: techo sin getMaterial OOP; misma física.
+ */
+function stepDenseSpec(grid, rng, frameIndex) {
+  const leftToRight = (frameIndex % 2 === 0);
+  const readM = grid.readM;
+  const writeM = grid.writeM;
+  const w = grid.w, h = grid.h;
+  const dbl = grid.dbl;
+  const pad = grid.pad;
+  const binary = grid.simMode === 'binary';
+  const big = !!grid.big;
+  const slot = (x, y) => grid.slot(x, y);
+
+  function readAt(x, y) {
+    const v = readM[slot(x, y)];
+    return big ? Number(v) : v;
+  }
+  function writeAt(x, y, m) {
+    writeM[slot(x, y)] = big ? BigInt(m) : m;
+  }
+  function emptyRead(x, y) {
+    if (!pad && (x < 0 || y < 0 || x >= w || y >= h)) return false;
+    return readAt(x, y) === EMPTY;
+  }
+  function emptyWrite(x, y) {
+    if (!pad && (x < 0 || y < 0 || x >= w || y >= h)) return false;
+    const v = writeM[slot(x, y)];
+    return (big ? Number(v) : v) === EMPTY;
+  }
+  function move(x, y, nx, ny) {
+    if (!pad && (nx < 0 || ny < 0 || nx >= w || ny >= h)) return false;
+    if (!emptyRead(nx, ny)) return false;
+    if (dbl && !emptyWrite(nx, ny)) return false;
+    const m = readAt(x, y);
+    writeAt(nx, ny, m);
+    writeAt(x, y, EMPTY);
+    return true;
+  }
+  function update(x, y) {
+    const m = readAt(x, y);
+    if (m === EMPTY) return;
+    if (m === STONE) {
+      if (dbl) writeAt(x, y, STONE);
+      return;
+    }
+    if (binary || m === SAND) {
+      if (move(x, y, x, y + 1)) return;
+      const dir = rng() < 0.5 ? -1 : 1;
+      if (move(x, y, x + dir, y + 1)) return;
+      if (!move(x, y, x - dir, y + 1) && dbl) writeAt(x, y, m);
+      return;
+    }
+    if (m === WATER) {
+      if (move(x, y, x, y + 1)) return;
+      const dir = rng() < 0.5 ? -1 : 1;
+      if (move(x, y, x + dir, y + 1)) return;
+      if (move(x, y, x - dir, y + 1)) return;
+      if (move(x, y, x + dir, y)) return;
+      if (!move(x, y, x - dir, y) && dbl) writeAt(x, y, m);
+    }
+  }
+
+  for (let y = h - 1; y >= 0; y--) {
+    if (leftToRight) {
+      for (let x = 0; x < w; x++) update(x, y);
+    } else {
+      for (let x = w - 1; x >= 0; x--) update(x, y);
+    }
+  }
+}
+
+function stepDense(grid, rng, frameIndex) {
+  if (grid.spec && grid.readM) {
+    stepDenseSpec(grid, rng, frameIndex);
+    return;
+  }
+  const leftToRight = (frameIndex % 2 === 0);
+  const canSkipWord = grid.bitwise && grid.bitpack && grid.cfg.layout === 'row' && grid.cfg.storage === 'typed';
+  const wb = grid.wordBits || 32;
+  const cpw = wb / (grid.bitsPerCell || 1);
+
+  for (let y = grid.h - 1; y >= 0; y--) {
+    if (leftToRight) {
+      for (let x = 0; x < grid.w; ) {
+        if (canSkipWord) {
+          const bi = grid._bit(x, y);
+          if (bi % wb === 0 && grid.wordIsZero(bi)) {
+            x += Math.min(cpw, grid.w - x);
+            continue;
+          }
+        }
+        updateCell(grid, x, y, rng);
+        x++;
+      }
+    } else {
+      for (let x = grid.w - 1; x >= 0; ) {
+        if (canSkipWord) {
+          const bi = grid._bit(x, y);
+          if (grid.wordIsZero(bi)) {
+            const wordStart = bi - (bi % wb);
+            const slot0 = grid.bitsPerCell === 1 ? wordStart : (wordStart >> 1);
+            const x0 = slot0 - (y + grid.oy) * grid.sw;
+            const lx = x0 - grid.ox;
+            if (lx >= 0 && lx <= x) {
+              x = lx - 1;
+              continue;
+            }
+          }
+        }
+        updateCell(grid, x, y, rng);
+        x--;
+      }
+    }
+  }
+}
+
+function stepSparse(grid, rng, frameIndex) {
+  const leftToRight = (frameIndex % 2 === 0);
+  const keys = grid.occupiedKeys();
+  const pairs = keys.map((k) => {
+    const { x, y } = grid.ix.xy(k);
+    return { x: x - grid.ox, y: y - grid.oy, k };
+  }).filter((p) => p.x >= 0 && p.y >= 0 && p.x < grid.w && p.y < grid.h);
+
+  pairs.sort((a, b) => {
+    if (a.y !== b.y) return b.y - a.y;
+    return leftToRight ? a.x - b.x : b.x - a.x;
+  });
+
+  for (const p of pairs) {
+    if (grid.isEmpty(p.x, p.y)) continue;
+    updateCell(grid, p.x, p.y, rng);
+  }
+}
+
+function step(grid, rng, frameIndex) {
+  grid.beginStep();
+  if (grid.experimentClass === 'sparse_particles') stepSparse(grid, rng, frameIndex);
+  else stepDense(grid, rng, frameIndex);
+  grid.endStep();
+}
+
+(function selfCheck() {
+  let fails = 0;
+  const samples = [
+    { storage: 'typed', dtype: 'u8', materials: 'three', layout: 'row', bitpack: 'off', bitwise: 'off', dbl: true },
+    { storage: 'numbers', materials: 'three', layout: 'row', bitpack: 'off', bitwise: 'off', dbl: true, lut: true },
+    { storage: 'typed', dtype: 'u64', materials: 'one', layout: 'row', bitpack: 'on', bitwise: 'on' },
+    { storage: 'rows_numbers', materials: 'three', layout: 'col', bitpack: 'off', bitwise: 'off', pad: true, dbl: true },
+    { storage: 'obj_num', materials: 'three', layout: 'morton', bitpack: 'off', bitwise: 'off', dbl: true },
+    { storage: 'numbers', materials: 'one', layout: 'row', bitpack: 'off', bitwise: 'off', spec: true },
+    { storage: 'set_map', materials: 'three', layout: 'col', bitpack: 'off', bitwise: 'off', lut: true },
+  ];
+  const rng = mulberry32(42);
+  for (const cfg of samples) {
+    if (!isLegal(cfg).ok) { console.error('sample illegal', cfg, isLegal(cfg)); fails++; continue; }
+    const g = createGrid(cfg, 12, 9);
+    initGrid(g);
+    g.set(3, 4, cfg.materials === 'one' ? SAND : WATER);
+    if (g.dbl) g.commitInit();
+    if (g.isEmpty(3, 4)) { console.error('empty after set', cfg); fails++; }
+    for (let i = 0; i < 5; i++) step(g, rng, i);
+    // After steps, grid should still be readable
+    g.getMaterial(0, 0);
+  }
+  if (fails) console.error('selfCheck fails', fails);
+  else console.log('selfCheck ok, legales:', enumerateLegalConfigs().length);
+})();
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+let results = [];
+let liveGrid = null, liveRng = null, liveFrame = 0, liveRunning = false, liveRAF = null;
+let adjustMsg = '';
+
+function readAxes() {
+  return normalizeCfg({
+    storage: $('selStorage').value,
+    materials: $('selMaterials').value,
+    layout: $('selLayout').value,
+    bitpack: $('selPack').value,
+    bitwise: $('selBitwise').value,
+    dtype: $('selDtype').value,
+    pad: $('chkPad').checked,
+    dbl: $('chkDbl').checked,
+    lut: $('chkLut').checked,
+    spec: $('chkSpec').checked,
+  });
+}
+
+function readBenchConfig() {
+  return {
+    w: clamp(parseInt($('inW').value) || 200, 20, 500),
+    h: clamp(parseInt($('inH').value) || 120, 20, 500),
+    warmup: clamp(parseInt($('inWarmup').value) || 20, 0, 500),
+    measure: clamp(parseInt($('inMeasure').value) || 150, 10, 2000),
+    reps: clamp(parseInt($('inReps').value) || 3, 1, 10),
+    seed: clamp(parseInt($('inSeed').value) || 1337, 0, 999999),
+  };
+}
+
+function setChkEnabled(id, labId, on) {
+  $(id).disabled = !on;
+  $(labId).classList.toggle('disabled', !on);
+  if (!on) $(id).checked = false;
+}
+
+function syncSelects() {
+  adjustMsg = '';
+  let cfg = {
+    storage: $('selStorage').value,
+    materials: $('selMaterials').value,
+    layout: $('selLayout').value,
+    bitpack: $('selPack').value,
+    bitwise: $('selBitwise').value,
+    dtype: $('selDtype').value,
+    pad: $('chkPad').checked,
+    dbl: $('chkDbl').checked,
+    lut: $('chkLut').checked,
+    spec: $('chkSpec').checked,
+  };
+
+  const typed = cfg.storage === 'typed';
+  $('fieldDtype').style.opacity = typed ? '1' : '0.45';
+  $('selDtype').disabled = !typed;
+
+  const packable = cfg.storage === 'numbers' || (typed && PACKABLE.includes(cfg.dtype));
+  for (const opt of $('selPack').options) {
+    opt.disabled = opt.value === 'on' && !packable;
+  }
+  for (const opt of $('selBitwise').options) {
+    opt.disabled = opt.value === 'on' && !(typed && cfg.bitpack === 'on' && PACKABLE.includes(cfg.dtype));
+  }
+  for (const opt of $('selStorage').options) {
+    opt.disabled = opt.value === 'set' && cfg.materials === 'three';
+  }
+  for (const opt of $('selLayout').options) {
+    if (opt.value === 'morton') {
+      opt.disabled = cfg.storage === 'rows_numbers' || cfg.storage === 'rows_objects';
+    } else if (cfg.storage === 'obj_xy') {
+      opt.disabled = opt.value !== 'row';
+    } else {
+      opt.disabled = false;
+    }
+  }
+
+  const dense = !isSparseStorage(cfg.storage);
+  setChkEnabled('chkPad', 'labPad', dense);
+  setChkEnabled('chkDbl', 'labDbl', dense);
+  $('chkLut').disabled = false;
+  $('labLut').classList.remove('disabled');
+  const specOk = dense && (cfg.storage === 'numbers' || cfg.storage === 'typed') && cfg.bitpack === 'off';
+  setChkEnabled('chkSpec', 'labSpec', specOk);
+
+  cfg = {
+    storage: $('selStorage').value,
+    materials: $('selMaterials').value,
+    layout: $('selLayout').value,
+    bitpack: $('selPack').value,
+    bitwise: $('selBitwise').value,
+    dtype: $('selDtype').value,
+    pad: $('chkPad').checked,
+    dbl: $('chkDbl').checked,
+    lut: $('chkLut').checked,
+    spec: $('chkSpec').checked,
+  };
+
+  let legal = isLegal(cfg);
+  if (!legal.ok && cfg.spec) {
+    $('chkSpec').checked = false; cfg.spec = false;
+    adjustMsg = 'ajustado: spec→off';
+    legal = isLegal(cfg);
+  }
+  if (!legal.ok && cfg.bitwise === 'on') {
+    $('selBitwise').value = 'off'; cfg.bitwise = 'off';
+    adjustMsg = (adjustMsg ? adjustMsg + '; ' : '') + 'bitwise→off';
+    legal = isLegal(cfg);
+  }
+  if (!legal.ok && cfg.bitpack === 'on') {
+    $('selPack').value = 'off'; cfg.bitpack = 'off';
+    adjustMsg = (adjustMsg ? adjustMsg + '; ' : '') + 'pack→off';
+    legal = isLegal(cfg);
+  }
+  if (!legal.ok && cfg.storage === 'set' && cfg.materials === 'three') {
+    $('selStorage').value = 'set_map'; cfg.storage = 'set_map';
+    adjustMsg = (adjustMsg ? adjustMsg + '; ' : '') + 'storage→set_map';
+    legal = isLegal(cfg);
+  }
+  if (!legal.ok && (cfg.storage === 'rows_numbers' || cfg.storage === 'rows_objects') && cfg.layout === 'morton') {
+    $('selLayout').value = 'row'; cfg.layout = 'row';
+    adjustMsg = (adjustMsg ? adjustMsg + '; ' : '') + 'layout→row';
+    legal = isLegal(cfg);
+  }
+  if (!legal.ok && cfg.storage === 'obj_xy' && cfg.layout !== 'row') {
+    $('selLayout').value = 'row'; cfg.layout = 'row';
+    adjustMsg = (adjustMsg ? adjustMsg + '; ' : '') + 'layout→row';
+    legal = isLegal(cfg);
+  }
+
+  const next = readAxes();
+  legal = isLegal(next);
+  const hint = $('legalHint');
+  if (legal.ok) {
+    const cls = experimentClass(next);
+    const nLegal = enumerateLegalConfigs().length;
+    hint.className = 'hint ok';
+    hint.textContent = `Legal · clase ${cls} · ${nLegal} combos legales`
+      + (adjustMsg ? ` · ${adjustMsg}` : '')
+      + (next.storage === 'obj_xy' ? ' · layout ignorado en clave' : '')
+      + (next.dbl ? ' · dbl clear+scatter+swap' : '')
+      + (next.bitwise === 'on' && next.layout === 'row' ? ' · skip-word activo' : '')
+      + (next.dtype === 'u64' && next.bitpack === 'on' ? ' · u64 BigInt' : '');
+  } else {
+    hint.className = 'hint warn';
+    hint.textContent = 'Ilegal: ' + legal.reason;
+  }
+  const playOk = legal.ok;
+  $('btnPlay').disabled = !playOk;
+  $('btnStep').disabled = !playOk;
+  $('btnRun').disabled = !playOk;
+  $('liveCfg').textContent = playOk ? configLabel(next) : 'config ilegal';
+}
+
+function stdev(arr) {
+  if (arr.length < 2) return 0;
+  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+  const v = arr.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (arr.length - 1);
+  return Math.sqrt(v);
+}
+
+async function measureConfig(cfg, bench) {
+  const times = [];
+  for (let r = 0; r < bench.reps; r++) {
+    const grid = createGrid(cfg, bench.w, bench.h);
+    initGrid(grid);
+    const rng = mulberry32(bench.seed);
+    let f = 0;
+    for (; f < bench.warmup; f++) step(grid, rng, f);
+    const t0 = performance.now();
+    for (let m = 0; m < bench.measure; m++, f++) step(grid, rng, f);
+    const t1 = performance.now();
+    times.push(t1 - t0);
+    await sleep(0);
+  }
+  const frameMeans = times.map((t) => t / bench.measure);
+  const mean = frameMeans.reduce((a, b) => a + b, 0) / frameMeans.length;
+  return {
+    cfg: { ...normalizeCfg(cfg) },
+    key: configKey(cfg),
+    label: configLabel(cfg),
+    class: experimentClass(cfg),
+    micros: microsTag(cfg),
+    avgFrameMs: mean,
+    bestFrameMs: Math.min(...frameMeans),
+    stdevFrameMs: stdev(frameMeans),
+    cellsPerSec: (bench.w * bench.h) / (mean / 1000),
+    bytes: estimateBytes(cfg),
+    w: bench.w, h: bench.h, seed: bench.seed, reps: bench.reps,
+    id: results.length + 1,
+  };
+}
+
+function filteredResults() {
+  const f = $('selFilter').value;
+  const axes = readAxes();
+  return results.filter((r) => {
+    if (f === 'all') return true;
+    if (f === 'micros') {
+      return r.cfg.pad === axes.pad && r.cfg.dbl === axes.dbl
+        && r.cfg.lut === axes.lut && !!r.cfg.spec === axes.spec;
+    }
+    if (f === 'dense_full' || f === 'sparse_particles') return r.class === f;
+    const [cls, mat] = f.split('|');
+    return r.class === cls && r.cfg.materials === mat;
+  });
+}
+
+function renderResults() {
+  const list = filteredResults().slice().sort((a, b) => a.avgFrameMs - b.avgFrameMs);
+  $('resultCount').textContent = `${list.length} visibles / ${results.length} acumulados`;
+
+  const f = $('selFilter').value;
+  const banner = $('resultBanner');
+  if (f === 'all' && results.length) {
+    banner.innerHTML = `<b>Filtro = todas:</b> ganadores pueden mezclar micros (pad/dbl/lut). Filtrá “mismos micros” o una clase. <code>dbl</code> on vs off no es el mismo algoritmo.`;
+  } else {
+    banner.innerHTML = `<b>Honestidad científica:</b> compará rankings dentro de la misma clase y los mismos checkboxes. No hay un único “mejor absoluto”.`;
+  }
+
+  const buckets = {
+    'dense_full|one': null,
+    'dense_full|three': null,
+    'sparse_particles|one': null,
+    'sparse_particles|three': null,
+  };
+  const pool = f === 'all' ? results : list;
+  for (const r of pool) {
+    const k = `${r.class}|${r.cfg.materials}`;
+    if (!(k in buckets)) continue;
+    if (!buckets[k] || r.avgFrameMs < buckets[k].avgFrameMs) buckets[k] = r;
+  }
+  $('winnersPanel').innerHTML = Object.entries(buckets).map(([k, r]) => {
+    const [cls, mat] = k.split('|');
+    return `<div class="winner-card">
+      <div class="k">Ganador · ${cls} · ${mat}</div>
+      <div class="v">${r ? r.label : '—'}</div>
+      <div class="meta">${r ? r.avgFrameMs.toFixed(4) + ' ms/frame' : 'sin datos'}</div>
+    </div>`;
+  }).join('');
+
+  if (!list.length) {
+    $('resultsBody').innerHTML = `<tr><td colspan="10" style="color:var(--text-faint);">${results.length ? 'Nada en este filtro.' : 'Sin corridas todavía.'}</td></tr>`;
+    return;
+  }
+  const fastest = list[0].avgFrameMs;
+  $('resultsBody').innerHTML = list.map((r, i) => `
+    <tr class="${i === 0 ? 'fastest' : ''}">
+      <td>${r.id}</td>
+      <td>${r.label}</td>
+      <td>${r.class}</td>
+      <td>${r.micros}</td>
+      <td class="num">${r.avgFrameMs.toFixed(4)}</td>
+      <td class="num">${r.bestFrameMs.toFixed(4)}</td>
+      <td class="num">${r.stdevFrameMs.toFixed(4)}</td>
+      <td class="num">${(r.avgFrameMs / fastest).toFixed(2)}×</td>
+      <td class="num">${Math.round(r.cellsPerSec).toLocaleString('es-AR')}</td>
+      <td class="num">${r.bytes}</td>
+    </tr>
+  `).join('');
+}
+
+async function runOne() {
+  const cfg = readAxes();
+  if (!isLegal(cfg).ok) return;
+  const bench = readBenchConfig();
+  $('btnRun').disabled = true;
+  $('btnSweep').disabled = true;
+  $('progressLine').innerHTML = `Corriendo <b>${configLabel(cfg)}</b>…`;
+  await sleep(0);
+  const row = await measureConfig(cfg, bench);
+  row.id = results.length + 1;
+  results.push(row);
+  renderResults();
+  $('progressLine').textContent = `Listo — agregada #${row.id} (${row.avgFrameMs.toFixed(4)} ms/frame).`;
+  $('btnRun').disabled = false;
+  $('btnSweep').disabled = false;
+  syncSelects();
+}
+
+async function runSweep() {
+  const all = enumerateLegalConfigs();
+  const bench = readBenchConfig();
+  $('btnRun').disabled = true;
+  $('btnSweep').disabled = true;
+  for (let i = 0; i < all.length; i++) {
+    const cfg = all[i];
+    $('progressLine').innerHTML = `Barrido <b>${i + 1}/${all.length}</b>: ${configLabel(cfg)}`;
+    await sleep(0);
+    const row = await measureConfig(cfg, bench);
+    row.id = results.length + 1;
+    results.push(row);
+    if (i % 4 === 0) renderResults();
+  }
+  renderResults();
+  $('progressLine').textContent = `Barrido listo — ${all.length} combos. Filtrá por clase/micros.`;
+  $('btnRun').disabled = false;
+  $('btnSweep').disabled = false;
+  syncSelects();
+  $('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function colorFor(material, variant) {
+  switch (material) {
+    case STONE: return [92, 90, 98];
+    case SAND: {
+      const t = (variant || 0) / 15;
+      return [196 + 30 * t, 120 + 40 * t, 48 + 30 * t];
+    }
+    case WATER: {
+      const t = (variant || 0) / 15;
+      return [50 + 20 * t, 110 + 40 * t, 160 + 50 * t];
+    }
+    default: return BG_RGB;
+  }
+}
+
+function drawGrid(grid) {
+  const canvas = $('canvas');
+  const w = grid.w, h = grid.h;
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const data = img.data;
+  let p = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const m = grid.getMaterial(x, y);
+      const v = (x + y) % 16;
+      const [r, g, b] = colorFor(m, v);
+      data[p++] = r; data[p++] = g; data[p++] = b; data[p++] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const cellPx = Math.max(2, Math.min(6, Math.floor(760 / w)));
+  canvas.style.width = (w * cellPx) + 'px';
+  canvas.style.height = (h * cellPx) + 'px';
+}
+
+function setupLive() {
+  const cfg = readAxes();
+  if (!isLegal(cfg).ok) return;
+  const bench = readBenchConfig();
+  liveGrid = createGrid(cfg, bench.w, bench.h);
+  initGrid(liveGrid);
+  liveRng = mulberry32(bench.seed);
+  liveFrame = 0;
+  drawGrid(liveGrid);
+}
+
+function liveLoop() {
+  const stepsPerFrame = parseInt($('speedRange').value) || 1;
+  for (let i = 0; i < stepsPerFrame; i++) { step(liveGrid, liveRng, liveFrame); liveFrame++; }
+  drawGrid(liveGrid);
+  if (liveRunning) liveRAF = requestAnimationFrame(liveLoop);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const axisIds = ['selStorage', 'selMaterials', 'selLayout', 'selPack', 'selBitwise', 'selDtype'];
+  const onAxis = () => {
+    syncSelects();
+    liveRunning = false;
+    $('btnPlay').textContent = '▶ Reproducir';
+    if (liveRAF) cancelAnimationFrame(liveRAF);
+    setupLive();
+  };
+  for (const id of axisIds) $(id).addEventListener('change', onAxis);
+  for (const id of ['chkPad', 'chkDbl', 'chkLut', 'chkSpec']) $(id).addEventListener('change', onAxis);
+
+  $('btnStress').addEventListener('click', () => {
+    $('inW').value = 512;
+    $('inH').value = 512;
+    onAxis();
+    $('progressLine').textContent = 'Preset 512×512 — mejor para ver si Typed gana por caché.';
+  });
+
+  $('btnRun').addEventListener('click', runOne);
+  $('btnSweep').addEventListener('click', runSweep);
+  $('btnClear').addEventListener('click', () => {
+    results = [];
+    renderResults();
+    $('progressLine').textContent = 'Resultados limpios.';
+  });
+  $('selFilter').addEventListener('change', renderResults);
+
+  $('btnPlay').addEventListener('click', () => {
+    if (!isLegal(readAxes()).ok) return;
+    if (!liveGrid) setupLive();
+    liveRunning = !liveRunning;
+    $('btnPlay').textContent = liveRunning ? '⏸ Pausar' : '▶ Reproducir';
+    if (liveRunning) liveRAF = requestAnimationFrame(liveLoop);
+    else if (liveRAF) cancelAnimationFrame(liveRAF);
+  });
+  $('btnStep').addEventListener('click', () => {
+    if (!liveGrid) setupLive();
+    step(liveGrid, liveRng, liveFrame); liveFrame++;
+    drawGrid(liveGrid);
+  });
+  $('btnResetLive').addEventListener('click', () => {
+    liveRunning = false;
+    $('btnPlay').textContent = '▶ Reproducir';
+    if (liveRAF) cancelAnimationFrame(liveRAF);
+    setupLive();
+  });
+  $('speedRange').addEventListener('input', () => { $('speedVal').textContent = $('speedRange').value; });
+
+  syncSelects();
+  renderResults();
+  setupLive();
+});
+</script>
+</body>
+</html>

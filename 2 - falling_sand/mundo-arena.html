@@ -186,13 +186,27 @@
           <label>Zoom<small>px de pantalla por celda</small></label>
           <input type="range" id="rangoZoom" min="1" max="8" value="4">
         </div>
-        <div class="fila">
-          <label>Grilla de chunks activos<small>overlay de depuración</small></label>
-          <input type="checkbox" id="chkOverlay">
+        <div class="fila" style="margin-top:12px;">
+          <label style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--texto-sec);">Optimizaciones</label>
         </div>
         <div class="fila">
-          <label>Dirty rect por chunk<small>AABB sucio por chunk + overlay</small></label>
-          <input type="checkbox" id="chkDirtyRect">
+          <label>Chunks dormidos<small>solo simular chunks activos</small></label>
+          <input type="checkbox" id="chkOptChunks" checked>
+        </div>
+        <div class="fila">
+          <label>Dirty rect<small>redibujar AABB por chunk</small></label>
+          <input type="checkbox" id="chkOptDirty">
+        </div>
+        <div class="fila" style="margin-top:12px;">
+          <label style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--texto-sec);">Visualización</label>
+        </div>
+        <div class="fila">
+          <label>Mostrar chunks activos<small>overlay arena</small></label>
+          <input type="checkbox" id="chkVizChunks">
+        </div>
+        <div class="fila">
+          <label>Mostrar dirty rects<small>overlay cian (independiente de la opt)</small></label>
+          <input type="checkbox" id="chkVizDirty">
         </div>
         <div class="fila">
           <label>Emisor automático arriba<small>usa el material seleccionado</small></label>
@@ -217,20 +231,16 @@
         <h2>Cómo funciona</h2>
         <div class="explicacion">
           <p><b>Chunks:</b> el mundo se parte en bloques de <code>tamChunk × tamChunk</code> celdas.
-          Un chunk sólo se procesa si está <b>activo</b>. El barrido es por filas globales de abajo hacia arriba
-          (como un mundo monolítico), así la arena/agua cruza bordes de chunk sin “escalones”.
-          Al mover una celda se despiertan vecinos en el borde; fluido quieto en el borde despierta
-          al vecino si del otro lado hay aire u otra interacción posible (wake agresivo).</p>
-          <p><b>Dormir:</b> si en un paso no hubo ningún movimiento dentro de un chunk, ese chunk no se vuelve
-          a marcar activo y queda dormido: no se recorre en el próximo paso ni se vuelve a dibujar. Por eso
-          al generar el mundo el contador de "chunks activos" arranca en 0 —piedra y aire son estáticos— y
-          sólo sube cuando pintás arena o agua.</p>
-          <p><b>Dibujado:</b> buffer <code>ImageData</code> del mundo entero. Por defecto,
-          <code>putImageData</code> del chunk completo si está sucio. Con <b>Dirty rect</b> cada chunk
-          guarda su propio AABB de celdas tocadas y sólo se sube ese sub-rectángulo (overlay cian por chunk).</p>
-          <p><b>Para estresar el rendimiento:</b> agrandá el mundo, probá chunks chicos (más overhead de
-          bordes) contra chunks grandes (menos paralelismo de "sueño"), y activá el emisor automático. El
-          overlay de depuración tiene su propio costo de dibujo — apagalo para medir el rendimiento real.</p>
+          Con la opt <b>Chunks dormidos</b>, sólo se procesan chunks activos. El barrido es por filas
+          globales de abajo hacia arriba, así la arena/agua cruza bordes sin “escalones”.
+          Wake agresivo en el borde si del otro lado hay aire u otra interacción posible.</p>
+          <p><b>Dormir:</b> si en un paso no hubo movimiento en un chunk, queda dormido. Apagá la opt
+          para simular el mundo entero cada paso y comparar FPS.</p>
+          <p><b>Dibujado:</b> buffer <code>ImageData</code> del mundo. Por defecto se sube el chunk
+          completo sucio; con opt <b>Dirty rect</b> sólo el AABB de celdas tocadas por chunk.
+          Los checkboxes de <b>Visualización</b> sólo dibujan overlays (no cambian la simulación ni el redibujado).</p>
+          <p><b>Para estresar el rendimiento:</b> agrandá el mundo, emisor on, y alterná las opts mirando FPS.
+          Apagá los overlays al medir — también cuestan dibujo.</p>
         </div>
       </section>
 
@@ -516,11 +526,30 @@ function pasoSimulacion() {
   contadorPaso++;
   celdasActualizadasUltimoPaso = 0;
 
-  let hayActivos = false;
-  let yMin = ALTO, yMax = -1;
+  // Swap de flags de wake (siempre; sirve para viz y para reactivar opt)
   for (let i = 0; i < chunkActivo.length; i++) {
     chunkActivo[i] = chunkActivoSiguiente[i];
     chunkActivoSiguiente[i] = 0;
+  }
+
+  const dirFila = (contadorPaso % 2 === 0) ? 1 : -1;
+
+  if (!optChunks) {
+    // Sin opt: barrido del mundo entero
+    for (let y = ALTO - 1; y >= 0; y--) {
+      if (dirFila === 1) {
+        for (let x = 0; x < ANCHO; x++) procesarCelda(x, y);
+      } else {
+        for (let x = ANCHO - 1; x >= 0; x--) procesarCelda(x, y);
+      }
+    }
+    tiempoSimUltimoPasoMs = performance.now() - t0;
+    return;
+  }
+
+  let hayActivos = false;
+  let yMin = ALTO, yMax = -1;
+  for (let i = 0; i < chunkActivo.length; i++) {
     if (!chunkActivo[i]) continue;
     hayActivos = true;
     const cy = (i / chunksX) | 0;
@@ -534,8 +563,7 @@ function pasoSimulacion() {
     return;
   }
 
-  // Barrido global abajo→arriba (no por chunk aislado): la columna cruza bordes como monolito
-  const dirFila = (contadorPaso % 2 === 0) ? 1 : -1;
+  // Barrido global abajo→arriba solo sobre chunks activos
   for (let y = yMax; y >= yMin; y--) {
     const cy = (y / TAM_CHUNK) | 0;
     if (dirFila === 1) {
@@ -627,13 +655,14 @@ function limpiarDirtyPorChunk() {
 }
 
 function dibujarFrame() {
+  // Snapshot siempre (viz independiente de optDirtyRect)
   dirtyPorChunkUltimoFrame = [];
   for (let ci = 0; ci < dirtyPorChunk.length; ci++) {
     const r = dirtyPorChunk[ci];
-    if (r) dirtyPorChunkUltimoFrame.push(r);
+    if (r) dirtyPorChunkUltimoFrame.push({ x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 });
   }
 
-  if (usarDirtyRect) {
+  if (optDirtyRect) {
     chunksRedibujadosUltimoFrame = 0;
     for (let ci = 0; ci < dirtyPorChunk.length; ci++) {
       const r = dirtyPorChunk[ci];
@@ -658,7 +687,7 @@ function dibujarFrame() {
 
 function dibujarOverlay() {
   ctxOverlay.clearRect(0, 0, ANCHO, ALTO);
-  if (mostrarOverlay) {
+  if (vizChunks) {
     ctxOverlay.strokeStyle = "rgba(209,165,82,0.25)";
     ctxOverlay.lineWidth = 1 / zoom;
     ctxOverlay.fillStyle = "rgba(209,165,82,0.30)";
@@ -666,12 +695,17 @@ function dibujarOverlay() {
       for (let cx = 0; cx < chunksX; cx++) {
         const x0 = cx * TAM_CHUNK, y0 = cy * TAM_CHUNK;
         const w = Math.min(TAM_CHUNK, ANCHO - x0), h = Math.min(TAM_CHUNK, ALTO - y0);
-        if (chunkActivo[chunkIdxDe(cx, cy)]) ctxOverlay.fillRect(x0, y0, w, h);
+        if (optChunks) {
+          if (chunkActivo[chunkIdxDe(cx, cy)]) ctxOverlay.fillRect(x0, y0, w, h);
+        } else {
+          // Sin opt de chunks: todo el mundo se simula → marcar todos como “activos”
+          ctxOverlay.fillRect(x0, y0, w, h);
+        }
         ctxOverlay.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
       }
     }
   }
-  if (usarDirtyRect && dirtyPorChunkUltimoFrame.length) {
+  if (vizDirty && dirtyPorChunkUltimoFrame.length) {
     ctxOverlay.fillStyle = "rgba(61,148,184,0.22)";
     ctxOverlay.strokeStyle = "rgba(61,148,184,0.85)";
     ctxOverlay.lineWidth = 1 / zoom;
@@ -809,8 +843,10 @@ function tickEmisor() {
    ============================================================ */
 let corriendo = true;
 let velocidad = 1;
-let mostrarOverlay = false;
-let usarDirtyRect = false;
+let optChunks = true;
+let optDirtyRect = false;
+let vizChunks = false;
+let vizDirty = false;
 let ultimoTiempo = performance.now();
 let fpsSuavizado = 60;
 
@@ -826,7 +862,7 @@ function bucle(ahora) {
   }
 
   dibujarFrame();
-  if (mostrarOverlay || usarDirtyRect) dibujarOverlay();
+  if (vizChunks || vizDirty) dibujarOverlay();
   else limpiarOverlay();
 
   actualizarPanelStats();
@@ -849,8 +885,13 @@ function actualizarStatsEstaticas() {
 
 function actualizarPanelStats() {
   elFps.textContent = fpsSuavizado.toFixed(0);
-  const activos = chunkActivo.reduce((a, v) => a + v, 0);
-  elChunks.textContent = activos + " / " + (chunksX * chunksY);
+  const total = chunksX * chunksY;
+  if (optChunks) {
+    const activos = chunkActivo.reduce((a, v) => a + v, 0);
+    elChunks.textContent = activos + " / " + total;
+  } else {
+    elChunks.textContent = total + " / " + total;
+  }
   elRedibujo.textContent = chunksRedibujadosUltimoFrame;
   if (dirtyPorChunkUltimoFrame.length) {
     let celdas = 0;
@@ -889,13 +930,15 @@ materiales.forEach(m => {
 document.getElementById("rangoPincel").addEventListener("input", e => radioPincel = parseInt(e.target.value));
 document.getElementById("rangoVelocidad").addEventListener("input", e => velocidad = parseInt(e.target.value));
 document.getElementById("rangoZoom").addEventListener("input", e => { zoom = parseInt(e.target.value); aplicarZoom(); });
-document.getElementById("chkOverlay").addEventListener("change", e => {
-  mostrarOverlay = e.target.checked;
-  if (!mostrarOverlay && !usarDirtyRect) limpiarOverlay();
+document.getElementById("chkOptChunks").addEventListener("change", e => { optChunks = e.target.checked; });
+document.getElementById("chkOptDirty").addEventListener("change", e => { optDirtyRect = e.target.checked; });
+document.getElementById("chkVizChunks").addEventListener("change", e => {
+  vizChunks = e.target.checked;
+  if (!vizChunks && !vizDirty) limpiarOverlay();
 });
-document.getElementById("chkDirtyRect").addEventListener("change", e => {
-  usarDirtyRect = e.target.checked;
-  if (!mostrarOverlay && !usarDirtyRect) limpiarOverlay();
+document.getElementById("chkVizDirty").addEventListener("change", e => {
+  vizDirty = e.target.checked;
+  if (!vizChunks && !vizDirty) limpiarOverlay();
 });
 document.getElementById("chkEmisor").addEventListener("change", e => emisorActivo = e.target.checked);
 
