@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Falling Sand 3D</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #0b0e14;
+      height: 100%;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    canvas.dragging {
+      cursor: grabbing;
+    }
+
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      font-family: "SF Mono", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      color: #cfd8e3;
+      background: rgba(10, 14, 20, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 10px 14px;
+      border-radius: 8px;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+      min-width: 205px;
+    }
+
+    #hud b {
+      color: #f2c879;
+    }
+
+    #hud .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    #hud .dim {
+      color: #7c8899;
+    }
+
+    #hud hr {
+      border: none;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      margin: 6px 0;
+    }
+
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 8px;
+      margin: -4px 0 0 -4px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.9);
+      z-index: 10;
+      pointer-events: none;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+      transition: opacity 0.1s, border-color 0.1s;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="crosshair"></div>
+  <div id="hud">
+    <div class="row"><span>arena</span><b id="hudCount">0</b></div>
+    <div class="row"><span>bloques</span><b id="hudBlocks">0</b></div>
+    <div class="row"><span>fps</span><b id="hudFps">0</b></div>
+    <div class="row"><span>pincel</span><b id="hudBrush">2</b></div>
+    <hr>
+    <div class="dim">WASD mover</div>
+    <div class="dim">arrastrar con click: mirar</div>
+    <div class="dim">Space/Ctrl subir/bajar · Shift correr</div>
+    <div class="dim">F mantenido: soltar arena</div>
+    <div class="dim">G: colocar bloque · H: quitar bloque</div>
+    <div class="dim">rueda: tamaño pincel · R: reiniciar</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      // ---------- Config ----------
+      const W = 44, H = 42, D = 44;
+      const SIM_HZ = 30;
+      const SIM_DT = 1 / SIM_HZ;
+      const MAX_SAND_PER_MESH = 9000;   // 2 meshes de arena => hasta 18000 granos
+      const MAX_STONE = 4000;
+      const SPAWN_PER_TICK = 4;
+
+      // ---------- Grilla ----------
+      const cellCount = W * H * D;
+      const grid = new Uint8Array(cellCount);       // 0 vacío, 1 arena, 2 sólido
+      const cellToInst = new Int32Array(cellCount).fill(-1);
+      const cellToMesh = new Int8Array(cellCount).fill(-1);
+
+      function idx(x, y, z) { return x + y * W + z * W * H; }
+      function getCell(x, y, z) {
+        if (x < 0 || x >= W || y < 0 || y >= H || z < 0 || z >= D) return 2;
+        return grid[idx(x, y, z)];
+      }
+      function fillFloor() {
+        for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) grid[idx(x, 0, z)] = 2;
+      }
+      fillFloor();
+
+      // ---------- Three.js ----------
+      const canvas = document.getElementById('c');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b0e14);
+      scene.fog = new THREE.Fog(0x0b0e14, D * 0.9, D * 2.6);
+
+      const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 400);
+      camera.position.set(0, H * 0.9, D * 1.35);
+      camera.lookAt(0, H * 0.32, 0);
+
+      const initEuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+      let yaw = initEuler.y, pitch = initEuler.x;
+
+      scene.add(new THREE.HemisphereLight(0x8fa3c7, 0x14100c, 0.75));
+      const sun = new THREE.DirectionalLight(0xfff2d8, 1.05);
+      sun.position.set(W * 0.4, H * 1.6, D * 0.5);
+      scene.add(sun);
+      scene.add(new THREE.AmbientLight(0x404860, 0.35));
+
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(W, D),
+        new THREE.MeshStandardMaterial({ color: 0x23262e, roughness: 1 })
+      );
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
+
+      const boxLines = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(W, H, D)),
+        new THREE.LineBasicMaterial({ color: 0x4a5568, transparent: true, opacity: 0.25 })
+      );
+      boxLines.position.set(0, H / 2, 0);
+      scene.add(boxLines);
+
+      // ---------- Grupos de instancias (2 de arena + 1 de bloques) ----------
+      const sandGeo = new THREE.BoxGeometry(0.92, 0.92, 0.92);
+      const stoneGeo = new THREE.BoxGeometry(0.98, 0.98, 0.98);
+      const dummy = new THREE.Object3D();
+      const tmpV = new THREE.Vector3();
+
+      function makeGroup(geo, color, max) {
+        const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.02 });
+        const mesh = new THREE.InstancedMesh(geo, mat, max);
+        mesh.count = 0;
+        scene.add(mesh);
+        return { mesh, used: 0, max, instanceToCell: new Int32Array(max).fill(-1) };
+      }
+      const meshes = [
+        makeGroup(sandGeo, 0xd9b06a, MAX_SAND_PER_MESH), // 0: arena clara
+        makeGroup(sandGeo, 0xc79654, MAX_SAND_PER_MESH), // 1: arena oscura
+        makeGroup(stoneGeo, 0x76808f, MAX_STONE),        // 2: bloques
+      ];
+
+      function worldPos(x, y, z, out) {
+        out.set(x - W / 2 + 0.5, y + 0.5, z - D / 2 + 0.5);
+        return out;
+      }
+      function setInstanceAt(meshId, instId, cellIdx) {
+        const x = cellIdx % W;
+        const y = Math.floor(cellIdx / W) % H;
+        const z = Math.floor(cellIdx / (W * H));
+        worldPos(x, y, z, tmpV);
+        dummy.position.copy(tmpV);
+        dummy.updateMatrix();
+        const m = meshes[meshId];
+        m.mesh.setMatrixAt(instId, dummy.matrix);
+        m.mesh.instanceMatrix.needsUpdate = true;
+        m.instanceToCell[instId] = cellIdx;
+      }
+      function placeAt(meshId, cellIdx, value) {
+        const m = meshes[meshId];
+        if (m.used >= m.max) return false;
+        const instId = m.used++;
+        m.mesh.count = m.used;
+        grid[cellIdx] = value;
+        cellToMesh[cellIdx] = meshId;
+        cellToInst[cellIdx] = instId;
+        setInstanceAt(meshId, instId, cellIdx);
+        return true;
+      }
+      function removeAt(cellIdx) {
+        const meshId = cellToMesh[cellIdx];
+        if (meshId === -1) return; // celda sin instancia (piso original): protegida
+        const instId = cellToInst[cellIdx];
+        const m = meshes[meshId];
+        const lastInst = m.used - 1;
+        if (instId !== lastInst) {
+          const lastCell = m.instanceToCell[lastInst];
+          cellToInst[lastCell] = instId;
+          m.instanceToCell[instId] = lastCell;
+          setInstanceAt(meshId, instId, lastCell);
+        }
+        m.used--;
+        m.mesh.count = m.used;
+        grid[cellIdx] = 0;
+        cellToMesh[cellIdx] = -1;
+        cellToInst[cellIdx] = -1;
+
+        const x = cellIdx % W, y = Math.floor(cellIdx / W) % H;
+        if (y + 1 < H) {
+          const above = cellIdx + W;
+          if (grid[above] === 1 && !inActive[above]) { inActive[above] = 1; activeList.push(above); }
+        }
+      }
+
+      function spawnSand(cellIdx) {
+        if (grid[cellIdx] !== 0) return false;
+        let meshId = Math.random() < 0.5 ? 0 : 1;
+        if (meshes[meshId].used >= meshes[meshId].max) meshId = 1 - meshId;
+        if (meshes[meshId].used >= meshes[meshId].max) return false;
+        placeAt(meshId, cellIdx, 1);
+        if (!inActive[cellIdx]) { inActive[cellIdx] = 1; activeList.push(cellIdx); }
+        return true;
+      }
+      function moveSand(fromIdx, toIdx) {
+        const meshId = cellToMesh[fromIdx];
+        const instId = cellToInst[fromIdx];
+        grid[fromIdx] = 0;
+        grid[toIdx] = 1;
+        cellToMesh[fromIdx] = -1;
+        cellToInst[fromIdx] = -1;
+        cellToMesh[toIdx] = meshId;
+        cellToInst[toIdx] = instId;
+        meshes[meshId].instanceToCell[instId] = toIdx;
+        setInstanceAt(meshId, instId, toIdx);
+      }
+
+      // ---------- Simulación (lista activa) ----------
+      let activeList = [];
+      let inActive = new Uint8Array(cellCount);
+      const DX = [-1, 1, 0, 0], DZ = [0, 0, -1, 1];
+
+      function tryMove(x, y, z) {
+        if (getCell(x, y - 1, z) === 0) return idx(x, y - 1, z);
+        const r = (Math.random() * 4) | 0;
+        for (let i = 0; i < 4; i++) {
+          const d = (r + i) & 3;
+          const nx = x + DX[d], nz = z + DZ[d];
+          if (getCell(nx, y - 1, nz) === 0) return idx(nx, y - 1, nz);
+        }
+        return -1;
+      }
+      function simStep() {
+        const next = [];
+        for (let i = 0; i < activeList.length; i++) {
+          const cellIdx = activeList[i];
+          if (grid[cellIdx] !== 1) continue;
+          const x = cellIdx % W;
+          const y = Math.floor(cellIdx / W) % H;
+          const z = Math.floor(cellIdx / (W * H));
+          const dest = tryMove(x, y, z);
+          if (dest === -1) { inActive[cellIdx] = 0; continue; }
+          moveSand(cellIdx, dest);
+          inActive[cellIdx] = 0;
+          if (!inActive[dest]) { inActive[dest] = 1; next.push(dest); }
+          if (y + 1 < H) {
+            const aboveIdx = cellIdx + W;
+            if (grid[aboveIdx] === 1 && !inActive[aboveIdx]) { inActive[aboveIdx] = 1; next.push(aboveIdx); }
+          }
+        }
+        activeList = next;
+        if (isSpawning && aimTarget.valid) spawnBurst();
+      }
+
+      // ---------- Puntería por voxeles (sin depender de raycast contra meshes) ----------
+      const aimTarget = { valid: false, px: 0, py: 0, pz: 0, hasHit: false, hx: 0, hy: 0, hz: 0 };
+      const fwdRay = new THREE.Vector3();
+      const RAY_STEP = 0.15;
+      const RAY_MAX = W + H + D;
+
+      function computeAimTarget() {
+        camera.getWorldDirection(fwdRay);
+        const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
+        let lastEmpty = null;
+        aimTarget.valid = false;
+        aimTarget.hasHit = false;
+        for (let t = 0; t < RAY_MAX; t += RAY_STEP) {
+          const px = ox + fwdRay.x * t, py = oy + fwdRay.y * t, pz = oz + fwdRay.z * t;
+          const gx = Math.floor(px + W / 2), gy = Math.floor(py), gz = Math.floor(pz + D / 2);
+          // Cámara empieza fuera de la caja: no abortar al acercarse, solo si ya bajó del piso.
+          if (gy < 0) return;
+          if (gx < 0 || gx >= W || gz < 0 || gz >= D || gy >= H) continue;
+          const val = grid[idx(gx, gy, gz)];
+          if (val !== 0) {
+            aimTarget.hasHit = true;
+            aimTarget.hx = gx; aimTarget.hy = gy; aimTarget.hz = gz;
+            if (lastEmpty) {
+              aimTarget.valid = true;
+              aimTarget.px = lastEmpty.x; aimTarget.py = lastEmpty.y; aimTarget.pz = lastEmpty.z;
+            }
+            return;
+          }
+          lastEmpty = { x: gx, y: gy, z: gz };
+        }
+      }
+
+      let brush = 2;
+      function findNearEmpty(x, y, z) {
+        for (let dy = 0; dy < 6; dy++) {
+          const yy = y + dy;
+          if (yy >= H) break;
+          const c = idx(x, yy, z);
+          if (grid[c] === 0) return c;
+        }
+        return -1;
+      }
+      function spawnBurst() {
+        for (let i = 0; i < SPAWN_PER_TICK; i++) {
+          const ox = aimTarget.px// + ((Math.random() * (brush * 2 + 1)) | 0) - brush;
+          const oz = aimTarget.pz //+ ((Math.random() * (brush * 2 + 1)) | 0) - brush;
+          if (ox < 0 || ox >= W || oz < 0 || oz >= D) continue;
+          const c = findNearEmpty(ox, aimTarget.py, oz);
+          if (c !== -1) spawnSand(c);
+        }
+      }
+      function placeBlockAtAim() {
+        if (!aimTarget.valid) return;
+        const cellIdx = idx(aimTarget.px, aimTarget.py, aimTarget.pz);
+        if (grid[cellIdx] !== 0) return;
+        placeAt(2, cellIdx, 2);
+      }
+      function removeBlockAtAim() {
+        if (!aimTarget.hasHit || aimTarget.hy === 0) return; // el piso no se puede quitar
+        removeAt(idx(aimTarget.hx, aimTarget.hy, aimTarget.hz));
+      }
+
+      // ---------- Cámara libre por arrastre de mouse (sin Pointer Lock API) ----------
+      const keys = Object.create(null);
+      let isSpawning = false;
+      let dragging = false, lastX = 0, lastY = 0;
+      const hudCount = document.getElementById('hudCount');
+      const hudBlocks = document.getElementById('hudBlocks');
+      const hudFps = document.getElementById('hudFps');
+      const crosshairEl = document.getElementById('crosshair');
+
+      canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.classList.add('dragging'); }
+      });
+      window.addEventListener('mouseup', () => { dragging = false; canvas.classList.remove('dragging'); });
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      const eulerTmp = new THREE.Euler(0, 0, 0, 'YXZ');
+      const SENS = 0.0045;
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX, dy = e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+        yaw -= dx * SENS;
+        pitch -= dy * SENS;
+        const lim = Math.PI / 2 - 0.02;
+        if (pitch > lim) pitch = lim; else if (pitch < -lim) pitch = -lim;
+        eulerTmp.set(pitch, yaw, 0);
+        camera.quaternion.setFromEuler(eulerTmp);
+      });
+
+      window.addEventListener('wheel', (e) => {
+        brush = Math.max(1, Math.min(6, brush - Math.sign(e.deltaY)));
+        document.getElementById('hudBrush').textContent = brush;
+      }, { passive: true });
+
+      window.addEventListener('keydown', (e) => {
+        if (['Space', 'ControlLeft', 'ControlRight'].includes(e.code)) e.preventDefault();
+        keys[e.code] = true;
+        if (e.code === 'KeyR') resetSim();
+        if (e.code === 'KeyF') isSpawning = true;
+        if (e.code === 'KeyG' && !e.repeat) placeBlockAtAim();
+        if (e.code === 'KeyH' && !e.repeat) removeBlockAtAim();
+      });
+      window.addEventListener('keyup', (e) => {
+        keys[e.code] = false;
+        if (e.code === 'KeyF') isSpawning = false;
+      });
+
+      const fwd = new THREE.Vector3(), right = new THREE.Vector3(), move = new THREE.Vector3();
+      const BASE_SPEED = D * 0.55;
+      function updateCamera(dt) {
+        camera.getWorldDirection(fwd);
+        right.crossVectors(fwd, camera.up).normalize();
+        move.set(0, 0, 0);
+        if (keys.KeyW) move.add(fwd);
+        if (keys.KeyS) move.sub(fwd);
+        if (keys.KeyD) move.add(right);
+        if (keys.KeyA) move.sub(right);
+        if (keys.Space) move.y += 1;
+        if (keys.ControlLeft || keys.KeyC) move.y -= 1;
+        if (move.lengthSq() > 0) {
+          const speed = BASE_SPEED * ((keys.ShiftLeft || keys.ShiftRight) ? 2.4 : 1);
+          move.normalize().multiplyScalar(speed * dt);
+          camera.position.add(move);
+        }
+      }
+
+      // ---------- Reset ----------
+      function resetSim() {
+        grid.fill(0);
+        fillFloor();
+        cellToInst.fill(-1);
+        cellToMesh.fill(-1);
+        inActive = new Uint8Array(cellCount);
+        activeList = [];
+        for (const m of meshes) { m.used = 0; m.mesh.count = 0; m.instanceToCell.fill(-1); }
+      }
+
+      // ---------- Loop principal ----------
+      const clock = new THREE.Clock();
+      let accumulator = 0;
+      let fpsAcc = 0, fpsFrames = 0;
+
+      function onResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+      window.addEventListener('resize', onResize);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const delta = Math.min(clock.getDelta(), 0.1);
+
+        updateCamera(delta);
+        computeAimTarget();
+        crosshairEl.style.borderColor = aimTarget.valid ? 'rgba(242,200,121,0.95)' : 'rgba(255,255,255,0.9)';
+
+        accumulator += delta;
+        let steps = 0;
+        while (accumulator >= SIM_DT && steps < 5) { simStep(); accumulator -= SIM_DT; steps++; }
+
+        fpsAcc += delta; fpsFrames++;
+        if (fpsAcc >= 0.5) {
+          hudFps.textContent = Math.round(fpsFrames / fpsAcc);
+          fpsAcc = 0; fpsFrames = 0;
+          hudCount.textContent = meshes[0].used + meshes[1].used;
+          hudBlocks.textContent = meshes[2].used;
+        }
+
+        renderer.render(scene, camera);
+      }
+      animate();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Falling Sand con gravedad acelerada + agua + piedra</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    color: #ddd;
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+  h1 { font-size: 16px; font-weight: 600; margin: 4px 0 12px; color: #eee; }
+  #wrap { position: relative; }
+  canvas {
+    background: #000;
+    image-rendering: pixelated;
+    border: 1px solid #333;
+    cursor: crosshair;
+  }
+  .controls {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 13px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .controls label { display: flex; align-items: center; gap: 6px; }
+  button {
+    background: #222;
+    color: #ddd;
+    border: 1px solid #444;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { background: #333; }
+  button.active { background: #3a5; border-color: #3a5; color: #fff; }
+  input[type=range] { width: 100px; }
+
+  .explain {
+    max-width: 620px;
+    margin-top: 24px;
+    background: #1a1a1a;
+    border: 1px solid #2c2c2c;
+    border-radius: 10px;
+    padding: 18px 22px;
+    line-height: 1.55;
+    font-size: 14px;
+  }
+  .explain h2 { font-size: 15px; margin: 18px 0 6px; color: #9fd; }
+  .explain h2:first-child { margin-top: 0; }
+  .explain p { margin: 6px 0; color: #ccc; }
+  .explain code {
+    background: #262626;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #ffd48a;
+  }
+</style>
+</head>
+<body>
+
+<h1>Falling sand — celdas con velocidad + agua + piedra</h1>
+
+<div id="wrap">
+  <canvas id="c" width="600" height="400"></canvas>
+</div>
+
+<div class="controls">
+  <button id="matSand" class="active">Arena</button>
+  <button id="matWater">Agua</button>
+  <button id="matStone">Piedra</button>
+  <label>Gravedad <input id="g" type="range" min="0.02" max="1" step="0.02" value="0.25"></label>
+  <label>Dispersión agua <input id="sg" type="range" min="0.02" max="1" step="0.02" value="0.15"></label>
+  <label>Pincel <input id="brush" type="range" min="1" max="10" step="1" value="3"></label>
+  <button id="reset">Reiniciar</button>
+</div>
+
+<div class="explain">
+  <h2>¿Por qué esto no es el falling sand clásico?</h2>
+  <p>
+    En un falling sand tradicional cada celda llena se mueve como máximo 1 celda hacia
+    abajo por frame, siempre a la misma velocidad. Acá cada celda de arena o agua guarda
+    además un valor <code>velocity</code> que se acumula como gravedad real:
+    <code>velocity += GRAVEDAD</code> en cada frame. Esa velocidad define cuántas celdas
+    intenta recorrer ese frame (<code>steps = floor(velocity)</code>), así que algo que
+    lleva cayendo varios frames se mueve cada vez más rápido, igual que en la vida real.
+  </p>
+
+  <h2>¿Por qué no se atraviesan las cosas?</h2>
+  <p>
+    Aunque la velocidad diga "movete 5 celdas", el movimiento se hace de a una celda por
+    vez, chequeando cada paso intermedio. Si en el medio del camino aparece algo sólido,
+    se frena ahí mismo y pierde la velocidad acumulada (como un choque). Si logra
+    completar el recorrido libre, mantiene la velocidad para seguir acelerando el
+    próximo frame.
+  </p>
+
+  <h2>¿Cómo funciona el agua?</h2>
+  <p>
+    El agua usa la misma lógica de gravedad y velocidad vertical que la arena. La
+    diferencia es qué hace cuando no puede seguir cayendo: en vez de quedarse quieta,
+    intenta <em>esparcirse</em> hacia los costados (izquierda o derecha, elegido al azar
+    para no sesgar la simulación). Esa dispersión horizontal tiene su propia velocidad,
+    <code>spread</code>, independiente de la vertical: se acumula con
+    <code>spread += DISPERSION</code> mientras el agua sigue bloqueada y esparciéndose,
+    así que arranca lento y acelera cuadro a cuadro, igual que la caída. Si en algún
+    momento el agua logra volver a caer, <code>spread</code> se resetea a 0 — el impulso
+    horizontal no persiste una vez que retoma la caída libre.
+  </p>
+
+  <h2>¿Cómo se hunde la arena en el agua?</h2>
+  <p>
+    Esto es una simulación de densidad muy simplificada: cuando la arena intenta
+    moverse hacia una celda ocupada por agua (en vez de una celda vacía), en lugar de
+    frenar hace un <em>swap</em>: la arena pasa a ocupar esa celda y el agua queda en la
+    posición que dejó la arena. Repetido frame a frame, esto hace que la arena "se hunda"
+    y el agua "suba", tal como pasa con arena real cayendo en un vaso de agua.
+  </p>
+
+  <h2>¿Y la piedra?</h2>
+  <p>
+    La piedra es un material estático: no acumula velocidad, no se mueve nunca, y ni la
+    arena ni el agua pueden entrar en su celda (no está en <code>canEnter</code>). Sirve
+    como obstáculo fijo contra el que rebotan o se acumulan los demás materiales.
+  </p>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const CELL = 4;
+const COLS = canvas.width / CELL;
+const ROWS = canvas.height / CELL;
+
+const EMPTY = 0, SAND = 1, WATER = 2, STONE = 3;
+
+let material = new Uint8Array(COLS * ROWS);
+let velocity = new Float32Array(COLS * ROWS);
+let spread = new Float32Array(COLS * ROWS); // velocidad horizontal propia del agua
+let hue = new Uint8Array(COLS * ROWS);
+let moved = new Uint8Array(COLS * ROWS); // evita mover una celda 2 veces en el mismo frame
+
+const idx = (x, y) => y * COLS + x;
+const inBounds = (x, y) => x >= 0 && x < COLS && y >= 0 && y < ROWS;
+
+const gInput = document.getElementById('g');
+const sgInput = document.getElementById('sg');
+const brushInput = document.getElementById('brush');
+const matSandBtn = document.getElementById('matSand');
+const matWaterBtn = document.getElementById('matWater');
+const matStoneBtn = document.getElementById('matStone');
+
+let brushMaterial = SAND;
+matSandBtn.addEventListener('click', () => setBrush(SAND));
+matWaterBtn.addEventListener('click', () => setBrush(WATER));
+matStoneBtn.addEventListener('click', () => setBrush(STONE));
+function setBrush(m) {
+  brushMaterial = m;
+  matSandBtn.classList.toggle('active', m === SAND);
+  matWaterBtn.classList.toggle('active', m === WATER);
+  matStoneBtn.classList.toggle('active', m === STONE);
+}
+
+function hueFor(mat) {
+  if (mat === SAND) return 30 + Math.floor(Math.random() * 25);   // tonos arena
+  if (mat === WATER) return 200 + Math.floor(Math.random() * 15); // tonos agua
+  if (mat === STONE) return 0; // no se usa como hue real, se pinta gris fijo
+  return 0;
+}
+
+let mouseDown = false;
+let mx = -1, my = -1;
+
+canvas.addEventListener('mousedown', e => { mouseDown = true; updateMouse(e); });
+window.addEventListener('mouseup', () => mouseDown = false);
+canvas.addEventListener('mousemove', updateMouse);
+
+function updateMouse(e) {
+  const rect = canvas.getBoundingClientRect();
+  mx = Math.floor((e.clientX - rect.left) / CELL);
+  my = Math.floor((e.clientY - rect.top) / CELL);
+}
+
+function spawn() {
+  if (mx < 0 || my < 0 || mx >= COLS || my >= ROWS) return;
+  const r = parseInt(brushInput.value, 10);
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx*dx + dy*dy > r*r) continue;
+      const x = mx + dx, y = my + dy;
+      if (!inBounds(x, y)) continue;
+      const i = idx(x, y);
+      if (material[i] === EMPTY) {
+        material[i] = brushMaterial;
+        velocity[i] = 0;
+        spread[i] = 0;
+        hue[i] = hueFor(brushMaterial);
+      }
+    }
+  }
+}
+
+document.getElementById('reset').addEventListener('click', () => {
+  material.fill(0);
+  velocity.fill(0);
+  spread.fill(0);
+});
+
+// target vacío, o arena entrando en agua (swap por densidad). Piedra nunca es entrable.
+function canEnter(mover, targetMat) {
+  if (targetMat === EMPTY) return true;
+  if (mover === SAND && targetMat === WATER) return true;
+  return false;
+}
+
+function doMove(fromI, toI, mover) {
+  const moverHue = hue[fromI]; // guardamos el color ANTES de tocar nada
+  const targetMat = material[toI];
+
+  if (targetMat === WATER && mover === SAND) {
+    // swap: el agua ocupa la celda que deja la arena
+    material[fromI] = WATER;
+    velocity[fromI] = 0;
+    spread[fromI] = 0;
+    hue[fromI] = hueFor(WATER);
+    moved[fromI] = 1;
+  } else {
+    material[fromI] = EMPTY;
+    velocity[fromI] = 0;
+    spread[fromI] = 0;
+  }
+
+  material[toI] = mover;
+  hue[toI] = moverHue; // <- el bug de los pixeles rojos era que esto faltaba
+  moved[toI] = 1;
+}
+
+function step() {
+  const GRAVITY = parseFloat(gInput.value);
+  moved.fill(0);
+
+  for (let y = ROWS - 2; y >= 0; y--) {
+    // orden de columnas al azar para no sesgar la dispersion del agua
+    const xs = [...Array(COLS).keys()];
+    for (let k = xs.length - 1; k > 0; k--) {
+      const j = Math.floor(Math.random() * (k + 1));
+      [xs[k], xs[j]] = [xs[j], xs[k]];
+    }
+
+    for (const x of xs) {
+      const i = idx(x, y);
+      const mat = material[i];
+      if (mat === EMPTY || mat === STONE || moved[i]) continue;
+
+      velocity[i] += GRAVITY;
+      let steps = Math.max(1, Math.floor(velocity[i]));
+
+      let cx = x, cy = y;
+      let blocked = false;
+
+      // 1) caida vertical, celda por celda, hasta "steps" celdas o hasta chocar
+      for (let s = 0; s < steps; s++) {
+        const ny = cy + 1;
+        if (!inBounds(cx, ny)) { blocked = true; break; }
+        const targetI = idx(cx, ny);
+        if (material[targetI] === EMPTY) {
+          cy = ny;
+          continue;
+        }
+        if (mat === SAND && material[targetI] === WATER) {
+          cy = ny; // arena se hunde en agua, el swap se resuelve al final
+          continue;
+        }
+        blocked = true;
+        break;
+      }
+
+      // 2) si no pudo caer nada derecho, prueba diagonales
+      if (cx === x && cy === y) {
+        const order = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+        for (const dx of order) {
+          const nx = x + dx, ny = y + 1;
+          if (inBounds(nx, ny) && canEnter(mat, material[idx(nx, ny)])) {
+            cx = nx; cy = ny;
+            break;
+          }
+        }
+      }
+
+      // 3) el agua, si sigue trabada, se esparce horizontalmente.
+      // La dispersion tiene su propia velocidad acumulada (spread), separada
+      // de la vertical, controlada por su propio knob de "aceleracion".
+      let spreadMoved = false;
+      if (mat === WATER && cx === x && cy === y) {
+        const SPREAD_ACCEL = parseFloat(sgInput.value);
+        spread[i] += SPREAD_ACCEL;
+        const spreadSteps = Math.max(1, Math.floor(spread[i]));
+
+        const order = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+        for (const dx of order) {
+          let nx = x;
+          for (let s = 0; s < spreadSteps; s++) {
+            const tryX = nx + dx;
+            if (!inBounds(tryX, y) || material[idx(tryX, y)] !== EMPTY) break;
+            nx = tryX;
+          }
+          if (nx !== x) { cx = nx; cy = y; spreadMoved = true; break; }
+        }
+      }
+
+      if (cx !== x || cy !== y) {
+        const fromI = i, toI = idx(cx, cy);
+        const keepVelocity = blocked ? 0 : velocity[i];
+        // si se movio esparciendose, mantiene y sigue acelerando esa velocidad;
+        // si se movio cayendo (vertical/diagonal), la dispersion se resetea
+        const keepSpread = spreadMoved ? spread[i] : 0;
+        doMove(fromI, toI, mat);
+        velocity[toI] = keepVelocity;
+        spread[toI] = keepSpread;
+      } else {
+        velocity[i] = 0; // no se movio, frena del todo
+        spread[i] = 0;
+      }
+    }
+  }
+}
+
+function render() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const i = idx(x, y);
+      const mat = material[i];
+      if (mat === SAND) {
+        ctx.fillStyle = `hsl(${hue[i]}, 60%, 55%)`;
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      } else if (mat === WATER) {
+        ctx.fillStyle = `hsla(${hue[i]}, 80%, 55%, 0.85)`;
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      } else if (mat === STONE) {
+        ctx.fillStyle = '#777';
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      }
+    }
+  }
+}
+
+function loop() {
+  if (mouseDown) spawn();
+  step();
+  render();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
