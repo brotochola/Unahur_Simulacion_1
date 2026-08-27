@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Lab · fluidos 2D</title>
+    <style>
+        :root {
+            --bg: #0b0d0f;
+            --panel: #12161b;
+            --panel2: #171c22;
+            --borde: #242b32;
+            --texto: #aab4bc;
+            --texto-fuerte: #e9eef1;
+            --acento: #6be3a0;
+            --acento-suave: rgba(107, 227, 160, 0.15);
+            --flow: #7ec8e3;
+            --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: var(--bg);
+            color: var(--texto);
+            font-family: var(--mono);
+            font-size: 13px;
+        }
+
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--borde);
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            font-size: 11px;
+            color: var(--acento);
+        }
+
+        h1 {
+            font-size: 15px;
+            margin: 2px 0 0;
+            color: var(--texto-fuerte);
+            font-weight: 600;
+        }
+
+        #lectura {
+            font-size: 11px;
+            color: var(--texto);
+            text-align: right;
+            line-height: 1.5;
+            max-width: 58%;
+        }
+
+        #lectura b { color: var(--texto-fuerte); }
+
+        main {
+            flex: 1;
+            display: flex;
+            gap: 14px;
+            padding: 14px 20px;
+            overflow: auto;
+        }
+
+        aside {
+            width: 300px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow: auto;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--borde);
+            border-radius: 4px;
+            padding: 12px;
+        }
+
+        .panel h2 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--texto);
+            margin: 0 0 10px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--borde);
+            padding-bottom: 6px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .panel h2::before {
+            content: '▾ ';
+            color: var(--acento);
+        }
+
+        .panel.cerrado h2 { margin-bottom: 0; border-bottom-color: transparent; }
+        .panel.cerrado h2::before { content: '▸ '; }
+        .panel.cerrado .panel-cuerpo { display: none; }
+
+        .leyenda {
+            font-size: 10px;
+            color: var(--texto);
+            line-height: 1.4;
+            margin: 0 0 10px;
+        }
+
+        .leyenda .v { color: var(--acento); }
+        .leyenda .f { color: var(--flow); }
+
+        .centro {
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            border: 1px solid var(--borde);
+            background: var(--bg);
+            cursor: crosshair;
+            max-width: 100%;
+            height: auto;
+        }
+
+        ul.pasos {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        ul.pasos li {
+            background: var(--panel2);
+            border: 1px solid var(--borde);
+            border-radius: 3px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        ul.pasos li.abierto { border-color: var(--acento); }
+        ul.pasos li.desactivado { opacity: 0.55; }
+
+        .paso-cabecera {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+        }
+
+        .paso-cabecera span.nombre {
+            flex: 1;
+            font-size: 12px;
+            color: var(--texto-fuerte);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        ul.pasos li.desactivado span.nombre {
+            text-decoration: line-through;
+            color: var(--texto);
+        }
+
+        .paso-resumen {
+            font-size: 10px;
+            color: var(--texto);
+            padding: 0 8px 6px 28px;
+            line-height: 1.35;
+        }
+
+        .paso-cuerpo {
+            border-top: 1px dashed var(--borde);
+            padding: 8px 10px 10px;
+        }
+
+        .paso-ayuda {
+            font-size: 10px;
+            color: var(--texto);
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        button.mini {
+            background: transparent;
+            border: 1px solid var(--borde);
+            color: var(--texto);
+            border-radius: 3px;
+            width: 20px;
+            height: 20px;
+            line-height: 1;
+            cursor: pointer;
+            font-family: var(--mono);
+            flex-shrink: 0;
+        }
+
+        button.mini:hover:not(:disabled) {
+            border-color: var(--acento);
+            color: var(--acento);
+        }
+
+        button.mini:disabled { opacity: 0.25; cursor: default; }
+
+        .controles-globales {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        button.accion {
+            background: var(--panel2);
+            border: 1px solid var(--borde);
+            color: var(--texto-fuerte);
+            padding: 6px 10px;
+            border-radius: 3px;
+            font-family: var(--mono);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        button.accion:hover {
+            border-color: var(--acento);
+            color: var(--acento);
+        }
+
+        button.accion.activo {
+            border-color: var(--acento);
+            color: var(--acento);
+            background: var(--acento-suave);
+        }
+
+        .materiales { display: flex; gap: 6px; flex-wrap: wrap; }
+
+        .swatch {
+            width: 30px;
+            height: 30px;
+            border-radius: 3px;
+            border: 2px solid transparent;
+            cursor: pointer;
+        }
+
+        .swatch.sel { border-color: var(--acento); }
+
+        .campo { margin-bottom: 10px; }
+        .campo:last-child { margin-bottom: 0; }
+
+        .campo label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--texto);
+            margin-bottom: 3px;
+        }
+
+        .campo label b { color: var(--texto-fuerte); font-weight: 600; }
+
+        input[type=range] { width: 100%; accent-color: var(--acento); }
+
+        .check-fila {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--texto-fuerte);
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .grupo-material {
+            border-top: 1px dashed var(--borde);
+            padding-top: 10px;
+            margin-top: 10px;
+        }
+
+        .grupo-material h3 {
+            font-size: 11px;
+            color: var(--texto-fuerte);
+            margin: 0 0 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .grupo-material h3 .punto {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        footer {
+            padding: 8px 20px;
+            border-top: 1px solid var(--borde);
+            font-size: 11px;
+            color: var(--texto);
+        }
+
+        @media (max-width: 980px) {
+            main { flex-direction: column; }
+            aside { width: 100%; }
+            #lectura { max-width: 100%; text-align: left; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header>
+            <div>
+                <div class="eyebrow">Lab · no es la versión final</div>
+                <h1>Fluidos 2D · gas y presión</h1>
+            </div>
+            <div id="lectura" title="Masa = suma de cantidad (Float32, sin techo). Δ cambia al pintar o si lava se vuelve piedra."></div>
+        </header>
+
+        <main>
+            <aside>
+                <div class="panel" id="panel-pipeline">
+                    <h2 title="El orden de esta lista ES el orden de cada tick. Click en el nombre de un paso abre su config. Click acá pliega el panel.">Pipeline del step</h2>
+                    <ul class="pasos" id="lista-pasos"></ul>
+                    <div class="controles-globales">
+                        <button class="accion activo" id="btn-play" title="Pausa o reanuda el bucle.">⏸ Pausar</button>
+                        <button class="accion" id="btn-paso" title="Un tick con los pasos activos, en el orden de la lista.">Un paso</button>
+                        <button class="accion" id="btn-limpiar" title="Vacía los dos buffers. Padding de piedra se sella de nuevo.">Limpiar</button>
+                    </div>
+                </div>
+                <div class="panel" id="panel-escenarios">
+                    <h2 title="Mundos chicos prehechos, mismos que corren los tests Node (tests/run.js). Cargar pisa knobs y materiales con los del escenario.">Escenarios</h2>
+                    <div class="campo">
+                        <select id="select-escenario" style="width:100%; background:var(--panel2); color:var(--texto-fuerte); border:1px solid var(--borde); font-family:var(--mono); font-size:12px; padding:4px;"></select>
+                    </div>
+                    <p class="leyenda" id="desc-escenario"></p>
+                    <div class="controles-globales" style="margin-top:0;">
+                        <button class="accion" id="btn-cargar-esc" title="Reemplaza el mundo actual por el escenario elegido.">Cargar</button>
+                        <button class="accion" id="btn-escena-inicial" title="Vuelve al mundo 140×90 con la pileta default y knobs de fábrica.">Escena inicial</button>
+                    </div>
+                </div>
+                <div class="panel" id="panel-debug">
+                    <h2 title="Overlays y cadencia. No es física de un paso.">Debug</h2>
+                    <p class="leyenda"><span class="v">Verde</span> = vector de celda (flowfield)</p>
+                    <div id="parametros-debug"></div>
+                </div>
+            </aside>
+
+            <div class="centro">
+                <canvas id="lienzo" title="Click y arrastrá: el pincel SUMA cantidad (sin techo) al aire o al mismo material. Piedra pisa. Aire borra. Rueda = radio."></canvas>
+            </div>
+
+            <aside>
+                <div class="panel" id="panel-pincel">
+                    <h2>Pincel</h2>
+                    <div class="materiales" id="materiales"></div>
+                    <div class="campo" style="margin-top:10px;" title="Radio en celdas. La rueda del mouse también lo cambia.">
+                        <label><span>Radio del pincel</span><b id="valor-radio">3</b></label>
+                        <input type="range" id="radio-pincel" min="1" max="12" step="1" value="3">
+                    </div>
+                    <div class="campo" title="Cuánta cantidad se SUMA por celda. Sin techo: 1000 sobre 1000 = 2000.">
+                        <label><span>Intensidad (suma)</span><b id="valor-intensidad">16</b></label>
+                        <input type="range" id="intensidad-pincel" min="1" max="1000" step="1" value="16">
+                    </div>
+                </div>
+                <div class="panel" id="panel-materiales">
+                    <h2 title="Coeficientes por material, incluido el reposo de Fick.">Materiales</h2>
+                    <div id="parametros-materiales"></div>
+                </div>
+            </aside>
+        </main>
+
+        <footer>
+            Lab: un vector por celda · difusión no baja de reposo · gravedad no baja de reposo si abajo es el mismo material · Espacio = pausa · N = un paso · L = limpiar.
+        </footer>
+    </div>
+    <script src="core.js"></script>
+    <script src="escenarios.js"></script>
+    <script src="lab.js"></script>
+</body>
+</html>
