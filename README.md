@@ -49,10 +49,15 @@
 ## Unidad 3 — Simulación de fluidos
 
 - Enfoque basado en grilla / celdas (píxeles).
-- Enfoque basado en partículas: fundamentos y motores de referencia (Liquid Fun).
-- Smoothed Particle Hydrodynamics (SPH) y reconstrucción de superficie mediante marching squares.
-- Método híbrido PIC/FLIP.
-- Simulación de fluidos por campo de altura (height-field / 1.5D).
+  - Falling sand con velocidad variable
+  - Continuous Celullar Automata / Liquid Automata
+  - Height fields
+  - Reconstrucción de superficie mediante marching squares.
+- Enfoque basado en partículas: fundamentos y motores de referencia
+  - PIC / FLIP
+  - (Liquid Fun).
+  - Smoothed Particle Hydrodynamics (SPH)
+
 
 - [Liquid Fun](https://google.github.io/liquidfun/)
 - [Liquid Fun: explicación](/3%20-%20simulacion%20de%20fluidos/Inside%20LiquidFun.pdf)
