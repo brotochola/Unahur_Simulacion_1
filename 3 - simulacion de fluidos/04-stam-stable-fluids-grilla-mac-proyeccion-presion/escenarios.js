@@ -1,6 +1,6 @@
 "use strict";
 
-// Escenarios de prueba compartidos entre browser (panel Escenarios) y Node (tests/run.js, tests/sweep.js).
+// Escenarios del lab Stam (panel Escenarios en index.html).
 // Grilla ASCII: `.` aire · `#` piedra · `s` arena · `~` agua · `o` aceite · `L` lava.
 // Cantidad inicial: reposo del material (1 para sólidos). Fila 0 = arriba.
 
