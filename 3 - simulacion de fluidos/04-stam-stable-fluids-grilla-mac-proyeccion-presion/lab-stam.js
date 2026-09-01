@@ -658,44 +658,56 @@
     { passive: false },
   );
 
-  // Escenarios compartidos con el núcleo CA (duck-typing). Solo los de agua.
+  // Escenarios locales (escenarios.js). Solo agua.
   const ESC = globalThis.LAB_ESCENARIOS;
-  const escenariosAgua = ESC.ESCENARIOS.filter((esc) => {
-    if (esc.grilla && esc.grilla.some((f) => /[osL]/.test(f))) return false;
-    if (esc.pintas && esc.pintas.some((p) => p.mat !== "AGUA")) return false;
-    return true;
-  });
   const selectEsc = document.getElementById("select-escenario");
   const descEsc = document.getElementById("desc-escenario");
-  escenariosAgua.forEach((esc) => {
-    const op = document.createElement("option");
-    op.value = esc.id;
-    op.textContent = `${esc.id} · ${esc.nombre}`;
-    selectEsc.appendChild(op);
-  });
-  function mostrarDescEsc() {
-    const esc = escenariosAgua.find((e) => e.id === selectEsc.value);
-    descEsc.textContent = esc ? esc.descripcion || "" : "";
-  }
-  selectEsc.addEventListener("change", mostrarDescEsc);
-  mostrarDescEsc();
+  const btnCargarEsc = document.getElementById("btn-cargar-esc");
 
-  function cargarEscenario(esc) {
-    mundo = ESC.construirEscenario(CORE, esc);
-    ANCHO = esc.ancho;
-    ALTO = esc.alto;
-    ticks = 0;
-    redimensionarLienzo();
-    renderizarListaPasos();
-    masaAnterior = medirMasa().total;
-    deltaMasa = 0;
-    render();
+  if (!ESC || !Array.isArray(ESC.ESCENARIOS)) {
+    console.error(
+      "LAB_ESCENARIOS ausente: falta escenarios.js antes de lab-stam.js",
+    );
+    if (descEsc) descEsc.textContent = "Escenarios no disponibles (falta escenarios.js).";
+    if (selectEsc) selectEsc.disabled = true;
+    if (btnCargarEsc) btnCargarEsc.disabled = true;
+  } else {
+    const escenariosAgua = ESC.ESCENARIOS.filter((esc) => {
+      if (esc.grilla && esc.grilla.some((f) => /[osL]/.test(f))) return false;
+      if (esc.pintas && esc.pintas.some((p) => p.mat !== "AGUA")) return false;
+      return true;
+    });
+    escenariosAgua.forEach((esc) => {
+      const op = document.createElement("option");
+      op.value = esc.id;
+      op.textContent = `${esc.id} · ${esc.nombre}`;
+      selectEsc.appendChild(op);
+    });
+    function mostrarDescEsc() {
+      const esc = escenariosAgua.find((e) => e.id === selectEsc.value);
+      descEsc.textContent = esc ? esc.descripcion || "" : "";
+    }
+    selectEsc.addEventListener("change", mostrarDescEsc);
+    mostrarDescEsc();
+
+    function cargarEscenario(esc) {
+      mundo = ESC.construirEscenario(CORE, esc);
+      ANCHO = esc.ancho;
+      ALTO = esc.alto;
+      ticks = 0;
+      redimensionarLienzo();
+      renderizarListaPasos();
+      masaAnterior = medirMasa().total;
+      deltaMasa = 0;
+      render();
+    }
+
+    btnCargarEsc.addEventListener("click", () => {
+      const esc = escenariosAgua.find((e) => e.id === selectEsc.value);
+      if (esc) cargarEscenario(esc);
+    });
   }
 
-  document.getElementById("btn-cargar-esc").addEventListener("click", () => {
-    const esc = escenariosAgua.find((e) => e.id === selectEsc.value);
-    if (esc) cargarEscenario(esc);
-  });
   document.getElementById("btn-escena-inicial").addEventListener("click", () => {
     restablecerPasos();
     restablecerMateriales();
