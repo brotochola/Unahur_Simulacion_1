@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Free-Surface LBM — Dam Break</title>
+<style>
+  :root{
+    --tank-glass:#0d1b1e;
+    --tank-frame:#14282c;
+    --water-deep:#0e4a5c;
+    --water-mid:#1c8aa0;
+    --water-foam:#bfeef2;
+    --wall:#3a4c50;
+    --ink:#dff2f4;
+    --ink-dim:#7fa3a8;
+    --accent:#ff8a3d;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; height:100%;
+    background:#081213;
+    color:var(--ink);
+    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .rig{
+    display:flex; flex-direction:column; gap:14px;
+    padding:22px;
+  }
+  .tankwrap{
+    position:relative;
+    background:var(--tank-frame);
+    padding:10px;
+    border-radius:4px;
+    box-shadow: 0 0 0 1px #223236, 0 20px 50px -20px rgba(0,0,0,0.7);
+  }
+  canvas{
+    display:block;
+    background:var(--tank-glass);
+    image-rendering: pixelated;
+    border-radius:2px;
+  }
+  .readout{
+    position:absolute; top:20px; left:20px;
+    font-size:11px; letter-spacing:0.02em;
+    color:var(--ink-dim);
+    line-height:1.55;
+    pointer-events:none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    white-space:pre;
+  }
+  .readout b{ color:var(--ink); font-weight:600; }
+  .controls{
+    display:flex; align-items:center; gap:18px;
+    flex-wrap:wrap;
+  }
+  .field{
+    display:flex; flex-direction:column; gap:4px;
+    font-size:11px; color:var(--ink-dim);
+    min-width:130px;
+  }
+  .field span{ display:flex; justify-content:space-between; }
+  .field span em{ font-style:normal; color:var(--ink); }
+  input[type=range]{
+    -webkit-appearance:none;
+    height:2px; background:#294246; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:11px; height:11px; border-radius:50%;
+    background:var(--water-foam);
+    cursor:pointer;
+    box-shadow:0 0 0 3px rgba(191,238,242,0.15);
+  }
+  button{
+    font-family:inherit; font-size:11px; letter-spacing:0.02em;
+    background:transparent;
+    border:1px solid #2e474c;
+    color:var(--ink);
+    padding:8px 14px; border-radius:3px;
+    cursor:pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  button:hover{ border-color:var(--water-mid); color:var(--water-foam); }
+  button.primary{
+    background:var(--water-mid); border-color:var(--water-mid); color:#04191d;
+    font-weight:600;
+  }
+  button.primary:hover{ background:var(--water-foam); border-color:var(--water-foam); }
+  .hint{ font-size:11px; color:var(--ink-dim); max-width:640px; }
+  .hint b{ color:var(--ink-dim); }
+  .panel{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(140px,1fr));
+    gap:14px 22px;
+    max-width:900px;
+  }
+  .group{
+    grid-column: 1 / -1;
+    font-size:10px; text-transform:uppercase; letter-spacing:0.08em;
+    color:#4c6d72;
+    border-top:1px solid #1c2f33;
+    padding-top:10px; margin-top:2px;
+  }
+  .group:first-child{ border-top:none; margin-top:0; padding-top:0; }
+  select{
+    font-family:inherit; font-size:11px;
+    background:#0d1b1e; color:var(--ink);
+    border:1px solid #2e474c; border-radius:3px;
+    padding:5px 6px;
+  }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; }
+
+  /* ---- tooltips ---- */
+  [data-tooltip]{ position:relative; cursor:help; }
+  [data-tooltip]::after{
+    content:attr(data-tooltip);
+    position:absolute;
+    left:50%; bottom:calc(100% + 10px);
+    transform:translate(-50%,4px);
+    background:#0a1618; color:var(--ink);
+    border:1px solid #2e474c;
+    padding:9px 11px; border-radius:5px;
+    font-size:11px; line-height:1.45; font-weight:400;
+    letter-spacing:0; text-transform:none;
+    width:230px; white-space:normal; text-align:left;
+    box-shadow:0 10px 24px -10px rgba(0,0,0,0.85);
+    opacity:0; pointer-events:none; z-index:30;
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  [data-tooltip]::before{
+    content:'';
+    position:absolute;
+    left:50%; bottom:calc(100% + 4px);
+    transform:translate(-50%,4px);
+    border:6px solid transparent;
+    border-top-color:#2e474c;
+    opacity:0; pointer-events:none; z-index:30;
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  [data-tooltip]:hover::after, [data-tooltip]:hover::before{ opacity:1; transform:translate(-50%,0); }
+  .row [data-tooltip]::after{ left:0; transform:translateY(4px); }
+  .row [data-tooltip]:hover::after{ transform:translateY(0); }
+  .row [data-tooltip]::before{ left:16px; }
+
+  /* ---- docs / algorithm explanation ---- */
+  details.docs{
+    max-width:900px;
+    border-top:1px solid #1c2f33;
+    padding-top:12px;
+  }
+  details.docs > summary{
+    cursor:pointer;
+    font-size:11px; text-transform:uppercase; letter-spacing:0.08em;
+    color:#9fc6cb;
+    list-style:none;
+  }
+  details.docs > summary::-webkit-details-marker{ display:none; }
+  details.docs > summary::before{ content:'▸ '; color:#4c6d72; }
+  details.docs[open] > summary::before{ content:'▾ '; }
+  .docs-body{
+    margin-top:14px;
+    font-size:12.5px; line-height:1.65; color:var(--ink-dim);
+    max-width:820px;
+  }
+  .docs-body h3{
+    color:var(--ink); font-size:12.5px; letter-spacing:0.01em;
+    margin:22px 0 6px; padding-top:14px; border-top:1px solid #16272a;
+  }
+  .docs-body h3:first-child{ margin-top:0; padding-top:0; border-top:none; }
+  .docs-body p{ margin:6px 0; }
+  .docs-body ul{ margin:6px 0; padding-left:18px; }
+  .docs-body li{ margin:3px 0; }
+  .docs-body code{
+    background:#0d1b1e; border:1px solid #21353a; border-radius:3px;
+    padding:1px 5px; color:var(--water-foam); font-size:11.5px;
+  }
+  .docs-body b{ color:var(--ink); font-weight:600; }
+  .docs-body .flagchip{
+    display:inline-block; padding:1px 7px; border-radius:3px;
+    font-size:10.5px; font-weight:600; letter-spacing:0.03em;
+  }
+  .flag-empty{ background:#14282c; color:#5c8085; }
+  .flag-iface{ background:#1c8aa055; color:var(--water-foam); }
+  .flag-fluid{ background:#1c8aa0; color:#04191d; }
+  .flag-obst{ background:#3a4c50; color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="rig">
+  <div class="tankwrap">
+    <canvas id="c"></canvas>
+    <div class="readout" id="readout"></div>
+  </div>
+  <div class="panel">
+    <div class="group">Acciones</div>
+    <div class="row" style="grid-column:1/-1">
+      <button class="primary" id="dam">Reset — dam break</button>
+      <button id="pause">Pausar</button>
+      <button id="step1">Avanzar 1 frame</button>
+      <button id="stir">Soltar bloque</button>
+      <button id="drain">Vaciar tanque</button>
+      <button id="fill">Llenar tanque</button>
+      <button id="clearObs">Borrar obstáculos</button>
+    </div>
+
+    <div class="group">Física del fluido</div>
+    <div class="field">
+      <span>Gravedad <em id="gVal"></em></span>
+      <input type="range" id="gravity" min="0" max="0.0025" step="0.00005" value="0.0008">
+    </div>
+    <div class="field">
+      <span>Ángulo gravedad <em id="gAngVal"></em></span>
+      <input type="range" id="gAngle" min="-90" max="90" step="1" value="0">
+    </div>
+    <div class="field">
+      <span>Viscosidad <em id="vVal"></em></span>
+      <input type="range" id="visc" min="0.005" max="0.15" step="0.001" value="0.02">
+    </div>
+    <div class="field">
+      <span>Velocidad máx. <em id="mVal"></em></span>
+      <input type="range" id="maxspeed" min="0.05" max="0.4" step="0.01" value="0.2">
+    </div>
+
+    <div class="group">Superficie libre</div>
+    <div class="field">
+      <span>Densidad atmósfera <em id="rVal"></em></span>
+      <input type="range" id="rhoA" min="0.5" max="1.5" step="0.01" value="1">
+    </div>
+    <div class="field">
+      <span>Umbral llenado (κ) <em id="kVal"></em></span>
+      <input type="range" id="kappa" min="0" max="0.02" step="0.0005" value="0.001">
+    </div>
+    <div class="field">
+      <span>Pasos por frame <em id="sVal"></em></span>
+      <input type="range" id="speedmult" min="1" max="8" step="1" value="1">
+    </div>
+    <div class="field">
+      <span>Modo de color</span>
+      <select id="colormode">
+        <option value="speed">Velocidad</option>
+        <option value="mass">Fracción de masa</option>
+        <option value="density">Densidad</option>
+      </select>
+    </div>
+
+    <div class="group">Rendimiento</div>
+    <div class="field">
+      <span>Delta objetivo <em id="dtVal"></em></span>
+      <input type="range" id="targetdt" min="0" max="50" step="1" value="16">
+    </div>
+    <div class="field">
+      <span>FPS objetivo <em id="fpsTargetVal"></em></span>
+    </div>
+
+    <div class="group">Escenario y pincel</div>
+    <div class="field">
+      <span>Ancho del agua <em id="wwVal"></em></span>
+      <input type="range" id="waterw" min="10" max="80" step="1" value="32">
+    </div>
+    <div class="field">
+      <span>Alto del agua <em id="whVal"></em></span>
+      <input type="range" id="waterh" min="10" max="90" step="1" value="60">
+    </div>
+    <div class="field">
+      <span>Tamaño de pincel <em id="bVal"></em></span>
+      <input type="range" id="brush" min="1" max="8" step="1" value="1">
+    </div>
+  </div>
+  <div class="hint">Clic izquierdo y arrastrá para pintar <b>obstáculos</b> (tamaño según el pincel); clic derecho los borra. La superficie libre trackea la masa de fluido por celda (llena / parcial / vacía) y reconstruye las distribuciones faltantes en la interfaz en cada paso — el paso de redistribución banca cualquier exceso de masa sin destino y lo reparte de vuelta sobre la capa de interfaz en el siguiente frame, así la masa total se mantiene estable en vez de drenarse. <b>Delta objetivo</b> fija el intervalo entre frames del loop (no el rAF del navegador): bajalo (incluso a 0) para que la simulación corra más rápido en tiempo real; el desglose de tiempos muestra cuánto tarda realmente cada etapa del cálculo y el render.</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const Nx = 90, Ny = 55, N = Nx*Ny, CELL = 8;
+  const EMPTY=0, INTERFACE=1, FLUID=2, OBSTACLE=3;
+
+  const ex=[0,1,-1,0,0,1,-1,1,-1];
+  const ey=[0,0,0,1,-1,1,-1,-1,1];
+  const w =[4/9,1/9,1/9,1/9,1/9,1/36,1/36,1/36,1/36];
+  const opp=[0,2,1,4,3,6,5,8,7];
+
+  let f=[], fn=[], fc=[];
+  for(let d=0;d<9;d++){ f[d]=new Float32Array(N); fn[d]=new Float32Array(N); fc[d]=new Float32Array(N); }
+  const flag = new Uint8Array(N);
+  const mass = new Float32Array(N);
+  const rho  = new Float32Array(N);
+  const rho2 = new Float32Array(N);
+  const ux   = new Float32Array(N);
+  const uy   = new Float32Array(N);
+  const eps  = new Float32Array(N);
+  let excessMassPool = 0;
+
+  const idx=(x,y)=>y*Nx+x;
+  function feqD(d,r,u,v){
+    const eu=ex[d]*u+ey[d]*v, uu=u*u+v*v;
+    return w[d]*r*(1+3*eu+4.5*eu*eu-1.5*uu);
+  }
+
+  function setFluid(i,r=1,u=0,v=0){
+    flag[i]=FLUID; rho[i]=r; ux[i]=u; uy[i]=v;
+    for(let d=0;d<9;d++) f[d][i]=feqD(d,r,u,v);
+    mass[i]=r; eps[i]=1;
+  }
+  function setEmpty(i){
+    flag[i]=EMPTY; mass[i]=0; eps[i]=0; rho[i]=1; ux[i]=0; uy[i]=0;
+    for(let d=0;d<9;d++) f[d][i]=0;
+  }
+  function setObstacle(i){ flag[i]=OBSTACLE; mass[i]=0; eps[i]=0; }
+  function setInterface(i,r=1,u=0,v=0,ep=0.5){
+    flag[i]=INTERFACE; rho[i]=r; ux[i]=u; uy[i]=v;
+    for(let d=0;d<9;d++) f[d][i]=feqD(d,r,u,v);
+    mass[i]=r*ep; eps[i]=ep;
+  }
+
+  function establishInterfaces(){
+    const toConvert=[];
+    for(let y=1;y<Ny-1;y++) for(let x=1;x<Nx-1;x++){
+      const i=idx(x,y);
+      if(flag[i]!==EMPTY) continue;
+      let touches=false;
+      for(let d=1;d<9;d++){
+        const nx=x+ex[d], ny=y+ey[d];
+        if(flag[idx(nx,ny)]===FLUID){ touches=true; break; }
+      }
+      if(touches) toConvert.push(i);
+    }
+    for(const i of toConvert) setInterface(i,1,0,0,0.5);
+  }
+
+  function buildTank(preserveObstacles){
+    const savedObstacles = preserveObstacles ? flag.slice() : null;
+    for(let x=0;x<Nx;x++){ setObstacle(idx(x,0)); setObstacle(idx(x,Ny-1)); }
+    for(let y=0;y<Ny;y++){ setObstacle(idx(0,y)); setObstacle(idx(Nx-1,y)); }
+    for(let y=1;y<Ny-1;y++) for(let x=1;x<Nx-1;x++) setEmpty(idx(x,y));
+    if(savedObstacles){
+      for(let i=0;i<N;i++) if(savedObstacles[i]===OBSTACLE) setObstacle(i);
+    }
+  }
+
+  let waterWPct = 32, waterHPct = 60;
+
+  function damBreak(){
+    excessMassPool = 0;
+    buildTank(true);
+    const waterH = Math.floor((Ny-2)*waterHPct/100), waterW = Math.floor((Nx-2)*waterWPct/100);
+    for(let y=Ny-1-waterH;y<Ny-1;y++)
+      for(let x=1;x<1+waterW;x++)
+        if(flag[idx(x,y)]!==OBSTACLE) setFluid(idx(x,y));
+    establishInterfaces();
+  }
+
+  function dropBlock(){
+    const w0 = 12, h0 = 10;
+    const x0 = 20 + Math.floor(Math.random()*(Nx-40));
+    for(let y=3;y<3+h0;y++) for(let x=x0;x<x0+w0;x++){
+      const i=idx(x,y);
+      if(flag[i]!==OBSTACLE) setFluid(i);
+    }
+    establishInterfaces();
+  }
+
+  function drainTank(){
+    excessMassPool = 0;
+    for(let i=0;i<N;i++) if(flag[i]===FLUID || flag[i]===INTERFACE) setEmpty(i);
+  }
+
+  function fillTank(){
+    excessMassPool = 0;
+    for(let y=1;y<Ny-1;y++) for(let x=1;x<Nx-1;x++){
+      const i=idx(x,y);
+      if(flag[i]!==OBSTACLE) setFluid(i);
+    }
+  }
+
+  function clearObstacles(){
+    for(let y=1;y<Ny-1;y++) for(let x=1;x<Nx-1;x++){
+      const i=idx(x,y);
+      if(flag[i]===OBSTACLE) setEmpty(i);
+    }
+  }
+
+  let gravityMag = 0.0008;
+  let gravityAngleDeg = 0; // 0 = straight down, +right, -left
+  let gravity = gravityMag; // legacy alias, unused directly
+  let gx = 0, gy = gravityMag;
+  let omega = 1/(3*0.02+0.5);
+  let rhoA = 1.0;
+  let kappa = 1e-3;
+  let maxSpd = 0.2;
+  let colorMode = 'speed';
+
+  // ---- timing instrumentation ----
+  const stageNames = ['collide','stream','massUpdate','fillEmpty','convert','redistribute','epsSwap'];
+  const stageLabels = {
+    collide:'colisión',
+    stream:'streaming',
+    massUpdate:'masa',
+    fillEmpty:'detect F/E',
+    convert:'conversión',
+    redistribute:'redistrib.',
+    epsSwap:'eps+swap'
+  };
+  let stageTimes = {}, smoothStageTimes = {};
+  stageNames.forEach(n=>{ stageTimes[n]=0; smoothStageTimes[n]=0; });
+  let renderTimeMs=0, smoothRenderTime=0;
+  let totalStepTimeMs=0, smoothTotalStepTime=0;
+  let totalFrameTimeMs=0, smoothTotalFrameTime=0;
+  let smoothFps=0;
+  const SMOOTH_ALPHA=0.12;
+
+  function step(){
+    let t0=performance.now();
+
+    // 1. collide
+    for(let i=0;i<N;i++){
+      const fl=flag[i];
+      if(fl!==FLUID && fl!==INTERFACE) continue;
+      let r=0,mx=0,my=0;
+      for(let d=0;d<9;d++){ const v=f[d][i]; r+=v; mx+=ex[d]*v; my+=ey[d]*v; }
+      let u=mx/r+gx, v=my/r+gy;
+      const spd=Math.hypot(u,v);
+      if(spd>maxSpd){ u*=maxSpd/spd; v*=maxSpd/spd; }
+      rho[i]=r; ux[i]=u; uy[i]=v;
+      for(let d=0;d<9;d++){
+        const eqd=feqD(d,r,u,v);
+        fc[d][i]=f[d][i]-omega*(f[d][i]-eqd);
+      }
+    }
+    let t1=performance.now(); stageTimes.collide += t1-t0;
+
+    // 2. stream + free-surface reconstruction
+    for(let y=1;y<Ny-1;y++) for(let x=1;x<Nx-1;x++){
+      const i=idx(x,y), fl=flag[i];
+      if(fl!==FLUID && fl!==INTERFACE) continue;
+      for(let d=0;d<9;d++){
+        const sx=x-ex[d], sy=y-ey[d], sidx=idx(sx,sy), sflag=flag[sidx];
+        if(sflag===FLUID || sflag===INTERFACE) fn[d][i]=fc[d][sidx];
+        else if(sflag===OBSTACLE) fn[d][i]=fc[opp[d]][i];
+        else{
+          const od=opp[d];
+          fn[d][i]=feqD(d,rhoA,ux[i],uy[i])+feqD(od,rhoA,ux[i],uy[i])-fc[od][i];
+        }
+      }
+    }
+    let t2=performance.now(); stageTimes.stream += t2-t1;
+
+    // 3. mass update
+    for(let y=1;y<Ny-1;y++) for(let x=1;x<Nx-1;x++){
+      const i=idx(x,y), fl=flag[i];
+      if(fl!==FLUID && fl!==INTERFACE) continue;
+      let m=mass[i];
+      for(let d=1;d<9;d++){
+        const nx=x+ex[d], ny=y+ey[d], nidx=idx(nx,ny), nflag=flag[nidx];
+        if(nflag===OBSTACLE || nflag===EMPTY) continue;
+        const od=opp[d];
+        let delta=fc[od][nidx]-fc[d][i];
+        if(fl===INTERFACE || nflag===INTERFACE){
+          const e1=(fl===FLUID)?1:eps[i];
+          const e2=(nflag===FLUID)?1:eps[nidx];
+          delta*=(e1+e2)/2;
+        }
+        m+=delta;
+      }
+      mass[i]=m;
+      let r2=0; for(let d=0;d<9;d++) r2+=fn[d][i];
+      rho2[i]=r2;
+    }
+    let t3=performance.now(); stageTimes.massUpdate += t3-t2;
+
+    // 4. fill/empty detection
+    const filled=[], emptied=[];
+    for(let y=1;y<Ny-1;y++) for(let x=1;x<Nx-1;x++){
+      const i=idx(x,y);
+      if(flag[i]!==INTERFACE) continue;
+      if(mass[i] > (1+kappa)*rho2[i]) filled.push(i);
+      else if(mass[i] < -kappa*rho2[i]) emptied.push(i);
+    }
+    let t4=performance.now(); stageTimes.fillEmpty += t4-t3;
+
+    // 5. conversions
+    for(const i of filled){
+      flag[i]=FLUID;
+      const x=i%Nx, y=(i/Nx)|0;
+      for(let d=1;d<9;d++){
+        const nx=x+ex[d], ny=y+ey[d], nidx=idx(nx,ny);
+        if(flag[nidx]===EMPTY){
+          flag[nidx]=INTERFACE;
+          for(let dd=0;dd<9;dd++) fn[dd][nidx]=feqD(dd,rho2[i],ux[i],uy[i]);
+          mass[nidx]=0; rho2[nidx]=rho2[i]; ux[nidx]=ux[i]; uy[nidx]=uy[i];
+        }
+      }
+    }
+    for(const i of emptied){
+      flag[i]=EMPTY;
+      const x=i%Nx, y=(i/Nx)|0;
+      for(let d=1;d<9;d++){
+        const nx=x+ex[d], ny=y+ey[d], nidx=idx(nx,ny);
+        if(flag[nidx]===FLUID) flag[nidx]=INTERFACE;
+      }
+    }
+    let t5=performance.now(); stageTimes.convert += t5-t4;
+
+    // 6. redistribute excess mass — banks undistributable excess instead of dropping it
+    for(const i of filled){
+      const x=i%Nx, y=(i/Nx)|0;
+      const excess=mass[i]-rho2[i];
+      const neigh=[];
+      for(let d=1;d<9;d++){
+        const nx=x+ex[d], ny=y+ey[d], nidx=idx(nx,ny);
+        if(flag[nidx]===INTERFACE) neigh.push(nidx);
+      }
+      if(neigh.length){ const share=excess/neigh.length; for(const n of neigh) mass[n]+=share; }
+      else excessMassPool += excess;
+      mass[i]=rho2[i];
+    }
+    for(const i of emptied){
+      const x=i%Nx, y=(i/Nx)|0;
+      const excess=mass[i];
+      const neigh=[];
+      for(let d=1;d<9;d++){
+        const nx=x+ex[d], ny=y+ey[d], nidx=idx(nx,ny);
+        if(flag[nidx]===INTERFACE) neigh.push(nidx);
+      }
+      if(neigh.length){ const share=excess/neigh.length; for(const n of neigh) mass[n]+=share; }
+      else excessMassPool += excess;
+      mass[i]=0;
+    }
+    if(excessMassPool!==0){
+      const ifaceCells=[];
+      for(let i=0;i<N;i++) if(flag[i]===INTERFACE) ifaceCells.push(i);
+      if(ifaceCells.length){
+        const share=excessMassPool/ifaceCells.length;
+        for(const i of ifaceCells) mass[i]+=share;
+        excessMassPool=0;
+      }
+    }
+    let t6=performance.now(); stageTimes.redistribute += t6-t5;
+
+    // 7. update eps, swap buffers
+    for(let i=0;i<N;i++){
+      if(flag[i]===FLUID) eps[i]=1;
+      else if(flag[i]===INTERFACE){
+        const r=rho2[i]||1;
+        eps[i]=Math.max(0,Math.min(1.2,mass[i]/r));
+      } else if(flag[i]===EMPTY) eps[i]=0;
+    }
+    const tmp=f; f=fn; fn=tmp;
+    let t7=performance.now(); stageTimes.epsSwap += t7-t6;
+  }
+
+  function totalMass(){
+    let tm=0;
+    for(let i=0;i<N;i++){
+      if(flag[i]===FLUID) tm+=rho[i];
+      else if(flag[i]===INTERFACE) tm+=mass[i];
+    }
+    return tm + excessMassPool;
+  }
+
+  // ---- rendering ----
+  const canvas=document.getElementById('c');
+  canvas.width=Nx*CELL; canvas.height=Ny*CELL;
+  const ctx=canvas.getContext('2d');
+  const img=ctx.createImageData(Nx,Ny);
+
+  function colorFor(i){
+    const fl=flag[i];
+    if(fl===OBSTACLE) return [58,76,80,255];
+    if(fl===EMPTY) return [13,27,30,0];
+    let t;
+    if(colorMode==='mass'){
+      t = fl===FLUID ? 1 : Math.max(0,Math.min(1,eps[i]));
+    } else if(colorMode==='density'){
+      t = Math.max(0,Math.min(1,(rho[i]-0.85)/0.3));
+    } else {
+      t = Math.min(1,Math.hypot(ux[i],uy[i])*9);
+    }
+    const deep=[14,74,92], mid=[28,138,160], foam=[191,238,242];
+    let r,g,b;
+    if(t<0.5){
+      const tt=t/0.5;
+      r=deep[0]+(mid[0]-deep[0])*tt; g=deep[1]+(mid[1]-deep[1])*tt; b=deep[2]+(mid[2]-deep[2])*tt;
+    }else{
+      const tt=(t-0.5)/0.5;
+      r=mid[0]+(foam[0]-mid[0])*tt; g=mid[1]+(foam[1]-mid[1])*tt; b=mid[2]+(foam[2]-mid[2])*tt;
+    }
+    const a = fl===FLUID ? 255 : Math.round(255*Math.max(0.15,eps[i]));
+    return [r,g,b,a];
+  }
+
+  function render(){
+    const data=img.data;
+    for(let i=0;i<N;i++){
+      const [r,g,b,a]=colorFor(i);
+      const p=i*4;
+      data[p]=r; data[p+1]=g; data[p+2]=b; data[p+3]=a;
+    }
+    // upscale nearest-neighbour via temp canvas
+    tmpCtx.putImageData(img,0,0);
+    ctx.imageSmoothingEnabled=false;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(tmpCanvas,0,0,Nx,Ny,0,0,canvas.width,canvas.height);
+  }
+  const tmpCanvas=document.createElement('canvas');
+  tmpCanvas.width=Nx; tmpCanvas.height=Ny;
+  const tmpCtx=tmpCanvas.getContext('2d');
+
+  // ---- UI ----
+  const readout=document.getElementById('readout');
+  let running=true, frame=0, m0=null, stepsPerFrame=1;
+  let targetDtMs=16;
+  let lastLoopStart=performance.now();
+  let loopTimer=null;
+
+  function pad(s,n){ s=String(s); while(s.length<n) s+=' '; return s; }
+  function fmt(n){ return n.toFixed(3); }
+
+  function loop(){
+    const now0=performance.now();
+    const wallDt = now0-lastLoopStart;
+    lastLoopStart = now0;
+
+    stageNames.forEach(n=>stageTimes[n]=0);
+    const frameStart=performance.now();
+    if(running){
+      for(let s=0;s<stepsPerFrame;s++){ step(); frame++; }
+    }
+    const afterStep=performance.now();
+    render();
+    const afterRender=performance.now();
+
+    totalStepTimeMs = afterStep-frameStart;
+    renderTimeMs = afterRender-afterStep;
+    totalFrameTimeMs = afterRender-frameStart;
+    const measuredFps = wallDt>0 ? 1000/wallDt : 0;
+
+    stageNames.forEach(n=>{ smoothStageTimes[n] = smoothStageTimes[n]*(1-SMOOTH_ALPHA)+stageTimes[n]*SMOOTH_ALPHA; });
+    smoothRenderTime = smoothRenderTime*(1-SMOOTH_ALPHA)+renderTimeMs*SMOOTH_ALPHA;
+    smoothTotalStepTime = smoothTotalStepTime*(1-SMOOTH_ALPHA)+totalStepTimeMs*SMOOTH_ALPHA;
+    smoothTotalFrameTime = smoothTotalFrameTime*(1-SMOOTH_ALPHA)+totalFrameTimeMs*SMOOTH_ALPHA;
+    smoothFps = smoothFps*(1-SMOOTH_ALPHA)+measuredFps*SMOOTH_ALPHA;
+
+    const tm=totalMass();
+    if(m0===null) m0=tm;
+    const drift = m0 ? ((tm-m0)/m0*100) : 0;
+
+    let lines=[];
+    lines.push(`frame ${frame}   total mass ${tm.toFixed(1)}   drift ${drift.toFixed(2)}%`);
+    lines.push(`fps real ${smoothFps.toFixed(1)}  (dt objetivo ${targetDtMs}ms → máx ${targetDtMs>0?(1000/targetDtMs).toFixed(1):'∞'} fps)`);
+    lines.push('');
+    lines.push('tiempos por frame (ms, promedio suavizado):');
+    stageNames.forEach(n=>{
+      lines.push(`  ${pad(stageLabels[n],11)} ${fmt(smoothStageTimes[n])}`);
+    });
+    lines.push(`  ${pad('paso total',11)} ${fmt(smoothTotalStepTime)}  (${stepsPerFrame} paso/s LBM)`);
+    lines.push(`  ${pad('render',11)} ${fmt(smoothRenderTime)}`);
+    lines.push(`  ${pad('frame total',11)} ${fmt(smoothTotalFrameTime)}`);
+    readout.textContent = lines.join('\n');
+
+    loopTimer = setTimeout(loop, targetDtMs);
+  }
+
+  function updateGravityVector(){
+    const rad = gravityAngleDeg*Math.PI/180;
+    gx = gravityMag*Math.sin(rad);
+    gy = gravityMag*Math.cos(rad);
+  }
+  updateGravityVector();
+
+  document.getElementById('dam').addEventListener('click', ()=>{ damBreak(); frame=0; m0=null; });
+  document.getElementById('stir').addEventListener('click', dropBlock);
+  document.getElementById('drain').addEventListener('click', drainTank);
+  document.getElementById('fill').addEventListener('click', fillTank);
+  document.getElementById('clearObs').addEventListener('click', clearObstacles);
+  document.getElementById('step1').addEventListener('click', ()=>{
+    stageNames.forEach(n=>stageTimes[n]=0);
+    const t0=performance.now();
+    step(); frame++;
+    const t1=performance.now();
+    render();
+    const t2=performance.now();
+    stageNames.forEach(n=>{ smoothStageTimes[n]=stageTimes[n]; });
+    smoothTotalStepTime=t1-t0; smoothRenderTime=t2-t1; smoothTotalFrameTime=t2-t0;
+  });
+  document.getElementById('pause').addEventListener('click', (e)=>{
+    running=!running;
+    e.target.textContent = running ? 'Pausar' : 'Reanudar';
+  });
+
+  const gSlider=document.getElementById('gravity'), gVal=document.getElementById('gVal');
+  gSlider.addEventListener('input', ()=>{ gravityMag=parseFloat(gSlider.value); gVal.textContent=gravityMag.toFixed(5); updateGravityVector(); });
+  gravityMag=parseFloat(gSlider.value); gVal.textContent=gravityMag.toFixed(5);
+
+  const gAngSlider=document.getElementById('gAngle'), gAngVal=document.getElementById('gAngVal');
+  gAngSlider.addEventListener('input', ()=>{ gravityAngleDeg=parseFloat(gAngSlider.value); gAngVal.textContent=gravityAngleDeg+'°'; updateGravityVector(); });
+  gravityAngleDeg=parseFloat(gAngSlider.value); gAngVal.textContent=gravityAngleDeg+'°';
+
+  const vSlider=document.getElementById('visc'), vVal=document.getElementById('vVal');
+  vSlider.addEventListener('input', ()=>{
+    const nu=parseFloat(vSlider.value);
+    omega=1/(3*nu+0.5);
+    vVal.textContent=nu.toFixed(3);
+  });
+  vVal.textContent=parseFloat(vSlider.value).toFixed(3);
+
+  const mSlider=document.getElementById('maxspeed'), mVal=document.getElementById('mVal');
+  mSlider.addEventListener('input', ()=>{ maxSpd=parseFloat(mSlider.value); mVal.textContent=maxSpd.toFixed(2); });
+  maxSpd=parseFloat(mSlider.value); mVal.textContent=maxSpd.toFixed(2);
+
+  const rSlider=document.getElementById('rhoA'), rVal=document.getElementById('rVal');
+  rSlider.addEventListener('input', ()=>{ rhoA=parseFloat(rSlider.value); rVal.textContent=rhoA.toFixed(2); });
+  rhoA=parseFloat(rSlider.value); rVal.textContent=rhoA.toFixed(2);
+
+  const kSlider=document.getElementById('kappa'), kVal=document.getElementById('kVal');
+  kSlider.addEventListener('input', ()=>{ kappa=parseFloat(kSlider.value); kVal.textContent=kappa.toFixed(4); });
+  kappa=parseFloat(kSlider.value); kVal.textContent=kappa.toFixed(4);
+
+  const sSlider=document.getElementById('speedmult'), sVal=document.getElementById('sVal');
+  sSlider.addEventListener('input', ()=>{ stepsPerFrame=parseInt(sSlider.value,10); sVal.textContent=stepsPerFrame+'×'; });
+  stepsPerFrame=parseInt(sSlider.value,10); sVal.textContent=stepsPerFrame+'×';
+
+  document.getElementById('colormode').addEventListener('change', (e)=>{ colorMode=e.target.value; });
+
+  const wwSlider=document.getElementById('waterw'), wwVal=document.getElementById('wwVal');
+  wwSlider.addEventListener('input', ()=>{ waterWPct=parseInt(wwSlider.value,10); wwVal.textContent=waterWPct+'%'; });
+  waterWPct=parseInt(wwSlider.value,10); wwVal.textContent=waterWPct+'%';
+
+  const whSlider=document.getElementById('waterh'), whVal=document.getElementById('whVal');
+  whSlider.addEventListener('input', ()=>{ waterHPct=parseInt(whSlider.value,10); whVal.textContent=waterHPct+'%'; });
+  waterHPct=parseInt(whSlider.value,10); whVal.textContent=waterHPct+'%';
+
+  let brushSize=1;
+  const bSlider=document.getElementById('brush'), bVal=document.getElementById('bVal');
+  bSlider.addEventListener('input', ()=>{ brushSize=parseInt(bSlider.value,10); bVal.textContent=brushSize; });
+  brushSize=parseInt(bSlider.value,10); bVal.textContent=brushSize;
+
+  const dtSlider=document.getElementById('targetdt'), dtVal=document.getElementById('dtVal');
+  const fpsTargetVal=document.getElementById('fpsTargetVal');
+  function updateDtLabels(){
+    dtVal.textContent=targetDtMs+'ms';
+    fpsTargetVal.textContent = targetDtMs>0 ? (1000/targetDtMs).toFixed(1) : '∞ (sin límite)';
+  }
+  dtSlider.addEventListener('input', ()=>{ targetDtMs=parseInt(dtSlider.value,10); updateDtLabels(); });
+  targetDtMs=parseInt(dtSlider.value,10); updateDtLabels();
+
+  // obstacle painting
+  let painting=null;
+  function cellFromEvent(e){
+    const rect=canvas.getBoundingClientRect();
+    const x=Math.floor((e.clientX-rect.left)/CELL);
+    const y=Math.floor((e.clientY-rect.top)/CELL);
+    return {x,y};
+  }
+  canvas.addEventListener('contextmenu', e=>e.preventDefault());
+  canvas.addEventListener('mousedown', e=>{
+    painting = e.button===2 ? 'erase' : 'draw';
+    paintAt(e);
+  });
+  window.addEventListener('mouseup', ()=>painting=null);
+  canvas.addEventListener('mousemove', e=>{ if(painting) paintAt(e); });
+  function paintAt(e){
+    const {x:cx,y:cy}=cellFromEvent(e);
+    const r=Math.floor(brushSize/2);
+    for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){
+      const x=cx+dx, y=cy+dy;
+      if(x<1||x>=Nx-1||y<1||y>=Ny-1) continue;
+      const i=idx(x,y);
+      if(painting==='draw') setObstacle(i);
+      else if(flag[i]===OBSTACLE) setEmpty(i);
+    }
+  }
+
+  buildTank(false);
+  damBreak();
+  loop();
+})();
+</script>
+</body>
+</html>

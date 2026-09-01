@@ -1,0 +1,1115 @@
+<!--
+  Free-Surface Fluid – air/water mask, no flow in air, MS render
+  Based on Matthias Müller Euler fluid (MIT)
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Free-Surface Fluid</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      margin: 0;
+      background: #0e0e12;
+      color: #ddd;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #top {
+      padding: 8px 10px 4px;
+      flex-shrink: 0;
+      background: #16161c;
+      border-bottom: 1px solid #2a2a35;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .button {
+      background: #2a2a35; border: 1px solid #3a3a48; color: #eee;
+      padding: 7px 12px; font-size: 13px; cursor: pointer; border-radius: 6px;
+    }
+    .button:hover { background: #3a3a48; }
+    .button.active { background: #1a6b3c; border-color: #2a9b5c; }
+    .button.mode-water.active { background: #1a5a8a; border-color: #2a8aca; }
+    .button.mode-solid.active { background: #6a4a1a; border-color: #aa7a2a; }
+    .button.mode-erase.active { background: #5a1a1a; border-color: #9a2a2a; }
+    label.chk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin-right: 8px; user-select: none; }
+    #main { flex: 1; display: flex; min-height: 0; }
+    #canvasWrap {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      min-width: 0; background: #0a0a10;
+    }
+    canvas { border: 1px solid #2a2a35; touch-action: none; max-width: 100%; max-height: 100%; cursor: crosshair; }
+    #panel {
+      width: 290px; flex-shrink: 0; overflow-y: auto;
+      background: #14141a; border-left: 1px solid #2a2a35; padding: 10px 12px 24px;
+    }
+    #panel h3 {
+      margin: 14px 0 8px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #7a7a90; border-bottom: 1px solid #2a2a35; padding-bottom: 4px;
+    }
+    #panel h3:first-child { margin-top: 0; }
+    .knob {
+      display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+      margin-bottom: 8px; align-items: center;
+    }
+    .knob label { color: #bbb; font-size: 12px; }
+    .knob .val { color: #8cf; font-variant-numeric: tabular-nums; font-size: 12px; min-width: 52px; text-align: right; }
+    .knob input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #3a8; }
+    #info { font-size: 11px; color: #888; margin-top: 4px; }
+    #massInfo { font-size: 11px; color: #6c8; margin-left: 8px; }
+    @media (max-width: 700px) {
+      #main { flex-direction: column; }
+      #panel { width: 100%; max-height: 38vh; border-left: none; border-top: 1px solid #2a2a35; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="top">
+  <div class="row">
+    <button class="button" id="btnDrop">Water Drop</button>
+    <button class="button" id="btnJet">Jet</button>
+    <button class="button" id="btnTank">Tank</button>
+    <button class="button" id="btnVessels">Vasos com.</button>
+    <button class="button" id="btnEmpty">Empty</button>
+    <button class="button" id="btnPause">Pause</button>
+    <button class="button" id="btnReset">Reset</button>
+  </div>
+  <div class="row">
+    <span style="color:#888;font-size:12px;">Pincel:</span>
+    <button class="button mode-water active" id="btnModeWater">Agua</button>
+    <button class="button mode-solid" id="btnModeSolid">Sólido</button>
+    <button class="button mode-erase" id="btnModeErase">Borrar</button>
+    <label class="chk"><input type="checkbox" id="chkMS" checked> Marching sq.</label>
+    <label class="chk"><input type="checkbox" id="chkStream"> Streamlines</label>
+    <label class="chk"><input type="checkbox" id="chkVel"> Vel</label>
+    <label class="chk"><input type="checkbox" id="chkPressure"> Pressure</label>
+    <label class="chk"><input type="checkbox" id="chkWater" checked> Water cells</label>
+    <label class="chk"><input type="checkbox" id="chkMassCorr" checked> Mass corr</label>
+    <label class="chk"><input type="checkbox" id="chkAirMask" checked> Air mask</label>
+    <span id="massInfo">mass: —</span>
+  </div>
+  <div id="info">Air mask: m bajo = aire (sin flujo). Water cells = relleno, MS = borde.</div>
+</div>
+
+<div id="main">
+  <div id="canvasWrap"><canvas id="myCanvas"></canvas></div>
+  <div id="panel">
+    <h3>Visual</h3>
+    <div class="knob">
+      <label>Iso / draw threshold</label><span class="val" id="vDrawThresh">0.45</span>
+      <input type="range" id="kDrawThresh" min="0.05" max="0.9" step="0.01" value="0.45">
+    </div>
+    <div class="knob">
+      <label>Water brightness</label><span class="val" id="vBright">1.0</span>
+      <input type="range" id="kBright" min="0.3" max="2" step="0.05" value="1">
+    </div>
+    <div class="knob">
+      <label>MS fill opacity</label><span class="val" id="vMsFill">0.25</span>
+      <input type="range" id="kMsFill" min="0" max="1" step="0.05" value="0.25">
+    </div>
+    <div class="knob">
+      <label>MS edge width</label><span class="val" id="vMsEdge">2.0</span>
+      <input type="range" id="kMsEdge" min="0" max="4" step="0.5" value="2">
+    </div>
+
+    <h3>Air / water mask</h3>
+    <div class="knob">
+      <label>Water enter (m ≥)</label><span class="val" id="vMaskHi">0.45</span>
+      <input type="range" id="kMaskHi" min="0.1" max="0.9" step="0.01" value="0.45">
+    </div>
+    <div class="knob">
+      <label>Water leave (m ≤)</label><span class="val" id="vMaskLo">0.25</span>
+      <input type="range" id="kMaskLo" min="0.05" max="0.8" step="0.01" value="0.25">
+    </div>
+    <div class="knob">
+      <label>Vel extrapolate iters</label><span class="val" id="vExtIters">3</span>
+      <input type="range" id="kExtIters" min="0" max="8" step="1" value="3">
+    </div>
+
+    <h3>Physics – time / pressure</h3>
+    <div class="knob">
+      <label>dt</label><span class="val" id="vDt">0.010</span>
+      <input type="range" id="kDt" min="0.004" max="0.03" step="0.001" value="0.01">
+    </div>
+    <div class="knob">
+      <label>Pressure iters</label><span class="val" id="vIters">55</span>
+      <input type="range" id="kIters" min="5" max="150" step="1" value="55">
+    </div>
+    <div class="knob">
+      <label>Over-relaxation</label><span class="val" id="vOver">1.90</span>
+      <input type="range" id="kOver" min="1" max="1.95" step="0.05" value="1.9">
+    </div>
+
+    <h3>Physics – forces</h3>
+    <div class="knob">
+      <label>Gravity</label><span class="val" id="vGrav">-9.81</span>
+      <input type="range" id="kGrav" min="-20" max="0" step="0.1" value="-9.81">
+    </div>
+    <div class="knob">
+      <label>Density ρ</label><span class="val" id="vRho">1000</span>
+      <input type="range" id="kRho" min="100" max="2000" step="50" value="1000">
+    </div>
+
+    <h3>Velocity (water only)</h3>
+    <div class="knob">
+      <label>Avg blend in water</label><span class="val" id="vAvgBlend">1.00</span>
+      <input type="range" id="kAvgBlend" min="0" max="1" step="0.05" value="1">
+    </div>
+
+    <h3>Mass conservation</h3>
+    <div class="knob">
+      <label>Mass corr strength</label><span class="val" id="vMassStr">1.00</span>
+      <input type="range" id="kMassStr" min="0" max="1" step="0.05" value="1">
+    </div>
+    <div class="knob">
+      <label>Mass corr only if m ≥</label><span class="val" id="vMassMin">0.20</span>
+      <input type="range" id="kMassMin" min="0" max="0.5" step="0.01" value="0.20">
+    </div>
+
+    <h3>Jet</h3>
+    <div class="knob">
+      <label>Jet speed</label><span class="val" id="vJetSpeed">2.50</span>
+      <input type="range" id="kJetSpeed" min="0.5" max="6" step="0.1" value="2.5">
+    </div>
+    <div class="knob">
+      <label>Jet width</label><span class="val" id="vJetWidth">0.050</span>
+      <input type="range" id="kJetWidth" min="0.02" max="0.15" step="0.005" value="0.05">
+    </div>
+    <div class="knob">
+      <label>Jet amount</label><span class="val" id="vJetAmt">1.00</span>
+      <input type="range" id="kJetAmt" min="0.3" max="1" step="0.05" value="1">
+    </div>
+    <div class="knob">
+      <label>Jet depth (cells)</label><span class="val" id="vJetDepth">4</span>
+      <input type="range" id="kJetDepth" min="1" max="10" step="1" value="4">
+    </div>
+
+    <h3>Brush / Drop</h3>
+    <div class="knob">
+      <label>Brush radius</label><span class="val" id="vPaintR">0.060</span>
+      <input type="range" id="kPaintR" min="0.02" max="0.18" step="0.005" value="0.06">
+    </div>
+    <div class="knob">
+      <label>Paint amount (m)</label><span class="val" id="vPaintAmt">1.00</span>
+      <input type="range" id="kPaintAmt" min="0.2" max="1" step="0.05" value="1">
+    </div>
+    <div class="knob">
+      <label>Drop radius</label><span class="val" id="vDropR">0.120</span>
+      <input type="range" id="kDropR" min="0.05" max="0.25" step="0.005" value="0.12">
+    </div>
+    <div class="knob">
+      <label>Pool height</label><span class="val" id="vPool">0.090</span>
+      <input type="range" id="kPool" min="0" max="0.3" step="0.01" value="0.09">
+    </div>
+
+    <h3>Grid</h3>
+    <div class="knob">
+      <label>Resolution</label><span class="val" id="vRes">120</span>
+      <input type="range" id="kRes" min="40" max="200" step="5" value="120">
+    </div>
+    <p style="font-size:11px;color:#666;margin:8px 0 0;">
+      Air mask: celdas bajo umbral no llevan flujo. Velocidad se extrapola desde el agua.
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var canvas = document.getElementById("myCanvas");
+  var c = canvas.getContext("2d");
+
+  var simHeight = 1.0;
+  var cScale = 1, simWidth = 1;
+  var U_FIELD = 0, V_FIELD = 1, S_FIELD = 2;
+  var paintMode = 0;
+
+  var params = {
+    drawThresh: 0.45,
+    brightness: 1.0,
+    msFill: 0.25,
+    msEdge: 2.0,
+    maskHi: 0.45,
+    maskLo: 0.25,
+    extIters: 3,
+    airMask: true,
+    dt: 0.01,
+    numIters: 55,
+    overRelaxation: 1.9,
+    gravity: -9.81,
+    density: 1000,
+    avgBlend: 1.0,
+    massCorr: true,
+    massCorrStrength: 1.0,
+    massCorrMin: 0.20,
+    jetSpeed: 2.5,
+    jetWidth: 0.05,
+    jetAmount: 1.0,
+    jetDepth: 4,
+    paintRadius: 0.06,
+    paintAmount: 1.0,
+    dropRadius: 0.12,
+    poolHeight: 0.09,
+    resolution: 120
+  };
+
+  var scene = {
+    paused: false,
+    sceneNr: 4,
+    showStreamlines: false,
+    showVelocities: false,
+    showPressure: false,
+    showSmoke: true,
+    showMS: true,
+    fluid: null,
+    frameNr: 0,
+    jetOn: false,
+    jetX: 0.5,
+    massTarget: 0,
+    massCurrent: 0
+  };
+
+  class Fluid {
+    constructor(density, numX, numY, h) {
+      this.density = density;
+      this.numX = numX + 2;
+      this.numY = numY + 2;
+      this.numCells = this.numX * this.numY;
+      this.h = h;
+      this.u = new Float32Array(this.numCells);
+      this.v = new Float32Array(this.numCells);
+      this.newU = new Float32Array(this.numCells);
+      this.newV = new Float32Array(this.numCells);
+      this.p = new Float32Array(this.numCells);
+      this.s = new Float32Array(this.numCells);
+      this.m = new Float32Array(this.numCells);
+      this.newM = new Float32Array(this.numCells);
+      this.wMask = new Uint8Array(this.numCells); // 1 = water
+    }
+
+    isWater(i, j) {
+      return this.wMask[i * this.numY + j] === 1;
+    }
+
+    // Hysteresis mask update from m
+    updateWaterMask() {
+      var n = this.numY;
+      var hi = params.maskHi, lo = params.maskLo;
+      if (lo > hi) lo = hi;
+      for (var i = 0; i < this.numX; i++) {
+        for (var j = 0; j < this.numY; j++) {
+          var idx = i * n + j;
+          if (this.s[idx] === 0) { this.wMask[idx] = 0; continue; }
+          var m = this.m[idx];
+          if (this.wMask[idx]) {
+            this.wMask[idx] = m >= lo ? 1 : 0;
+          } else {
+            this.wMask[idx] = m >= hi ? 1 : 0;
+          }
+          // clear tiny residue in pure air
+          if (!this.wMask[idx] && m < lo) this.m[idx] = 0;
+        }
+      }
+    }
+
+    // Face is "active" if at least one adjacent cell is water (or no air-mask)
+    faceActiveU(i, j) {
+      if (!params.airMask) return true;
+      var n = this.numY;
+      // u-face between cells (i-1,j) and (i,j)
+      var left = (i > 0) && this.wMask[(i - 1) * n + j];
+      var right = (i < this.numX) && this.wMask[i * n + j];
+      return left || right;
+    }
+    faceActiveV(i, j) {
+      if (!params.airMask) return true;
+      var n = this.numY;
+      var below = (j > 0) && this.wMask[i * n + (j - 1)];
+      var above = (j < this.numY) && this.wMask[i * n + j];
+      return below || above;
+    }
+
+    integrate(dt, gravity) {
+      var n = this.numY;
+      for (var i = 1; i < this.numX - 1; i++) {
+        for (var j = 1; j < this.numY - 1; j++) {
+          if (this.s[i * n + j] === 0 || this.s[i * n + (j - 1)] === 0) continue;
+          if (params.airMask && !this.faceActiveV(i, j)) continue;
+          this.v[i * n + j] += gravity * dt;
+        }
+      }
+    }
+
+    // Pressure on non-solid cells; with air mask, only water cells (air = open BC via s-coeff)
+    solveIncompressibility(numIters, dt) {
+      var n = this.numY;
+      var cp = params.density * this.h / dt;
+      var over = params.overRelaxation;
+      var useMask = params.airMask;
+
+      for (var iter = 0; iter < numIters; iter++) {
+        for (var i = 1; i < this.numX - 1; i++) {
+          for (var j = 1; j < this.numY - 1; j++) {
+            if (this.s[i * n + j] === 0) continue;
+            if (useMask && !this.wMask[i * n + j]) continue;
+
+            // coefficients: solid = 0; air neighbor (mask) also 0 for free surface
+            var sx0 = this.s[(i - 1) * n + j];
+            var sx1 = this.s[(i + 1) * n + j];
+            var sy0 = this.s[i * n + (j - 1)];
+            var sy1 = this.s[i * n + (j + 1)];
+            if (useMask) {
+              if (sx0 && !this.wMask[(i - 1) * n + j]) sx0 = 0;
+              if (sx1 && !this.wMask[(i + 1) * n + j]) sx1 = 0;
+              if (sy0 && !this.wMask[i * n + (j - 1)]) sy0 = 0;
+              if (sy1 && !this.wMask[i * n + (j + 1)]) sy1 = 0;
+            }
+            // but solid walls must remain closed: already 0 from s
+            // re-apply solids
+            if (this.s[(i - 1) * n + j] === 0) sx0 = 0;
+            if (this.s[(i + 1) * n + j] === 0) sx1 = 0;
+            if (this.s[i * n + (j - 1)] === 0) sy0 = 0;
+            if (this.s[i * n + (j + 1)] === 0) sy1 = 0;
+
+            // For free surface we still need the face to exist for divergence:
+            // Use full solid-aware coeffs for walls, open for air
+            // Standard approach: include solid walls only
+            sx0 = this.s[(i - 1) * n + j];
+            sx1 = this.s[(i + 1) * n + j];
+            sy0 = this.s[i * n + (j - 1)];
+            sy1 = this.s[i * n + (j + 1)];
+
+            var s = sx0 + sx1 + sy0 + sy1;
+            if (s === 0) continue;
+
+            var div = this.u[(i + 1) * n + j] - this.u[i * n + j]
+                    + this.v[i * n + (j + 1)] - this.v[i * n + j];
+
+            var p = (-div / s) * over;
+            this.p[i * n + j] += cp * p;
+
+            this.u[i * n + j]       -= sx0 * p;
+            this.u[(i + 1) * n + j] += sx1 * p;
+            this.v[i * n + j]       -= sy0 * p;
+            this.v[i * n + (j + 1)] += sy1 * p;
+          }
+        }
+      }
+    }
+
+    applyBoundary() {
+      var n = this.numY;
+      for (var i = 0; i < this.numX; i++) {
+        for (var j = 0; j < this.numY; j++) {
+          if (this.s[i * n + j] === 0) {
+            this.u[i * n + j] = 0;
+            if (i + 1 < this.numX) this.u[(i + 1) * n + j] = 0;
+            this.v[i * n + j] = 0;
+            if (j + 1 < this.numY) this.v[i * n + (j + 1)] = 0;
+          }
+        }
+      }
+      for (var i = 0; i < this.numX; i++) {
+        this.v[i * n + 0] = 0;
+        this.v[i * n + this.numY - 1] = 0;
+        this.u[i * n + 0] = this.u[i * n + 1];
+        this.u[i * n + this.numY - 1] = this.u[i * n + this.numY - 2];
+      }
+      for (var j = 0; j < this.numY; j++) {
+        this.u[0 * n + j] = 0;
+        this.u[(this.numX - 1) * n + j] = 0;
+        this.v[0 * n + j] = this.v[1 * n + j];
+        this.v[(this.numX - 1) * n + j] = this.v[(this.numX - 2) * n + j];
+      }
+    }
+
+    // Zero velocity deep in air; extrapolate from water into nearby air
+    handleAirVelocity() {
+      if (!params.airMask) return;
+      var n = this.numY;
+      var iters = Math.round(params.extIters);
+
+      // First: kill faces that touch only air
+      for (var i = 1; i < this.numX; i++) {
+        for (var j = 1; j < this.numY - 1; j++) {
+          if (!this.faceActiveU(i, j)) this.u[i * n + j] = 0;
+        }
+      }
+      for (var i = 1; i < this.numX - 1; i++) {
+        for (var j = 1; j < this.numY; j++) {
+          if (!this.faceActiveV(i, j)) this.v[i * n + j] = 0;
+        }
+      }
+
+      // Extrapolate into air cells adjacent to water (for when water advances)
+      for (var it = 0; it < iters; it++) {
+        this.newU.set(this.u);
+        this.newV.set(this.v);
+        for (var i = 1; i < this.numX - 1; i++) {
+          for (var j = 1; j < this.numY - 1; j++) {
+            if (this.s[i * n + j] === 0 || this.wMask[i * n + j]) continue;
+            // pure air cell: average from water neighbors
+            var su = 0, sv = 0, cnt = 0;
+            var dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+            for (var d = 0; d < 4; d++) {
+              var ni = i + dirs[d][0], nj = j + dirs[d][1];
+              if (this.s[ni * n + nj] !== 0 && this.wMask[ni * n + nj]) {
+                su += 0.5 * (this.u[ni * n + nj] + this.u[(ni + 1) * n + nj]);
+                sv += 0.5 * (this.v[ni * n + nj] + this.v[ni * n + (nj + 1)]);
+                cnt++;
+              }
+            }
+            if (cnt > 0) {
+              var au = su / cnt, av = sv / cnt;
+              this.newU[i * n + j] = au;
+              this.newU[(i + 1) * n + j] = au;
+              this.newV[i * n + j] = av;
+              this.newV[i * n + (j + 1)] = av;
+            }
+          }
+        }
+        this.u.set(this.newU);
+        this.v.set(this.newV);
+      }
+    }
+
+    sampleField(x, y, field) {
+      var n = this.numY, h = this.h, h1 = 1 / h, h2 = 0.5 * h;
+      x = Math.max(Math.min(x, this.numX * h), h);
+      y = Math.max(Math.min(y, this.numY * h), h);
+      var dx = 0, dy = 0, f;
+      if (field === U_FIELD) { f = this.u; dy = h2; }
+      else if (field === V_FIELD) { f = this.v; dx = h2; }
+      else { f = this.m; dx = h2; dy = h2; }
+      var x0 = Math.min(Math.floor((x - dx) * h1), this.numX - 1);
+      var tx = ((x - dx) - x0 * h) * h1;
+      var x1 = Math.min(x0 + 1, this.numX - 1);
+      var y0 = Math.min(Math.floor((y - dy) * h1), this.numY - 1);
+      var ty = ((y - dy) - y0 * h) * h1;
+      var y1 = Math.min(y0 + 1, this.numY - 1);
+      var sx = 1 - tx, sy = 1 - ty;
+      return sx * sy * f[x0 * n + y0] + tx * sy * f[x1 * n + y0]
+           + tx * ty * f[x1 * n + y1] + sx * ty * f[x0 * n + y1];
+    }
+
+    avgU(i, j) {
+      var n = this.numY;
+      var face = this.u[i * n + j];
+      var avg = (this.u[i * n + j - 1] + this.u[i * n + j]
+               + this.u[(i + 1) * n + j - 1] + this.u[(i + 1) * n + j]) * 0.25;
+      var b = params.avgBlend;
+      return face * (1 - b) + avg * b;
+    }
+    avgV(i, j) {
+      var n = this.numY;
+      var face = this.v[i * n + j];
+      var avg = (this.v[(i - 1) * n + j] + this.v[i * n + j]
+               + this.v[(i - 1) * n + j + 1] + this.v[i * n + j + 1]) * 0.25;
+      var b = params.avgBlend;
+      return face * (1 - b) + avg * b;
+    }
+
+    advectVel(dt) {
+      this.newU.set(this.u);
+      this.newV.set(this.v);
+      var n = this.numY, h = this.h, h2 = 0.5 * h;
+      for (var i = 1; i < this.numX; i++) {
+        for (var j = 1; j < this.numY; j++) {
+          // only advect active (water-touching) faces
+          if (this.s[i * n + j] !== 0 && this.s[(i - 1) * n + j] !== 0 && j < this.numY - 1) {
+            if (!params.airMask || this.faceActiveU(i, j)) {
+              var x = i * h, y = j * h + h2;
+              var u = this.u[i * n + j], v = this.avgV(i, j);
+              this.newU[i * n + j] = this.sampleField(x - dt * u, y - dt * v, U_FIELD);
+            } else {
+              this.newU[i * n + j] = 0;
+            }
+          }
+          if (this.s[i * n + j] !== 0 && this.s[i * n + j - 1] !== 0 && i < this.numX - 1) {
+            if (!params.airMask || this.faceActiveV(i, j)) {
+              var x = i * h + h2, y = j * h;
+              var u = this.avgU(i, j), v = this.v[i * n + j];
+              this.newV[i * n + j] = this.sampleField(x - dt * u, y - dt * v, V_FIELD);
+            } else {
+              this.newV[i * n + j] = 0;
+            }
+          }
+        }
+      }
+      this.u.set(this.newU);
+      this.v.set(this.newV);
+    }
+
+    // Only advect m in water cells (and a thin band so the interface can move)
+    advectSmoke(dt) {
+      this.newM.set(this.m);
+      var n = this.numY, h = this.h, h2 = 0.5 * h;
+      for (var i = 1; i < this.numX - 1; i++) {
+        for (var j = 1; j < this.numY - 1; j++) {
+          if (this.s[i * n + j] === 0) { this.newM[i * n + j] = 0; continue; }
+
+          if (params.airMask) {
+            // skip pure air far from water
+            var nearWater = this.wMask[i * n + j]
+              || this.wMask[(i - 1) * n + j] || this.wMask[(i + 1) * n + j]
+              || this.wMask[i * n + (j - 1)] || this.wMask[i * n + (j + 1)];
+            if (!nearWater) { this.newM[i * n + j] = 0; continue; }
+          }
+
+          var u = 0.5 * (this.u[i * n + j] + this.u[(i + 1) * n + j]);
+          var v = 0.5 * (this.v[i * n + j] + this.v[i * n + (j + 1)]);
+          var val = this.sampleField(i * h + h2 - dt * u, j * h + h2 - dt * v, S_FIELD);
+          // sharpen a bit
+          if (val > 0.55) val = Math.min(1, val + 0.03 * (val - 0.55));
+          else if (val < 0.35 && val > 0.01) val = Math.max(0, val * 0.92);
+          this.newM[i * n + j] = val;
+        }
+      }
+      this.m.set(this.newM);
+    }
+
+    computeMass() {
+      var sum = 0;
+      for (var i = 0; i < this.numCells; i++) sum += this.m[i];
+      return sum;
+    }
+
+    correctMass(target) {
+      if (!params.massCorr || target <= 0) return;
+      var strength = params.massCorrStrength;
+      if (strength <= 0) return;
+      var minM = params.massCorrMin;
+      var current = this.computeMass();
+      if (current <= 1e-8) return;
+      var err = target - current;
+      if (Math.abs(err) < 1e-6) return;
+      var n = this.numY;
+      var weightSum = 0;
+      for (var i = 1; i < this.numX - 1; i++) {
+        for (var j = 1; j < this.numY - 1; j++) {
+          var idx = i * n + j;
+          if (this.s[idx] === 0) continue;
+          if (this.m[idx] >= minM) weightSum += this.m[idx];
+        }
+      }
+      if (weightSum < 1e-8) return;
+      var addPerWeight = strength * err / weightSum;
+      for (var i = 1; i < this.numX - 1; i++) {
+        for (var j = 1; j < this.numY - 1; j++) {
+          var idx = i * n + j;
+          if (this.s[idx] === 0 || this.m[idx] < minM) continue;
+          this.m[idx] = Math.min(1, Math.max(0, this.m[idx] + addPerWeight * this.m[idx]));
+        }
+      }
+    }
+
+    injectJet(cx, width, speed, amount) {
+      var n = this.numY, h = this.h;
+      var i0 = Math.max(1, Math.floor((cx - width * 0.5) / h));
+      var i1 = Math.min(this.numX - 2, Math.floor((cx + width * 0.5) / h));
+      var jTop = this.numY - 3;
+      var depth = Math.max(1, Math.round(params.jetDepth));
+      var added = 0;
+      for (var i = i0; i <= i1; i++) {
+        for (var k = 0; k < depth; k++) {
+          var j = jTop - k;
+          if (j < 1 || this.s[i * n + j] === 0) continue;
+          var before = this.m[i * n + j];
+          this.m[i * n + j] = Math.max(this.m[i * n + j], amount);
+          this.wMask[i * n + j] = 1;
+          added += this.m[i * n + j] - before;
+          this.v[i * n + j] = -Math.abs(speed);
+          this.v[i * n + (j + 1)] = -Math.abs(speed);
+        }
+      }
+      return added;
+    }
+
+    brush(wx, wy, radius, mode, amount) {
+      var n = this.numY, h = this.h;
+      var r2 = radius * radius;
+      var massDelta = 0;
+      for (var i = 1; i < this.numX - 1; i++) {
+        for (var j = 1; j < this.numY - 1; j++) {
+          var x = (i + 0.5) * h, y = (j + 0.5) * h;
+          if ((x - wx) * (x - wx) + (y - wy) * (y - wy) >= r2) continue;
+          var idx = i * n + j;
+          if (mode === 0) {
+            if (this.s[idx] !== 0) {
+              var before = this.m[idx];
+              this.m[idx] = Math.min(1, Math.max(this.m[idx], amount));
+              this.wMask[idx] = 1;
+              massDelta += this.m[idx] - before;
+            }
+          } else if (mode === 1) {
+            massDelta -= this.m[idx];
+            this.s[idx] = 0;
+            this.m[idx] = 0;
+            this.wMask[idx] = 0;
+            this.u[idx] = 0;
+            this.v[idx] = 0;
+            if (i + 1 < this.numX) this.u[(i + 1) * n + j] = 0;
+            if (j + 1 < this.numY) this.v[i * n + (j + 1)] = 0;
+          } else {
+            massDelta -= this.m[idx];
+            this.m[idx] = 0;
+            this.wMask[idx] = 0;
+            if (this.s[idx] === 0) this.s[idx] = 1;
+          }
+        }
+      }
+      return massDelta;
+    }
+
+    simulate() {
+      var dt = params.dt;
+      this.updateWaterMask();
+      this.integrate(dt, params.gravity);
+      this.p.fill(0);
+      this.solveIncompressibility(params.numIters, dt);
+      this.applyBoundary();
+      this.handleAirVelocity();
+      this.advectVel(dt);
+      this.advectSmoke(dt);
+      this.updateWaterMask();
+      this.correctMass(scene.massTarget);
+    }
+  }
+
+  // ---------- Marching squares (same as before) ----------
+  function cornerM(f, i, j) {
+    var n = f.numY;
+    var sum = 0, cnt = 0;
+    var cells = [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]];
+    for (var k = 0; k < 4; k++) {
+      var ci = cells[k][0], cj = cells[k][1];
+      if (ci >= 0 && ci < f.numX && cj >= 0 && cj < f.numY) {
+        if (f.s[ci * n + cj] !== 0) {
+          sum += f.m[ci * n + cj];
+          cnt++;
+        }
+      }
+    }
+    return cnt > 0 ? sum / cnt : 0;
+  }
+
+  function lerpEdge(ax, ay, av, bx, by, bv, iso) {
+    var t = (iso - av) / ((bv - av) || 1e-8);
+    t = Math.max(0, Math.min(1, t));
+    return [ax + t * (bx - ax), ay + t * (by - ay)];
+  }
+
+  function msPolygons(caseId, x0, y0, x1, y1, v00, v10, v11, v01, iso) {
+    var e0 = lerpEdge(x0, y0, v00, x1, y0, v10, iso);
+    var e1 = lerpEdge(x1, y0, v10, x1, y1, v11, iso);
+    var e2 = lerpEdge(x1, y1, v11, x0, y1, v01, iso);
+    var e3 = lerpEdge(x0, y1, v01, x0, y0, v00, iso);
+    var c00 = [x0, y0], c10 = [x1, y0], c11 = [x1, y1], c01 = [x0, y1];
+    switch (caseId) {
+      case 0: return [];
+      case 15: return [[c00, c10, c11, c01]];
+      case 1: return [[c00, e0, e3]];
+      case 2: return [[c10, e1, e0]];
+      case 3: return [[c00, c10, e1, e3]];
+      case 4: return [[c11, e2, e1]];
+      case 5: return [[c00, e0, e1, c11, e2, e3]];
+      case 6: return [[c10, c11, e2, e0]];
+      case 7: return [[c00, c10, c11, e2, e3]];
+      case 8: return [[c01, e3, e2]];
+      case 9: return [[c00, e0, e2, c01]];
+      case 10: return [[c10, e1, e2, c01, e3, e0]];
+      case 11: return [[c00, c10, e1, e2, c01]];
+      case 12: return [[c11, c01, e3, e1]];
+      case 13: return [[c00, e0, e1, c11, c01]];
+      case 14: return [[c10, c11, c01, e3, e0]];
+      default: return [];
+    }
+  }
+
+  function drawMarchingSquares(f) {
+    var n = f.numY, h = f.h;
+    var iso = params.drawThresh;
+    var fillA = params.msFill;
+    var edgeW = params.msEdge;
+    var cx = f.numX + 1, cy = f.numY + 1;
+    var corners = new Float32Array(cx * cy);
+    for (var i = 0; i < cx; i++) {
+      for (var j = 0; j < cy; j++) corners[i * cy + j] = cornerM(f, i, j);
+    }
+    c.fillStyle = "rgba(40, 160, 230, " + fillA + ")";
+    c.strokeStyle = "rgba(180, 230, 255, 0.95)";
+    c.lineWidth = edgeW;
+    c.lineJoin = "round";
+    for (var i = 0; i < f.numX; i++) {
+      for (var j = 0; j < f.numY; j++) {
+        if (f.s[i * n + j] === 0) continue;
+        var v00 = corners[i * cy + j];
+        var v10 = corners[(i + 1) * cy + j];
+        var v11 = corners[(i + 1) * cy + (j + 1)];
+        var v01 = corners[i * cy + (j + 1)];
+        var caseId = (v00 >= iso ? 1 : 0) | (v10 >= iso ? 2 : 0) | (v11 >= iso ? 4 : 0) | (v01 >= iso ? 8 : 0);
+        if (caseId === 0) continue;
+        var x0 = i * h, y0 = j * h, x1 = (i + 1) * h, y1 = (j + 1) * h;
+        var polys = msPolygons(caseId, x0, y0, x1, y1, v00, v10, v11, v01, iso);
+        for (var p = 0; p < polys.length; p++) {
+          var poly = polys[p];
+          if (poly.length < 3) continue;
+          c.beginPath();
+          c.moveTo(cX(poly[0][0]), cY(poly[0][1]));
+          for (var k = 1; k < poly.length; k++) c.lineTo(cX(poly[k][0]), cY(poly[k][1]));
+          c.closePath();
+          if (fillA > 0.01) c.fill();
+          if (edgeW > 0 && caseId !== 15) c.stroke();
+        }
+      }
+    }
+  }
+
+  function updateScale() {
+    var wrap = document.getElementById("canvasWrap");
+    var w = wrap.clientWidth - 8, h = wrap.clientHeight - 8;
+    if (w < 100) w = 400;
+    if (h < 100) h = 300;
+    canvas.width = w;
+    canvas.height = h;
+    cScale = canvas.height / simHeight;
+    simWidth = canvas.width / cScale;
+  }
+
+  function makeDomainWalls(f) {
+    var n = f.numY;
+    for (var i = 0; i < f.numX; i++) {
+      for (var j = 0; j < f.numY; j++) {
+        f.s[i * n + j] = (i === 0 || i === f.numX - 1 || j === 0) ? 0 : 1;
+        f.m[i * n + j] = 0;
+        f.wMask[i * n + j] = 0;
+      }
+    }
+  }
+
+  function setupScene(sceneNr) {
+    scene.sceneNr = sceneNr;
+    scene.frameNr = 0;
+    scene.paused = false;
+    scene.jetOn = (sceneNr === 5);
+    document.getElementById("btnPause").textContent = "Pause";
+    setActiveButton(sceneNr);
+    updateScale();
+
+    var res = params.resolution;
+    var domainHeight = 1.0;
+    var domainWidth = domainHeight / simHeight * simWidth;
+    var h = domainHeight / res;
+    var numX = Math.floor(domainWidth / h);
+    var numY = Math.floor(domainHeight / h);
+    var f = scene.fluid = new Fluid(params.density, numX, numY, h);
+    var n = f.numY;
+    makeDomainWalls(f);
+
+    if (sceneNr === 0) {
+      for (var i = 1; i < f.numX - 1; i++) {
+        for (var j = 1; j < Math.floor(f.numY * 0.4); j++) {
+          f.m[i * n + j] = 1;
+          f.wMask[i * n + j] = 1;
+        }
+      }
+      document.getElementById("info").textContent = "Tank. Air mask on.";
+    } else if (sceneNr === 4) {
+      var cx = domainWidth * 0.5, cy = domainHeight * 0.75;
+      var radius = params.dropRadius, poolH = params.poolHeight;
+      for (var i = 1; i < f.numX - 1; i++) {
+        for (var j = 1; j < f.numY - 1; j++) {
+          var x = (i + 0.5) * h, y = (j + 0.5) * h;
+          if ((x - cx) * (x - cx) + (y - cy) * (y - cy) < radius * radius) {
+            f.m[i * n + j] = 1; f.wMask[i * n + j] = 1;
+          }
+          if (y < poolH) { f.m[i * n + j] = 1; f.wMask[i * n + j] = 1; }
+        }
+      }
+      document.getElementById("info").textContent = "Water Drop. La bola no debería difuminarse como humo.";
+    } else if (sceneNr === 5) {
+      scene.jetX = domainWidth * 0.5;
+      for (var i = 1; i < f.numX - 1; i++) {
+        for (var j = 1; j < f.numY - 1; j++) {
+          if ((j + 0.5) * h < params.poolHeight) {
+            f.m[i * n + j] = 1; f.wMask[i * n + j] = 1;
+          }
+        }
+      }
+      document.getElementById("info").textContent = "Jet + air mask.";
+    } else if (sceneNr === 6) {
+      var mid = Math.floor(f.numX * 0.5);
+      var gapTop = Math.floor(f.numY * 0.18);
+      for (var j = 1; j < f.numY - 1; j++) {
+        if (j > gapTop) { f.s[mid * n + j] = 0; f.m[mid * n + j] = 0; }
+      }
+      for (var i = 1; i < mid; i++) {
+        for (var j = 1; j < Math.floor(f.numY * 0.55); j++) {
+          f.m[i * n + j] = 1; f.wMask[i * n + j] = 1;
+        }
+      }
+      for (var i = mid + 1; i < f.numX - 1; i++) {
+        for (var j = 1; j < Math.floor(f.numY * 0.20); j++) {
+          f.m[i * n + j] = 1; f.wMask[i * n + j] = 1;
+        }
+      }
+      document.getElementById("info").textContent = "Vasos comunicantes + air mask.";
+    } else {
+      document.getElementById("info").textContent = "Empty. Pintá agua y sólidos.";
+    }
+
+    scene.massTarget = f.computeMass();
+    scene.massCurrent = scene.massTarget;
+  }
+
+  function setActiveButton(nr) {
+    document.getElementById("btnDrop").classList.toggle("active", nr === 4);
+    document.getElementById("btnJet").classList.toggle("active", nr === 5);
+    document.getElementById("btnTank").classList.toggle("active", nr === 0);
+    document.getElementById("btnVessels").classList.toggle("active", nr === 6);
+    document.getElementById("btnEmpty").classList.toggle("active", nr === 7);
+  }
+  function setPaintMode(m) {
+    paintMode = m;
+    document.getElementById("btnModeWater").classList.toggle("active", m === 0);
+    document.getElementById("btnModeSolid").classList.toggle("active", m === 1);
+    document.getElementById("btnModeErase").classList.toggle("active", m === 2);
+  }
+  function resetScene() { setupScene(scene.sceneNr); }
+  function togglePause() {
+    scene.paused = !scene.paused;
+    document.getElementById("btnPause").textContent = scene.paused ? "Resume" : "Pause";
+  }
+
+  document.getElementById("btnDrop").onclick = function () { setupScene(4); };
+  document.getElementById("btnJet").onclick = function () { setupScene(5); };
+  document.getElementById("btnTank").onclick = function () { setupScene(0); };
+  document.getElementById("btnVessels").onclick = function () { setupScene(6); };
+  document.getElementById("btnEmpty").onclick = function () { setupScene(7); };
+  document.getElementById("btnPause").onclick = togglePause;
+  document.getElementById("btnReset").onclick = resetScene;
+  document.getElementById("btnModeWater").onclick = function () { setPaintMode(0); };
+  document.getElementById("btnModeSolid").onclick = function () { setPaintMode(1); };
+  document.getElementById("btnModeErase").onclick = function () { setPaintMode(2); };
+
+  document.getElementById("chkMS").onchange = function () { scene.showMS = this.checked; };
+  document.getElementById("chkStream").onchange = function () { scene.showStreamlines = this.checked; };
+  document.getElementById("chkVel").onchange = function () { scene.showVelocities = this.checked; };
+  document.getElementById("chkPressure").onchange = function () { scene.showPressure = this.checked; };
+  document.getElementById("chkWater").onchange = function () { scene.showSmoke = this.checked; };
+  document.getElementById("chkMassCorr").onchange = function () { params.massCorr = this.checked; };
+  document.getElementById("chkAirMask").onchange = function () { params.airMask = this.checked; };
+
+  function bindKnob(id, key, fmt, onChange) {
+    var el = document.getElementById(id);
+    var valEl = document.getElementById("v" + id.slice(1));
+    function update() {
+      var v = parseFloat(el.value);
+      params[key] = v;
+      valEl.textContent = fmt(v);
+      if (onChange) onChange(v);
+    }
+    el.oninput = update;
+    update();
+  }
+
+  bindKnob("kDrawThresh", "drawThresh", function (v) { return v.toFixed(2); });
+  bindKnob("kBright", "brightness", function (v) { return v.toFixed(2); });
+  bindKnob("kMsFill", "msFill", function (v) { return v.toFixed(2); });
+  bindKnob("kMsEdge", "msEdge", function (v) { return v.toFixed(1); });
+  bindKnob("kMaskHi", "maskHi", function (v) { return v.toFixed(2); });
+  bindKnob("kMaskLo", "maskLo", function (v) { return v.toFixed(2); });
+  bindKnob("kExtIters", "extIters", function (v) { return String(Math.round(v)); });
+  bindKnob("kDt", "dt", function (v) { return v.toFixed(3); });
+  bindKnob("kIters", "numIters", function (v) { return String(Math.round(v)); });
+  bindKnob("kOver", "overRelaxation", function (v) { return v.toFixed(2); });
+  bindKnob("kGrav", "gravity", function (v) { return v.toFixed(2); });
+  bindKnob("kRho", "density", function (v) { return String(Math.round(v)); });
+  bindKnob("kAvgBlend", "avgBlend", function (v) { return v.toFixed(2); });
+  bindKnob("kMassStr", "massCorrStrength", function (v) { return v.toFixed(2); });
+  bindKnob("kMassMin", "massCorrMin", function (v) { return v.toFixed(2); });
+  bindKnob("kJetSpeed", "jetSpeed", function (v) { return v.toFixed(2); });
+  bindKnob("kJetWidth", "jetWidth", function (v) { return v.toFixed(3); });
+  bindKnob("kJetAmt", "jetAmount", function (v) { return v.toFixed(2); });
+  bindKnob("kJetDepth", "jetDepth", function (v) { return String(Math.round(v)); });
+  bindKnob("kPaintR", "paintRadius", function (v) { return v.toFixed(3); });
+  bindKnob("kPaintAmt", "paintAmount", function (v) { return v.toFixed(2); });
+  bindKnob("kDropR", "dropRadius", function (v) { return v.toFixed(3); });
+  bindKnob("kPool", "poolHeight", function (v) { return v.toFixed(3); });
+  bindKnob("kRes", "resolution", function (v) { return String(Math.round(v)); }, function () {
+    setupScene(scene.sceneNr);
+  });
+
+  function cX(x) { return x * cScale; }
+  function cY(y) { return canvas.height - y * cScale; }
+
+  function draw() {
+    var f = scene.fluid;
+    if (!f) return;
+    var n = f.numY, h = f.h;
+
+    c.fillStyle = "#0c0c14";
+    c.fillRect(0, 0, canvas.width, canvas.height);
+
+    // solids
+    c.fillStyle = "#373430";
+    for (var i = 0; i < f.numX; i++) {
+      for (var j = 0; j < f.numY; j++) {
+        if (f.s[i * n + j] !== 0) continue;
+        c.fillRect(cX(i * h), cY((j + 1) * h), cScale * h + 1, cScale * h + 1);
+      }
+    }
+
+    // water cells fill
+    if (scene.showSmoke) {
+      var bright = params.brightness;
+      var cellIso = Math.min(params.drawThresh, params.maskLo, 0.2);
+      for (var i = 0; i < f.numX; i++) {
+        for (var j = 0; j < f.numY; j++) {
+          var idx = i * n + j;
+          if (f.s[idx] === 0) continue;
+          var s = f.m[idx];
+          if (s < cellIso) continue;
+          var t = Math.min(1, s * bright);
+          var a = scene.showMS ? (0.55 + 0.4 * t) : 1;
+          c.fillStyle = "rgba(" + Math.floor(20 + 20 * (1 - t)) + "," +
+            Math.floor(110 + 90 * t) + "," + Math.floor(190 + 50 * t) + "," + a + ")";
+          c.fillRect(cX(i * h), cY((j + 1) * h), cScale * h + 1, cScale * h + 1);
+        }
+      }
+    }
+
+    if (scene.showMS) drawMarchingSquares(f);
+
+    if (scene.showVelocities) {
+      c.strokeStyle = "rgba(255,255,255,0.65)";
+      c.lineWidth = 1;
+      var scale = 0.012;
+      for (var i = 1; i < f.numX - 1; i += 3) {
+        for (var j = 1; j < f.numY - 1; j += 3) {
+          if (!f.wMask[i * n + j]) continue;
+          var u = f.u[i * n + j], v = f.v[i * n + j];
+          c.beginPath();
+          c.moveTo(cX(i * h), cY((j + 0.5) * h));
+          c.lineTo(cX(i * h + u * scale), cY((j + 0.5) * h + v * scale));
+          c.stroke();
+        }
+      }
+    }
+
+    if (scene.showStreamlines) {
+      c.strokeStyle = "rgba(255,255,255,0.3)";
+      c.lineWidth = 1;
+      for (var i = 3; i < f.numX - 3; i += 8) {
+        for (var j = 3; j < f.numY - 3; j += 8) {
+          if (!f.wMask[i * n + j]) continue;
+          var x = (i + 0.5) * h, y = (j + 0.5) * h;
+          c.beginPath();
+          c.moveTo(cX(x), cY(y));
+          for (var s = 0; s < 16; s++) {
+            var u = f.sampleField(x, y, U_FIELD);
+            var v = f.sampleField(x, y, V_FIELD);
+            x += u * 0.007; y += v * 0.007;
+            if (x < 0 || y < 0 || x > f.numX * h || y > f.numY * h) break;
+            c.lineTo(cX(x), cY(y));
+          }
+          c.stroke();
+        }
+      }
+    }
+
+    if (scene.jetOn) {
+      c.fillStyle = "rgba(120,210,255,0.55)";
+      var jx = cX(scene.jetX);
+      var jw = Math.max(4, cScale * params.jetWidth);
+      c.fillRect(jx - jw / 2, 3, jw, 9);
+    }
+
+    c.fillStyle = "#aaa";
+    c.font = "12px monospace";
+    c.fillText("frame " + scene.frameNr + (scene.paused ? " [PAUSED]" : ""), 8, canvas.height - 8);
+  }
+
+  var pointerDown = false;
+  function worldFromEvent(clientX, clientY) {
+    var bounds = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / bounds.width;
+    var scaleY = canvas.height / bounds.height;
+    return {
+      x: ((clientX - bounds.left) * scaleX) / cScale,
+      y: (canvas.height - (clientY - bounds.top) * scaleY) / cScale
+    };
+  }
+  function applyBrush(cx, cy) {
+    if (!scene.fluid) return;
+    var w = worldFromEvent(cx, cy);
+    if (scene.jetOn && paintMode === 0 && w.y > simHeight * 0.85) {
+      scene.jetX = Math.max(0.04, Math.min(simWidth - 0.04, w.x));
+      return;
+    }
+    var delta = scene.fluid.brush(w.x, w.y, params.paintRadius, paintMode, params.paintAmount);
+    scene.massTarget += delta;
+    if (scene.massTarget < 0) scene.massTarget = 0;
+  }
+  function onDown(cx, cy) { pointerDown = true; applyBrush(cx, cy); }
+  function onMove(cx, cy) { if (pointerDown) applyBrush(cx, cy); }
+  function onUp() { pointerDown = false; }
+
+  canvas.addEventListener("mousedown", function (e) { onDown(e.clientX, e.clientY); });
+  canvas.addEventListener("mousemove", function (e) { onMove(e.clientX, e.clientY); });
+  canvas.addEventListener("mouseup", onUp);
+  canvas.addEventListener("mouseleave", onUp);
+  canvas.addEventListener("touchstart", function (e) {
+    e.preventDefault();
+    onDown(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+  canvas.addEventListener("touchmove", function (e) {
+    e.preventDefault();
+    onMove(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+  canvas.addEventListener("touchend", onUp);
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "p" || e.key === " ") { e.preventDefault(); togglePause(); }
+    if (e.key === "r") resetScene();
+    if (e.key === "1") setPaintMode(0);
+    if (e.key === "2") setPaintMode(1);
+    if (e.key === "3") setPaintMode(2);
+  });
+  window.addEventListener("resize", function () {
+    updateScale();
+    if (scene.fluid) setupScene(scene.sceneNr);
+  });
+
+  function simulate() {
+    if (scene.paused || !scene.fluid) return;
+    if (scene.jetOn) {
+      scene.massTarget += scene.fluid.injectJet(scene.jetX, params.jetWidth, params.jetSpeed, params.jetAmount);
+    }
+    scene.fluid.simulate();
+    scene.frameNr++;
+    if (scene.frameNr % 8 === 0) {
+      scene.massCurrent = scene.fluid.computeMass();
+      var t = scene.massTarget, cur = scene.massCurrent, diff = cur - t;
+      document.getElementById("massInfo").textContent =
+        "mass: " + cur.toFixed(1) + " / tgt " + t.toFixed(1) +
+        " (Δ" + (diff >= 0 ? "+" : "") + diff.toFixed(2) + ")";
+    }
+  }
+
+  function update() {
+    simulate();
+    draw();
+    requestAnimationFrame(update);
+  }
+
+  setupScene(4);
+  update();
+})();
+</script>
+</body>
+</html>

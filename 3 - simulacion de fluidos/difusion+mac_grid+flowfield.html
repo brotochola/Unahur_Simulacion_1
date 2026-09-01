@@ -1,0 +1,1983 @@
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Laboratorio de agua</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            background: #1a1a1a;
+            color: #eee;
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+        }
+
+        #lienzo-wrap {
+            flex: 0 0 auto;
+            position: relative;
+            line-height: 0;
+        }
+
+        canvas {
+            display: block;
+            background: #000;
+            cursor: crosshair;
+        }
+
+        #hud {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            z-index: 2;
+            pointer-events: none;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.45;
+            color: #dff;
+            background: rgba(0, 0, 0, 0.65);
+            padding: 6px 10px;
+            border-radius: 6px;
+            white-space: pre;
+        }
+
+        #inspector {
+            position: absolute;
+            z-index: 3;
+            pointer-events: none;
+            display: none;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #fff;
+            background: rgba(10, 20, 40, 0.92);
+            border: 1px solid #4af;
+            padding: 8px 10px;
+            border-radius: 6px;
+            white-space: pre;
+            max-width: 260px;
+        }
+
+        .herramientas {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .herramientas label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            background: #333;
+            padding: 6px 10px;
+            border-radius: 6px;
+        }
+
+        .herramientas label:has(input:checked) {
+            background: #1e5a8a;
+        }
+
+        #panel {
+            flex: 1 1 340px;
+            max-width: 420px;
+            max-height: 96vh;
+            overflow-y: auto;
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 14px 16px 24px;
+            font-size: 14px;
+            line-height: 1.35;
+        }
+
+        #panel h1 {
+            margin: 0 0 8px;
+            font-size: 1.35rem;
+        }
+
+        #panel .intro {
+            margin: 0 0 14px;
+            color: #bbb;
+            font-size: 0.92rem;
+        }
+
+        .seccion {
+            margin: 16px 0;
+            padding-top: 10px;
+            border-top: 1px solid #444;
+        }
+
+        .seccion h2 {
+            margin: 0 0 6px;
+            font-size: 1.05rem;
+            color: #7ec8ff;
+        }
+
+        .seccion .desc {
+            margin: 0 0 10px;
+            color: #aaa;
+            font-size: 0.88rem;
+        }
+
+        .control {
+            margin: 12px 0;
+        }
+
+        .control label {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .control .valor {
+            font-weight: 400;
+            color: #9cf;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .control input[type="range"] {
+            width: 100%;
+        }
+
+        .control .ayuda {
+            margin: 4px 0 0;
+            color: #888;
+            font-size: 0.82rem;
+        }
+
+        .control.checkbox {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .control.checkbox .fila {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pista {
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: #333;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div id="lienzo-wrap">
+        <div id="hud">FPS dibujo: —</div>
+        <div id="inspector"></div>
+    </div>
+    <aside id="panel">
+        <h1>Laboratorio de agua</h1>
+        <p class="intro">
+            Elegí herramienta: Agua, Piedra o Borrar, y pintá con click izquierdo.
+            Rueda = zoom. Espacio + arrastrar (o botón del medio) = mover la vista.
+            Tecla P = pausa. Los sliders cambian las reglas en vivo.
+        </p>
+        <div id="controles"></div>
+        <p class="pista">Tip: con estos defaults el agua viaja por mangueras y por flechas.
+            Bajá “Agua que mueven las mangueras” a 0 si querés que solo empujen las flechas.</p>
+    </aside>
+
+    <script>
+        // =============================================================================
+        // Laboratorio de agua — grilla 2D
+        // Mangueras compartidas (H/V). La presión escribe empuje; el agua se mueve
+        // por sliders separados. (técnico: Fick en aristas + Jacobi en masa)
+        // =============================================================================
+
+        const AIRE = 0
+        const FLUIDO = 1
+        const PIEDRA = 2
+        const EPS = 1e-6
+
+        function umbralAireDe(c) {
+            if (!c || !c.mundo || !c.mundo.config) return 0.0001
+            return Math.max(1e-12, c.mundo.config.porDebajoDeEstoEsAire)
+        }
+
+        function lerp(a, b, t) {
+            return a + (b - a) * t
+        }
+
+        // Pseudo-aleatorio estable: -1 o +1 (desempate gravedad izq/der)
+        function hashDir(x, y, frame) {
+            let h = (x * 374761393 + y * 668265263 + frame * 362437) | 0
+            h = (h ^ (h >>> 13)) * 1274126177
+            return (h & 1) === 0 ? -1 : 1
+        }
+
+        function esPiedra(c) {
+            return c && c.material === PIEDRA
+        }
+
+        function esFluido(c) {
+            return c && c.material === FLUIDO && c.cantidad > umbralAireDe(c)
+        }
+
+        function estaVacia(c) {
+            return c && c.material !== PIEDRA && c.cantidad <= umbralAireDe(c)
+        }
+
+        function puedeRecibir(from, to) {
+            if (!to || esPiedra(to)) return false
+            if (estaVacia(to)) return true
+            return to.material === from.material
+        }
+
+        // =============================================================================
+        // Manguera: empuje compartido entre dos casillas (sin duplicar aristas)
+        // empuje positivo = hacia +x (derecha) o +y (abajo)
+        // =============================================================================
+        class Manguera {
+            constructor(casillaA, casillaB, eje) {
+                this.casillaA = casillaA
+                this.casillaB = casillaB
+                this.eje = eje // 'x' | 'y'
+                this.empujeActual = 0
+                this.empujeAnterior = 0
+                this.empujeNuevo = 0
+            }
+
+            commitAnterior() {
+                this.empujeAnterior = this.empujeActual
+            }
+
+            commitNuevo() {
+                this.empujeActual = this.empujeNuevo
+            }
+        }
+
+        // =============================================================================
+        // Casilla: material, agua, refs a mangueras, flecha (vx/vy)
+        // =============================================================================
+        class Casilla {
+            constructor(x, y, mundo) {
+                this.x = x
+                this.y = y
+                this.mundo = mundo
+                this.material = AIRE
+                this.cantidad = 0
+                this.delta = 0 // anotación de cambio de agua (técnico: Jacobi)
+
+                this.mangueraIzq = null
+                this.mangueraDer = null
+                this.mangueraArr = null
+                this.mangueraAba = null
+
+                this.vx = 0
+                this.vy = 0
+                this.vxAnterior = 0
+                this.vyAnterior = 0
+                this.vxNuevo = 0
+                this.vyNuevo = 0
+
+                // Proyección Stam (presión / divergencia en el centro)
+                this.p = 0
+                this.pNuevo = 0
+                this.div = 0
+            }
+
+            renderizar() {
+                const cfg = this.mundo.config
+                const ctx = this.mundo.ctx
+                if (esPiedra(this)) {
+                    ctx.fillStyle = cfg.colorPiedra
+                } else {
+                    const cantMapeada = this.cantidad / cfg.cantidadMaximadeMaterial
+                    const c = Math.floor(Math.min(1, cantMapeada) * cfg.colorMax)
+                    ctx.fillStyle = "rgb(" + c + "," + c + "," + c + ")"
+                }
+                ctx.fillRect(
+                    this.x * cfg.cellSize,
+                    this.y * cfg.cellSize,
+                    cfg.cellSize,
+                    cfg.cellSize
+                )
+            }
+
+            getVecina(dx, dy) {
+                const cfg = this.mundo.config
+                const nx = this.x + dx
+                const ny = this.y + dy
+                if (nx < 0 || nx >= cfg.ancho || ny < 0 || ny >= cfg.alto) return null
+                if (!this.mundo.grilla[nx]) return null
+                return this.mundo.grilla[nx][ny] || null
+            }
+
+            // Promedio de empujes horizontales / verticales → objetivo de flecha
+            objetivoFlechaDesdeMangueras() {
+                let sumX = 0
+                let nX = 0
+                let sumY = 0
+                let nY = 0
+                if (this.mangueraIzq) {
+                    sumX += this.mangueraIzq.empujeActual
+                    nX++
+                }
+                if (this.mangueraDer) {
+                    sumX += this.mangueraDer.empujeActual
+                    nX++
+                }
+                if (this.mangueraArr) {
+                    sumY += this.mangueraArr.empujeActual
+                    nY++
+                }
+                if (this.mangueraAba) {
+                    sumY += this.mangueraAba.empujeActual
+                    nY++
+                }
+                return {
+                    vx: nX > 0 ? sumX / nX : 0,
+                    vy: nY > 0 ? sumY / nY : 0,
+                }
+            }
+        }
+
+        // =============================================================================
+        // Mundo
+        // =============================================================================
+        class Mundo {
+            config = {
+                ancho: 80,
+                alto: 80,
+                cellSize: 8,
+                cantidadMaximadeMaterial: 100,
+                colorMax: 255,
+                colorFondo: "#000",
+                colorPiedra: "#666",
+
+                // Presión → empuje de mangueras
+                fuerzaDelEmpujePorPresion: 1.76,
+                cuantoDeLaDiferenciaCuenta: 0.40,
+                queTanRapidoCambiaElEmpuje: 0.42,
+                suavizadoEntreMangueras: 0.32,
+                queTanRapidoSeApagaElEmpuje: 0.959,
+                aguaQueMuevenLasMangueras: 3.89,
+
+                // Flechas de casilla
+                queTanRapidoLaCasillaCopiaElEmpuje: 0.82,
+                suavizadoDeFlechasEntreCasillas: 0.62,
+                friccionDeLasFlechas: 0.883,
+                aguaQueArrastraLaFlecha: 5.15,
+                ignorarFlechasMuyChiquitas: 0,
+                flechasMuevenAgua: true,
+                velocidadPorCasillaDeRaycast: 26,
+                maxCasillasRaycast: 20,
+
+                // Gravedad (acelera vy; el salto multicelda lo hace el raycast de flechas)
+                gravedadPrendida: true,
+                aceleracionDeLaCaida: 10,
+                velocidadFlechaMaxima: 500,
+                fuerzaDeLaCaida: 0, // masa del escurrido diagonal 1 celda
+                aceleracionGravedadEnManguerasV: true, // también suma g a empujes verticales
+
+                // Proyección Stam sobre mangueras (curls / div≈0)
+                proyeccionPrendida: true,
+                iteracionesProyeccion: 3,
+                dtProyeccion: 0.10,
+                fuerzaDeLaProyeccion: 0.28,
+                warmStartPresion: false,
+                cuantoLaFlechaEscribeLaManguera: 0.44,
+                cuantoLaProyeccionPisaLaFlecha: 1.00,
+                proyeccionSoloFluidas: true,
+                mostrarDivergenciaEnInspector: true,
+                mostrarDivergenciaEnHud: true,
+
+                // Pincel
+                herramientaActual: "agua", // "agua" | "piedra" | "borrar"
+                pincelRadio: 1,
+                pincelCantidad: 500,
+                porDebajoDeEstoEsAire: 0.000001,
+
+                // Tiempo
+                simulacionEnPausa: false,
+                pasosDeFisicaPorSegundo: 60,
+
+                // Debug
+                mostrarFlechas: false,
+                mostrarNumeros: false,
+                mostrarContornoCasillas: false,
+                inspeccionConMouse: false,
+                escalaDibujoFlecha: 0.80,
+                escalaDibujoEmpuje: 0.10,
+                colorFlecha: "#0cf",
+                colorEmpujePos: "#0cf",
+                colorEmpujeNeg: "#f60",
+                colorContorno: "rgba(255,255,255,0.22)",
+                colorResalteInspeccion: "#ff0",
+            }
+
+            constructor() {
+                const cfg = this.config
+                this.mouse = {
+                    x: 0, y: 0,
+                    down: false,
+                    pantallaX: 0,
+                    pantallaY: 0,
+                }
+                this.camara = { zoom: 1, panX: 0, panY: 0 }
+                this.spaceDown = false
+                this.panning = false
+                this.panLastX = 0
+                this.panLastY = 0
+                this.frame = 0
+
+                // Timing / HUD
+                this.acumuladorFisica = 0
+                this.ultimoFrameMs = performance.now()
+                this.msFisica = 0
+                this.msDibujo = 0
+                this.fpsSamples = []
+                this.fpsMostrado = 0
+                this.hudUltimaActualizacion = 0
+                this.hudEl = document.getElementById("hud")
+                this.inspectorEl = document.getElementById("inspector")
+                this.divergenciaMax = 0
+
+                this.canvas = document.createElement("canvas")
+                this.ctx = this.canvas.getContext("2d")
+                this.canvas.width = cfg.ancho * cfg.cellSize
+                this.canvas.height = cfg.alto * cfg.cellSize
+                document.getElementById("lienzo-wrap").appendChild(this.canvas)
+
+                this.construirGrilla()
+                this.ponerBordesPiedra()
+                this.ponerListeners()
+                this.armarPanelControles()
+                this.gameloop()
+            }
+
+            // --- Cámara / mouse ---
+
+            mundoDesdePantalla(clientX, clientY) {
+                const cfg = this.config
+                const rect = this.canvas.getBoundingClientRect()
+                const sx = clientX - rect.left
+                const sy = clientY - rect.top
+                const wx = (sx - this.camara.panX) / this.camara.zoom
+                const wy = (sy - this.camara.panY) / this.camara.zoom
+                return { wx, wy, sx, sy }
+            }
+
+            actualizarMouse(e) {
+                const cfg = this.config
+                const { wx, wy, sx, sy } = this.mundoDesdePantalla(e.clientX, e.clientY)
+                this.mouse.pantallaX = sx
+                this.mouse.pantallaY = sy
+                this.mouse.x = Math.floor(wx / cfg.cellSize)
+                this.mouse.y = Math.floor(wy / cfg.cellSize)
+            }
+
+            esBordeMuro(x, y) {
+                const cfg = this.config
+                return x === 0 || x === cfg.ancho - 1 || y === cfg.alto - 1
+            }
+
+            ponerListeners() {
+                this.canvas.addEventListener("contextmenu", (e) => e.preventDefault())
+
+                this.canvas.addEventListener("mousedown", (e) => {
+                    this.actualizarMouse(e)
+                    // Pan: botón medio, o espacio+izquierdo
+                    if (e.button === 1 || (e.button === 0 && this.spaceDown)) {
+                        this.panning = true
+                        this.panLastX = e.clientX
+                        this.panLastY = e.clientY
+                        e.preventDefault()
+                        return
+                    }
+                    if (e.button === 0) {
+                        this.mouse.down = true
+                        if (e.shiftKey) {
+                            this._herramientaAntesDerecho = this.config.herramientaActual
+                            this.config.herramientaActual = "piedra"
+                            this._forzandoPiedraClickDerecho = true
+                        }
+                    } else if (e.button === 2) {
+                        // Click derecho: piedra rápida
+                        this.mouse.down = true
+                        this._herramientaAntesDerecho = this.config.herramientaActual
+                        this.config.herramientaActual = "piedra"
+                        this._forzandoPiedraClickDerecho = true
+                    }
+                })
+
+                window.addEventListener("mouseup", (e) => {
+                    if (this.panning) this.panning = false
+                    this.mouse.down = false
+                    if (this._forzandoPiedraClickDerecho) {
+                        this.config.herramientaActual = this._herramientaAntesDerecho || "agua"
+                        this._forzandoPiedraClickDerecho = false
+                        this.sincronizarRadiosHerramienta()
+                    }
+                })
+
+                this.canvas.addEventListener("mouseleave", () => {
+                    // no cortar pan si salimos; window mouseup lo corta
+                    if (!this.panning) this.mouse.down = false
+                })
+
+                this.canvas.addEventListener("mousemove", (e) => {
+                    if (this.panning) {
+                        this.camara.panX += e.clientX - this.panLastX
+                        this.camara.panY += e.clientY - this.panLastY
+                        this.panLastX = e.clientX
+                        this.panLastY = e.clientY
+                        return
+                    }
+                    this.actualizarMouse(e)
+                })
+
+                this.canvas.addEventListener("wheel", (e) => {
+                    e.preventDefault()
+                    const { wx, wy, sx, sy } = this.mundoDesdePantalla(e.clientX, e.clientY)
+                    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
+                    const nuevo = Math.min(16, Math.max(0.25, this.camara.zoom * factor))
+                    // Mantener el punto del mundo bajo el cursor
+                    this.camara.panX = sx - wx * nuevo
+                    this.camara.panY = sy - wy * nuevo
+                    this.camara.zoom = nuevo
+                }, { passive: false })
+
+                window.addEventListener("keydown", (e) => {
+                    if (e.code === "Space") {
+                        this.spaceDown = true
+                        e.preventDefault()
+                    }
+                    if (e.code === "KeyP" && !e.repeat) {
+                        this.config.simulacionEnPausa = !this.config.simulacionEnPausa
+                        this.sincronizarCheckbox("simulacionEnPausa")
+                    }
+                })
+                window.addEventListener("keyup", (e) => {
+                    if (e.code === "Space") this.spaceDown = false
+                })
+            }
+
+            sincronizarCheckbox(key) {
+                const el = document.getElementById("ctrl-" + key)
+                if (el) el.checked = !!this.config[key]
+            }
+
+            sincronizarRadiosHerramienta() {
+                const v = this.config.herramientaActual
+                document.querySelectorAll('input[name="herramienta"]').forEach(r => {
+                    r.checked = r.value === v
+                })
+            }
+
+            // --- Panel UI (nombres claros + tooltips + ayuda) ---
+
+            armarPanelControles() {
+                const root = document.getElementById("controles")
+                const secciones = [
+                    {
+                        titulo: "Pincel",
+                        desc: "Elegí qué dejás al pintar. El click derecho también pone piedra. Los muros del borde no se pueden borrar.",
+                        items: [
+                            {
+                                key: "herramientaActual",
+                                tipo: "herramienta",
+                                label: "Herramienta",
+                                ayuda: "Agua pinta líquido, Piedra construye muros, Borrar limpia casillas (menos los bordes del recipiente).",
+                            },
+                            {
+                                key: "pincelRadio",
+                                label: "Tamaño del pincel",
+                                min: 0, max: 10, step: 1,
+                                ayuda: "Radio en casillas del círculo que pintás.",
+                            },
+                            {
+                                key: "pincelCantidad",
+                                label: "Agua que agrega el pincel",
+                                min: 1, max: 500, step: 1,
+                                ayuda: "Cada pasada del pincel SUMA esta cantidad de agua a la casilla (no reemplaza lo que ya había).",
+                            },
+                            {
+                                key: "porDebajoDeEstoEsAire",
+                                label: "Por debajo de esto es aire",
+                                min: 0.000001, max: 1, step: 0.000001,
+                                ayuda: "Si una casilla tiene menos agua que este número, la tratamos como vacía (aire).",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Tiempo",
+                        desc: "Pausá la simulación o hacela ir muy lenta / muy rápida. El dibujo y el zoom siguen fluidos aunque la física vaya a 1 paso por segundo.",
+                        items: [
+                            {
+                                key: "simulacionEnPausa",
+                                tipo: "checkbox",
+                                label: "Simulación en pausa (tecla P)",
+                                ayuda: "Si está prendida, el agua no se mueve sola. Todavía podés pintar, hacer zoom y mirar números.",
+                            },
+                            {
+                                key: "pasosDeFisicaPorSegundo",
+                                label: "Pasos de física por segundo",
+                                min: 0.25, max: 120, step: 0.25,
+                                ayuda: "Qué tan seguido se actualiza el agua. 1 = un paso por segundo. 60 = normal. 120 = más rápido.",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Presión y mangueras",
+                        desc: "Cuando una casilla tiene más agua que la de al lado, la manguera del medio siente un empuje. Acá controlás cómo nace y se suaviza ese empuje (todavía no mueve agua).",
+                        items: [
+                            {
+                                key: "fuerzaDelEmpujePorPresion",
+                                label: "Qué tan fuerte empuja la presión",
+                                min: 0, max: 2, step: 0.01,
+                                ayuda: "Si una casilla tiene más agua que la de al lado, qué tan fuerte le pide a la manguera que empuje.",
+                            },
+                            {
+                                key: "cuantoDeLaDiferenciaCuenta",
+                                label: "Cuánto cuenta la diferencia de agua",
+                                min: 0, max: 1, step: 0.01,
+                                ayuda: "No usamos toda la diferencia de golpe. Este valor dice qué porcentaje se transforma en empuje.",
+                            },
+                            {
+                                key: "queTanRapidoCambiaElEmpuje",
+                                label: "Qué tan rápido cambia el empuje de la manguera",
+                                min: 0, max: 1, step: 0.01,
+                                ayuda: "0 = la manguera casi no cambia de idea. 1 = copia al toque el empuje que pide la presión.",
+                            },
+                            {
+                                key: "suavizadoEntreMangueras",
+                                label: "Suavizado entre mangueras vecinas",
+                                min: 0, max: 1, step: 0.01,
+                                ayuda: "Las mangueras se copian un poco entre sí para que el empuje no quede manchoneado.",
+                            },
+                            {
+                                key: "queTanRapidoSeApagaElEmpuje",
+                                label: "Qué tan rápido se apaga el empuje",
+                                min: 0.8, max: 1, step: 0.001,
+                                ayuda: "Cada frame el empuje se achica solo. 1 = no se apaga. 0.99 = se frena despacito. Más bajo = se muere más rápido.",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Agua que viaja por mangueras",
+                        desc: "Cuánta masa pasa por las mangueras según su empuje. Con los defaults actuales también viaja agua por las flechas (raycast).",
+                        items: [
+                            {
+                                key: "aguaQueMuevenLasMangueras",
+                                label: "Agua que mueven las mangueras",
+                                min: 0, max: 10, step: 0.01,
+                                ayuda: "Si está en 0, las mangueras no pasan agua. Subilo para que el agua viaje por las mangueras.",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Flechas de cada casilla",
+                        desc: "Cada casilla mira sus mangueras y arma una flechita. Acá controlás cómo se actualiza, se mezcla con vecinos y se frena.",
+                        items: [
+                            {
+                                key: "queTanRapidoLaCasillaCopiaElEmpuje",
+                                label: "Qué tan rápido la casilla arma su flecha",
+                                min: 0, max: 1, step: 0.01,
+                                ayuda: "Cada casilla mira sus mangueras y arma una flecha. Este valor dice qué tan rápido actualiza esa flecha.",
+                            },
+                            {
+                                key: "suavizadoDeFlechasEntreCasillas",
+                                label: "Suavizado de flechas entre casillas",
+                                min: 0, max: 1, step: 0.01,
+                                ayuda: "Las flechas de casillas vecinas se mezclan un poco para verse más fluidas.",
+                            },
+                            {
+                                key: "friccionDeLasFlechas",
+                                label: "Fricción de las flechas",
+                                min: 0.8, max: 1, step: 0.001,
+                                ayuda: "Cada frame la flecha se acorta (flecha × este valor). 1 = no frena. 0.99 = frena suavecito.",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Agua que arrastran las flechas",
+                        desc: "La flecha de la casilla arrastra agua con un raycast: si |v| es grande, puede saltar varias casillas en un solo paso (como inriz yVel/18).",
+                        items: [
+                            {
+                                key: "flechasMuevenAgua",
+                                tipo: "checkbox",
+                                label: "Las flechas mueven agua",
+                                ayuda: "Apagá esto para que las flechas se calculen pero no arrastren agua.",
+                            },
+                            {
+                                key: "aguaQueArrastraLaFlecha",
+                                label: "Agua que arrastra la flecha",
+                                min: 0, max: 10, step: 0.01,
+                                ayuda: "Masa movida ≈ |v| × este factor, depositada en el destino del raycast.",
+                            },
+                            {
+                                key: "velocidadPorCasillaDeRaycast",
+                                label: "Velocidad por casilla de raycast",
+                                min: 1, max: 60, step: 1,
+                                ayuda: "N = floor(|v| / este valor), como el /18 de inriz. Más alto = necesitás más velocidad para saltar lejos.",
+                            },
+                            {
+                                key: "maxCasillasRaycast",
+                                label: "Tope de casillas del raycast",
+                                min: 1, max: 40, step: 1,
+                                ayuda: "Máximo de casillas que recorre el raycast por eje y por paso.",
+                            },
+                            {
+                                key: "ignorarFlechasMuyChiquitas",
+                                label: "Ignorar flechas muy chiquitas",
+                                min: 0, max: 0.5, step: 0.01,
+                                ayuda: "Si |v| es más chica que esto, no mueve agua en ese eje.",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Gravedad",
+                        desc: "Suma aceleración a vy (hacia abajo). El agua viaja lejos vía raycast de flechas. Si abajo está bloqueado, escurre en diagonal 1 casilla.",
+                        items: [
+                            {
+                                key: "gravedadPrendida",
+                                tipo: "checkbox",
+                                label: "Gravedad prendida",
+                                ayuda: "Si está apagada, no se acelera vy ni hay escurrido diagonal.",
+                            },
+                            {
+                                key: "aceleracionDeLaCaida",
+                                label: "Aceleración de gravedad sobre vy",
+                                min: 0, max: 10, step: 0.1,
+                                ayuda: "Cada paso de física: vy += esto (como yVel += 1 en inriz).",
+                            },
+                            {
+                                key: "velocidadFlechaMaxima",
+                                label: "Tope de |vx| / |vy|",
+                                min: 1, max: 500, step: 1,
+                                ayuda: "Clamp de la flecha para que el raycast no se vaya a infinito.",
+                            },
+                            {
+                                key: "fuerzaDeLaCaida",
+                                label: "Masa del escurrido diagonal",
+                                min: 0, max: 500, step: 1,
+                                ayuda: "Si abajo no se puede caer, cuánta agua se mueve en diagonal (1 casilla) por paso.",
+                            },
+                            {
+                                key: "aceleracionGravedadEnManguerasV",
+                                tipo: "checkbox",
+                                label: "Gravedad también en mangueras verticales",
+                                ayuda: "Suma la aceleración de caída a los empujes V (caras MAC) además de a vy.",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Proyección (curls / Stam)",
+                        desc: "Proyección de presión Jacobi sobre las mangueras (MAC): baja la divergencia del campo de velocidad para curls más creíbles. No mueve masa con sample bilineal; la masa sigue siendo Jacobi/exchange.",
+                        items: [
+                            {
+                                key: "proyeccionPrendida",
+                                tipo: "checkbox",
+                                label: "Proyección prendida",
+                                ayuda: "Master switch. Si está apagada, no se corre el Poisson sobre mangueras.",
+                            },
+                            {
+                                key: "iteracionesProyeccion",
+                                label: "Iteraciones Jacobi de presión",
+                                min: 1, max: 200, step: 1,
+                                ayuda: "Más iteraciones = menor divergencia residual, más CPU.",
+                            },
+                            {
+                                key: "dtProyeccion",
+                                label: "dt de la proyección",
+                                min: 0.1, max: 4, step: 0.1,
+                                ayuda: "Escala div/dt y la resta del gradiente de presión a los empujes.",
+                            },
+                            {
+                                key: "fuerzaDeLaProyeccion",
+                                label: "Fuerza al restar gradiente",
+                                min: 0, max: 2, step: 0.01,
+                                ayuda: "Multiplica empuje -= fuerza × dt × ∇p. 0 = proyecta p pero no corrige velocidad.",
+                            },
+                            {
+                                key: "warmStartPresion",
+                                tipo: "checkbox",
+                                label: "Reusar presión del frame anterior",
+                                ayuda: "Warm start: no pone p en 0 cada frame; converge más rápido.",
+                            },
+                            {
+                                key: "cuantoLaFlechaEscribeLaManguera",
+                                label: "Flecha → manguera antes de proyectar",
+                                min: 0, max: 1, step: 0.01,
+                                ayuda: "0 = proyecta solo Fick+blur. 1 = las caras copian la flecha (mejor acoplamiento al raycast).",
+                            },
+                            {
+                                key: "cuantoLaProyeccionPisaLaFlecha",
+                                label: "Tras proyectar, flecha sigue a mangueras",
+                                min: 0, max: 1, step: 0.01,
+                                ayuda: "0 = flecha intacta. 1 = flecha = promedio MAC proyectado.",
+                            },
+                            {
+                                key: "proyeccionSoloFluidas",
+                                tipo: "checkbox",
+                                label: "Solo casillas con agua (p=0 en aire)",
+                                ayuda: "Superficie libre: aire tiene p fija en 0. Si apagás, trata más celdas como dominio de presión.",
+                            },
+                            {
+                                key: "mostrarDivergenciaEnInspector",
+                                tipo: "checkbox",
+                                label: "Inspector muestra div y p",
+                                ayuda: "En el cartel de inspección agrega divergencia y presión de la casilla.",
+                            },
+                            {
+                                key: "mostrarDivergenciaEnHud",
+                                tipo: "checkbox",
+                                label: "HUD muestra divergencia max",
+                                ayuda: "En el overlay de FPS muestra divergenciaMax post-proyección.",
+                            },
+                        ],
+                    },
+                    {
+                        titulo: "Ver qué pasa",
+                        desc: "Dibujá flechas, empujes, contornos y números. Con zoom alto se leen mejor. La inspección con mouse muestra solo la casilla bajo el cursor.",
+                        items: [
+                            {
+                                key: "mostrarFlechas",
+                                tipo: "checkbox",
+                                label: "Mostrar flechas / empuje",
+                                ayuda: "Dibuja las flechas de las casillas y el empuje de las mangueras para ver qué está pasando.",
+                            },
+                            {
+                                key: "mostrarNumeros",
+                                tipo: "checkbox",
+                                label: "Mostrar números de empuje y flechas",
+                                ayuda: "Escribe los valores encima de todas las casillas. También se activan solos si el zoom es 3× o más y las flechas están visibles.",
+                            },
+                            {
+                                key: "mostrarContornoCasillas",
+                                tipo: "checkbox",
+                                label: "Contorno de cada casilla",
+                                ayuda: "Dibuja el borde de cada casilla para ver la grilla con claridad.",
+                            },
+                            {
+                                key: "inspeccionConMouse",
+                                tipo: "checkbox",
+                                label: "Inspección con mouse (solo esa casilla)",
+                                ayuda: "En vez de llenar la pantalla de números, muestra un cartel con los valores de la casilla bajo el cursor y resalta esa casilla.",
+                            },
+                            {
+                                key: "escalaDibujoFlecha",
+                                label: "Escala de las flechas de casilla",
+                                min: 0.1, max: 40, step: 0.1,
+                                ayuda: "Qué tan largas se dibujan las flechas de cada casilla. No cambia la física, solo el dibujo.",
+                            },
+                            {
+                                key: "escalaDibujoEmpuje",
+                                label: "Escala del empuje de las mangueras",
+                                min: 0.1, max: 40, step: 0.1,
+                                ayuda: "Qué tan largos se dibujan los empujes en las mangueras. Solo afecta la vista de debug.",
+                            },
+                        ],
+                    },
+                ]
+
+                for (const sec of secciones) {
+                    const box = document.createElement("div")
+                    box.className = "seccion"
+                    const h2 = document.createElement("h2")
+                    h2.textContent = sec.titulo
+                    const desc = document.createElement("p")
+                    desc.className = "desc"
+                    desc.textContent = sec.desc
+                    box.appendChild(h2)
+                    box.appendChild(desc)
+
+                    for (const item of sec.items) {
+                        box.appendChild(this.crearControl(item))
+                    }
+                    root.appendChild(box)
+                }
+            }
+
+            crearControl(item) {
+                const wrap = document.createElement("div")
+                wrap.className = "control" + (item.tipo === "checkbox" || item.tipo === "herramienta" ? " checkbox" : "")
+
+                if (item.tipo === "herramienta") {
+                    const fila = document.createElement("div")
+                    fila.className = "herramientas"
+                    const opciones = [
+                        { value: "agua", texto: "Agua" },
+                        { value: "piedra", texto: "Piedra" },
+                        { value: "borrar", texto: "Borrar" },
+                    ]
+                    for (const op of opciones) {
+                        const lab = document.createElement("label")
+                        lab.title = item.ayuda
+                        const input = document.createElement("input")
+                        input.type = "radio"
+                        input.name = "herramienta"
+                        input.value = op.value
+                        input.checked = this.config.herramientaActual === op.value
+                        input.addEventListener("change", () => {
+                            if (input.checked) this.config.herramientaActual = op.value
+                        })
+                        lab.appendChild(input)
+                        lab.appendChild(document.createTextNode(op.texto))
+                        fila.appendChild(lab)
+                    }
+                    wrap.appendChild(fila)
+                } else if (item.tipo === "checkbox") {
+                    const fila = document.createElement("div")
+                    fila.className = "fila"
+                    const input = document.createElement("input")
+                    input.type = "checkbox"
+                    input.checked = !!this.config[item.key]
+                    input.title = item.ayuda
+                    input.id = "ctrl-" + item.key
+                    input.addEventListener("change", () => {
+                        this.config[item.key] = input.checked
+                    })
+                    const label = document.createElement("label")
+                    label.htmlFor = input.id
+                    label.textContent = item.label
+                    label.title = item.ayuda
+                    fila.appendChild(input)
+                    fila.appendChild(label)
+                    wrap.appendChild(fila)
+                } else {
+                    const label = document.createElement("label")
+                    label.title = item.ayuda
+                    const nombre = document.createElement("span")
+                    nombre.textContent = item.label
+                    const valor = document.createElement("span")
+                    valor.className = "valor"
+                    const fmt = (v) => {
+                        const n = Number(v)
+                        if (item.step <= 0.000001) return n.toFixed(6)
+                        if (item.step < 0.01) return n.toFixed(item.step < 0.001 ? 4 : 3)
+                        if (item.step < 1 && item.step >= 0.25 && n === Math.floor(n)) return String(n)
+                        return Number.isInteger(item.step) || item.step >= 1
+                            ? String(Math.round(n))
+                            : n.toFixed(2)
+                    }
+                    valor.textContent = fmt(this.config[item.key])
+                    label.appendChild(nombre)
+                    label.appendChild(valor)
+
+                    const input = document.createElement("input")
+                    input.type = "range"
+                    input.min = item.min
+                    input.max = item.max
+                    input.step = item.step
+                    input.value = this.config[item.key]
+                    input.title = item.ayuda
+                    input.addEventListener("input", () => {
+                        const v = parseFloat(input.value)
+                        this.config[item.key] = v
+                        valor.textContent = fmt(v)
+                    })
+
+                    wrap.appendChild(label)
+                    wrap.appendChild(input)
+                }
+
+                const ayuda = document.createElement("p")
+                ayuda.className = "ayuda"
+                ayuda.textContent = item.ayuda
+                wrap.appendChild(ayuda)
+                return wrap
+            }
+
+            // --- Grilla y mangueras ---
+
+            construirGrilla() {
+                const cfg = this.config
+                this.grilla = new Array(cfg.ancho).fill(0).map(() => new Array(cfg.alto).fill(0))
+                for (let x = 0; x < cfg.ancho; x++) {
+                    for (let y = 0; y < cfg.alto; y++) {
+                        this.grilla[x][y] = new Casilla(x, y, this)
+                    }
+                }
+                this.construirMangueras()
+            }
+
+            construirMangueras() {
+                const cfg = this.config
+                // Horizontales: entre (x,y) y (x+1,y)
+                this.manguerasHorizontales = new Array(cfg.ancho - 1).fill(0).map(() => new Array(cfg.alto).fill(null))
+                for (let x = 0; x < cfg.ancho - 1; x++) {
+                    for (let y = 0; y < cfg.alto; y++) {
+                        const a = this.grilla[x][y]
+                        const b = this.grilla[x + 1][y]
+                        const m = new Manguera(a, b, "x")
+                        this.manguerasHorizontales[x][y] = m
+                        a.mangueraDer = m
+                        b.mangueraIzq = m
+                    }
+                }
+                // Verticales: entre (x,y) y (x,y+1)
+                this.manguerasVerticales = new Array(cfg.ancho).fill(0).map(() => new Array(cfg.alto - 1).fill(null))
+                for (let x = 0; x < cfg.ancho; x++) {
+                    for (let y = 0; y < cfg.alto - 1; y++) {
+                        const a = this.grilla[x][y]
+                        const b = this.grilla[x][y + 1]
+                        const m = new Manguera(a, b, "y")
+                        this.manguerasVerticales[x][y] = m
+                        a.mangueraAba = m
+                        b.mangueraArr = m
+                    }
+                }
+            }
+
+            iterarCasillas(cb) {
+                const cfg = this.config
+                for (let x = 0; x < cfg.ancho; x++) {
+                    for (let y = 0; y < cfg.alto; y++) {
+                        cb(this.grilla[x][y], x, y)
+                    }
+                }
+            }
+
+            iterarManguerasHorizontales(cb) {
+                const cfg = this.config
+                for (let x = 0; x < cfg.ancho - 1; x++) {
+                    for (let y = 0; y < cfg.alto; y++) {
+                        cb(this.manguerasHorizontales[x][y], x, y)
+                    }
+                }
+            }
+
+            iterarManguerasVerticales(cb) {
+                const cfg = this.config
+                for (let x = 0; x < cfg.ancho; x++) {
+                    for (let y = 0; y < cfg.alto - 1; y++) {
+                        cb(this.manguerasVerticales[x][y], x, y)
+                    }
+                }
+            }
+
+            iterarTodasLasMangueras(cb) {
+                this.iterarManguerasHorizontales(cb)
+                this.iterarManguerasVerticales(cb)
+            }
+
+            ponerBordesPiedra() {
+                const cfg = this.config
+                const yFloor = cfg.alto - 1
+                for (let x = 0; x < cfg.ancho; x++) {
+                    const c = this.grilla[x][yFloor]
+                    c.material = PIEDRA
+                    c.cantidad = 0
+                }
+                for (let y = 0; y < cfg.alto; y++) {
+                    for (const x of [0, cfg.ancho - 1]) {
+                        const c = this.grilla[x][y]
+                        c.material = PIEDRA
+                        c.cantidad = 0
+                    }
+                }
+            }
+
+            // --- Pintar ---
+
+            sembrarGota(cx, cy, radio, cantidad) {
+                const cfg = this.config
+                for (let x = cx - radio; x <= cx + radio; x++) {
+                    for (let y = cy - radio; y <= cy + radio; y++) {
+                        if (x < 0 || x >= cfg.ancho || y < 0 || y >= cfg.alto) continue
+                        if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > radio * radio) continue
+                        const c = this.grilla[x][y]
+                        if (esPiedra(c)) continue
+                        c.material = FLUIDO
+                        c.cantidad += cantidad
+                    }
+                }
+            }
+
+            pintarPiedra(cx, cy, radio) {
+                const cfg = this.config
+                for (let x = cx - radio; x <= cx + radio; x++) {
+                    for (let y = cy - radio; y <= cy + radio; y++) {
+                        if (x < 0 || x >= cfg.ancho || y < 0 || y >= cfg.alto) continue
+                        if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > radio * radio) continue
+                        const c = this.grilla[x][y]
+                        c.material = PIEDRA
+                        c.cantidad = 0
+                        c.vx = 0
+                        c.vy = 0
+                    }
+                }
+            }
+
+            borrarCasillas(cx, cy, radio) {
+                const cfg = this.config
+                for (let x = cx - radio; x <= cx + radio; x++) {
+                    for (let y = cy - radio; y <= cy + radio; y++) {
+                        if (x < 0 || x >= cfg.ancho || y < 0 || y >= cfg.alto) continue
+                        if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > radio * radio) continue
+                        if (this.esBordeMuro(x, y)) continue
+                        const c = this.grilla[x][y]
+                        c.material = AIRE
+                        c.cantidad = 0
+                        c.vx = 0
+                        c.vy = 0
+                    }
+                }
+            }
+
+            pintar() {
+                if (!this.mouse.down || this.panning || this.spaceDown) return
+                const cfg = this.config
+                const h = cfg.herramientaActual
+                if (h === "piedra") {
+                    this.pintarPiedra(this.mouse.x, this.mouse.y, cfg.pincelRadio)
+                } else if (h === "borrar") {
+                    this.borrarCasillas(this.mouse.x, this.mouse.y, cfg.pincelRadio)
+                } else {
+                    this.sembrarGota(this.mouse.x, this.mouse.y, cfg.pincelRadio, cfg.pincelCantidad)
+                }
+            }
+
+            // --- Aplicar cambios de agua (técnico: Jacobi) ---
+
+            aplicarCambiosDeAgua() {
+                let scale = 1
+                this.iterarCasillas(casilla => {
+                    if (esPiedra(casilla)) return
+                    if (casilla.delta < 0 && casilla.cantidad + casilla.delta < 0) {
+                        scale = Math.min(scale, casilla.cantidad / (-casilla.delta))
+                    }
+                })
+                this.iterarCasillas(casilla => {
+                    if (esPiedra(casilla)) {
+                        casilla.delta = 0
+                        return
+                    }
+                    casilla.cantidad += casilla.delta * scale
+                    const umbral = umbralAireDe(casilla)
+                    if (casilla.cantidad <= umbral) {
+                        casilla.cantidad = 0
+                        if (casilla.material === FLUIDO) casilla.material = AIRE
+                    } else if (casilla.material === AIRE && casilla.cantidad > umbral) {
+                        casilla.material = FLUIDO
+                    }
+                    casilla.delta = 0
+                })
+            }
+
+            resetDeltas() {
+                this.iterarCasillas(c => { c.delta = 0 })
+            }
+
+            // --- Gravedad + raycast de flechas ---
+
+            // Acelera vy hacia abajo (después del blur de flechas, para no pisarlo).
+            // (técnico: como yVel += 1 en inriz)
+            aplicarAceleracionGravedadAVy() {
+                const cfg = this.config
+                if (!cfg.gravedadPrendida || cfg.aceleracionDeLaCaida <= 0) return
+                const maxV = cfg.velocidadFlechaMaxima
+                this.iterarCasillas(casilla => {
+                    if (!esFluido(casilla)) return
+                    casilla.vy += cfg.aceleracionDeLaCaida
+                    if (casilla.vy > maxV) casilla.vy = maxV
+                    if (casilla.vy < -maxV) casilla.vy = -maxV
+                    if (casilla.vx > maxV) casilla.vx = maxV
+                    if (casilla.vx < -maxV) casilla.vx = -maxV
+                })
+            }
+
+            // Suma g a empujes de mangueras verticales (caras MAC), estilo pasoFuerzas de Stam.
+            aplicarAceleracionGravedadAEmpujesVerticales() {
+                const cfg = this.config
+                if (!cfg.gravedadPrendida || !cfg.aceleracionGravedadEnManguerasV) return
+                if (cfg.aceleracionDeLaCaida <= 0) return
+                const g = cfg.aceleracionDeLaCaida
+                this.iterarManguerasVerticales(m => {
+                    if (!this.mangueraPuedeFluir(m)) return
+                    const fluida =
+                        esFluido(m.casillaA) || esFluido(m.casillaB)
+                    if (!fluida) return
+                    m.empujeActual += g
+                })
+            }
+
+            // --- Proyección Stam sobre mangueras (MAC) ---
+
+            empujeOCero(m) {
+                return m ? m.empujeActual : 0
+            }
+
+            casillaCuentaParaProyeccion(c) {
+                if (!c || esPiedra(c)) return false
+                if (this.config.proyeccionSoloFluidas) return esFluido(c)
+                return true
+            }
+
+            // Flecha de centros → caras: empuje = lerp(empuje, avg vx/vy, t)
+            escribirManguerasDesdeFlechas(t) {
+                if (t <= 0) return
+                this.iterarManguerasHorizontales(m => {
+                    if (!this.mangueraPuedeFluir(m)) {
+                        m.empujeActual = 0
+                        return
+                    }
+                    const target = (m.casillaA.vx + m.casillaB.vx) * 0.5
+                    m.empujeActual = lerp(m.empujeActual, target, t)
+                })
+                this.iterarManguerasVerticales(m => {
+                    if (!this.mangueraPuedeFluir(m)) {
+                        m.empujeActual = 0
+                        return
+                    }
+                    const target = (m.casillaA.vy + m.casillaB.vy) * 0.5
+                    m.empujeActual = lerp(m.empujeActual, target, t)
+                })
+            }
+
+            calcularDivergencia() {
+                let divMax = 0
+                this.iterarCasillas(casilla => {
+                    if (!this.casillaCuentaParaProyeccion(casilla)) {
+                        casilla.div = 0
+                        return
+                    }
+                    const uR = this.empujeOCero(casilla.mangueraDer)
+                    const uL = this.empujeOCero(casilla.mangueraIzq)
+                    const vB = this.empujeOCero(casilla.mangueraAba)
+                    const vT = this.empujeOCero(casilla.mangueraArr)
+                    const d = uR - uL + vB - vT
+                    casilla.div = d
+                    const ad = Math.abs(d)
+                    if (ad > divMax) divMax = ad
+                })
+                this.divergenciaMax = divMax
+            }
+
+            // Jacobi: p_nuevo = (suma p vecinos no-sólidos - div/dt) / n
+            // Aire (no fluido): aporta 0. Sólido: no cuenta (Neumann).
+            resolverPresionJacobi() {
+                const cfg = this.config
+                const iter = Math.max(1, Math.round(cfg.iteracionesProyeccion))
+                const dt = Math.max(EPS, cfg.dtProyeccion)
+
+                if (!cfg.warmStartPresion) {
+                    this.iterarCasillas(c => { c.p = 0 })
+                }
+
+                for (let it = 0; it < iter; it++) {
+                    this.iterarCasillas(casilla => {
+                        if (!this.casillaCuentaParaProyeccion(casilla)) {
+                            casilla.pNuevo = 0
+                            return
+                        }
+                        let sum = 0
+                        let n = 0
+                        const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+                        for (const [dx, dy] of dirs) {
+                            const v = casilla.getVecina(dx, dy)
+                            if (!v || esPiedra(v)) continue
+                            sum += this.casillaCuentaParaProyeccion(v) ? v.p : 0
+                            n++
+                        }
+                        if (n === 0) {
+                            casilla.pNuevo = 0
+                            return
+                        }
+                        casilla.pNuevo = (sum - casilla.div / dt) / n
+                    })
+                    this.iterarCasillas(c => { c.p = c.pNuevo })
+                }
+            }
+
+            // empuje -= fuerza * dt * (pB - pA)
+            restarGradienteAMangueras() {
+                const cfg = this.config
+                const dt = cfg.dtProyeccion
+                const fuerza = cfg.fuerzaDeLaProyeccion
+                if (fuerza <= 0) return
+
+                this.iterarManguerasHorizontales(m => {
+                    if (!this.mangueraPuedeFluir(m)) {
+                        m.empujeActual = 0
+                        return
+                    }
+                    const pL = this.casillaCuentaParaProyeccion(m.casillaA) ? m.casillaA.p : 0
+                    const pR = this.casillaCuentaParaProyeccion(m.casillaB) ? m.casillaB.p : 0
+                    m.empujeActual -= fuerza * dt * (pR - pL)
+                })
+                this.iterarManguerasVerticales(m => {
+                    if (!this.mangueraPuedeFluir(m)) {
+                        m.empujeActual = 0
+                        return
+                    }
+                    const pT = this.casillaCuentaParaProyeccion(m.casillaA) ? m.casillaA.p : 0
+                    const pB = this.casillaCuentaParaProyeccion(m.casillaB) ? m.casillaB.p : 0
+                    m.empujeActual -= fuerza * dt * (pB - pT)
+                })
+            }
+
+            // Tras proyectar: flecha lerp hacia promedio MAC
+            inyectarFlechasDesdeMangueras(t) {
+                if (t <= 0) return
+                this.iterarCasillas(casilla => {
+                    if (esPiedra(casilla)) {
+                        casilla.vx = 0
+                        casilla.vy = 0
+                        return
+                    }
+                    const obj = casilla.objetivoFlechaDesdeMangueras()
+                    casilla.vx = lerp(casilla.vx, obj.vx, t)
+                    casilla.vy = lerp(casilla.vy, obj.vy, t)
+                })
+            }
+
+            // Orquesta proyección Stam sobre mangueras (no toca masa).
+            proyectarCampoDeVelocidad() {
+                const cfg = this.config
+                if (!cfg.proyeccionPrendida) {
+                    this.divergenciaMax = 0
+                    return
+                }
+                this.escribirManguerasDesdeFlechas(cfg.cuantoLaFlechaEscribeLaManguera)
+                this.calcularDivergencia()
+                this.resolverPresionJacobi()
+                this.restarGradienteAMangueras()
+                // Recalcular div residual post-gradiente (métrica HUD)
+                this.calcularDivergencia()
+                this.inyectarFlechasDesdeMangueras(cfg.cuantoLaProyeccionPisaLaFlecha)
+            }
+
+            // Si abajo está bloqueado, escurrir masa 1 casilla en diagonal (falling-sand).
+            escurrirDiagonalesSiBloqueado() {
+                const cfg = this.config
+                if (!cfg.gravedadPrendida || cfg.fuerzaDeLaCaida <= 0) return
+
+                this.resetDeltas()
+                for (let y = cfg.alto - 2; y >= 0; y--) {
+                    for (let x = 0; x < cfg.ancho; x++) {
+                        const casilla = this.grilla[x][y]
+                        if (!esFluido(casilla)) continue
+
+                        const abajo = casilla.getVecina(0, 1)
+                        if (puedeRecibir(casilla, abajo)) continue // la caída libre la hace el raycast
+
+                        const disponible = casilla.cantidad + casilla.delta
+                        if (disponible <= umbralAireDe(casilla)) continue
+                        const mover = Math.min(disponible, cfg.fuerzaDeLaCaida)
+                        if (mover <= EPS) continue
+
+                        const izq = casilla.getVecina(-1, 1)
+                        const der = casilla.getVecina(1, 1)
+                        const okIzq = puedeRecibir(casilla, izq)
+                        const okDer = puedeRecibir(casilla, der)
+                        let dest = null
+                        if (okIzq && okDer) {
+                            dest = hashDir(x, y, this.frame) < 0 ? izq : der
+                        } else if (okIzq) {
+                            dest = izq
+                        } else if (okDer) {
+                            dest = der
+                        }
+                        if (!dest) {
+                            // Bloqueado: cortar vy positiva (como inriz yVel = 0 si dist==1)
+                            if (casilla.vy > 0) casilla.vy = 0
+                            continue
+                        }
+                        casilla.delta -= mover
+                        dest.delta += mover
+                    }
+                }
+                this.aplicarCambiosDeAgua()
+            }
+
+            // Raycast ortogonal: última casilla que puedeRecibir en dirección (dx,dy), hasta maxDist.
+            // dx,dy ∈ {-1,0,1}, uno cero. Devuelve null si no avanzó ninguna casilla.
+            raycastDestino(casilla, dx, dy, maxDist) {
+                let dest = null
+                let cx = casilla.x
+                let cy = casilla.y
+                for (let step = 1; step <= maxDist; step++) {
+                    cx += dx
+                    cy += dy
+                    const cfg = this.config
+                    if (cx < 0 || cy < 0 || cx >= cfg.ancho || cy >= cfg.alto) break
+                    const candidata = this.grilla[cx][cy]
+                    if (!puedeRecibir(casilla, candidata)) break
+                    dest = candidata
+                }
+                return dest
+            }
+
+            // ¿Puede fluir agua por esta manguera?
+            mangueraPuedeFluir(m) {
+                if (esPiedra(m.casillaA) || esPiedra(m.casillaB)) return false
+                return true
+            }
+
+            // Empuje que pide la presión (técnico: Fick F = D * (cA - cB))
+            empujeQuePideLaPresion(m) {
+                const cfg = this.config
+                if (!this.mangueraPuedeFluir(m)) return 0
+                const a = m.casillaA
+                const b = m.casillaB
+                // Sin agua en ningún lado → sin empuje
+                if (!esFluido(a) && !esFluido(b) && a.cantidad <= umbralAireDe(a) && b.cantidad <= umbralAireDe(b)) {
+                    return 0
+                }
+                return (a.cantidad - b.cantidad)
+                    * cfg.cuantoDeLaDiferenciaCuenta
+                    * cfg.fuerzaDelEmpujePorPresion
+            }
+
+            // 3. Presión escribe empuje (NO mueve agua)
+            presionEscribeEmpujeEnMangueras() {
+                const cfg = this.config
+                this.iterarTodasLasMangueras(m => {
+                    m.commitAnterior()
+                    const F = this.empujeQuePideLaPresion(m)
+                    m.empujeActual = lerp(m.empujeAnterior, F, cfg.queTanRapidoCambiaElEmpuje)
+                })
+            }
+
+            // 4. Suavizado + apagado de empuje
+            suavizarYApagarEmpujeDeMangueras() {
+                const cfg = this.config
+                const mix = cfg.suavizadoEntreMangueras
+                const fric = cfg.queTanRapidoSeApagaElEmpuje
+
+                const promediarVecinosH = (x, y) => {
+                    let sum = 0
+                    let n = 0
+                    const add = (xx, yy) => {
+                        if (xx < 0 || xx >= cfg.ancho - 1 || yy < 0 || yy >= cfg.alto) return
+                        sum += this.manguerasHorizontales[xx][yy].empujeActual
+                        n++
+                    }
+                    add(x - 1, y)
+                    add(x + 1, y)
+                    add(x, y - 1)
+                    add(x, y + 1)
+                    return n > 0 ? sum / n : this.manguerasHorizontales[x][y].empujeActual
+                }
+
+                const promediarVecinosV = (x, y) => {
+                    let sum = 0
+                    let n = 0
+                    const add = (xx, yy) => {
+                        if (xx < 0 || xx >= cfg.ancho || yy < 0 || yy >= cfg.alto - 1) return
+                        sum += this.manguerasVerticales[xx][yy].empujeActual
+                        n++
+                    }
+                    add(x - 1, y)
+                    add(x + 1, y)
+                    add(x, y - 1)
+                    add(x, y + 1)
+                    return n > 0 ? sum / n : this.manguerasVerticales[x][y].empujeActual
+                }
+
+                this.iterarManguerasHorizontales((m, x, y) => {
+                    const avg = promediarVecinosH(x, y)
+                    m.empujeNuevo = lerp(m.empujeActual, avg, mix) * fric
+                    if (!this.mangueraPuedeFluir(m)) m.empujeNuevo = 0
+                })
+                this.iterarManguerasVerticales((m, x, y) => {
+                    const avg = promediarVecinosV(x, y)
+                    m.empujeNuevo = lerp(m.empujeActual, avg, mix) * fric
+                    if (!this.mangueraPuedeFluir(m)) m.empujeNuevo = 0
+                })
+                this.iterarTodasLasMangueras(m => m.commitNuevo())
+            }
+
+            // 5. Armar flechas desde mangueras
+            armarFlechasDeCasillasDesdeMangueras() {
+                const cfg = this.config
+                const mix = cfg.queTanRapidoLaCasillaCopiaElEmpuje
+                this.iterarCasillas(casilla => {
+                    if (esPiedra(casilla)) {
+                        casilla.vx = 0
+                        casilla.vy = 0
+                        return
+                    }
+                    const obj = casilla.objetivoFlechaDesdeMangueras()
+                    casilla.vxAnterior = casilla.vx
+                    casilla.vyAnterior = casilla.vy
+                    casilla.vx = lerp(casilla.vxAnterior, obj.vx, mix)
+                    casilla.vy = lerp(casilla.vyAnterior, obj.vy, mix)
+                })
+            }
+
+            // 6. Suavizado + fricción de flechas
+            suavizarYFrenarFlechasDeCasillas() {
+                const cfg = this.config
+                const mix = cfg.suavizadoDeFlechasEntreCasillas
+                const fric = cfg.friccionDeLasFlechas
+
+                this.iterarCasillas(casilla => {
+                    if (esPiedra(casilla)) {
+                        casilla.vxNuevo = 0
+                        casilla.vyNuevo = 0
+                        return
+                    }
+                    let sumVx = 0
+                    let sumVy = 0
+                    let n = 0
+                    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+                    for (const [dx, dy] of dirs) {
+                        const v = casilla.getVecina(dx, dy)
+                        if (!v || esPiedra(v)) continue
+                        sumVx += v.vx
+                        sumVy += v.vy
+                        n++
+                    }
+                    const avgVx = n > 0 ? sumVx / n : casilla.vx
+                    const avgVy = n > 0 ? sumVy / n : casilla.vy
+                    casilla.vxNuevo = lerp(casilla.vx, avgVx, mix) * fric
+                    casilla.vyNuevo = lerp(casilla.vy, avgVy, mix) * fric
+                })
+
+                this.iterarCasillas(casilla => {
+                    casilla.vxAnterior = casilla.vx
+                    casilla.vyAnterior = casilla.vy
+                    casilla.vx = casilla.vxNuevo
+                    casilla.vy = casilla.vyNuevo
+                })
+            }
+
+            // Helper: anotar transferencia A→B (o B→A si cantidad negativa)
+            anotarTransferencia(from, to, cantidad) {
+                if (cantidad <= EPS) return
+                if (!puedeRecibir(from, to)) return
+                const disponible = from.cantidad + from.delta
+                if (disponible <= umbralAireDe(from)) return
+                const mover = Math.min(disponible, cantidad)
+                if (mover <= EPS) return
+                from.delta -= mover
+                to.delta += mover
+            }
+
+            // 7. Agua por mangueras según empujeActual
+            moverAguaPorMangueras() {
+                const cfg = this.config
+                const factor = cfg.aguaQueMuevenLasMangueras
+                if (factor <= 0) return
+
+                this.resetDeltas()
+                this.iterarTodasLasMangueras(m => {
+                    if (!this.mangueraPuedeFluir(m)) return
+                    const bruto = m.empujeActual * factor
+                    if (Math.abs(bruto) <= EPS) return
+                    if (bruto > 0) {
+                        this.anotarTransferencia(m.casillaA, m.casillaB, bruto)
+                    } else {
+                        this.anotarTransferencia(m.casillaB, m.casillaA, -bruto)
+                    }
+                })
+                this.aplicarCambiosDeAgua()
+            }
+
+            // 8. Agua arrastrada por la flecha con raycast multicelda (X e Y)
+            // N = floor(|v| / velocidadPorCasillaDeRaycast), tope maxCasillasRaycast
+            moverAguaPorFlechasDeCasillas() {
+                const cfg = this.config
+                if (!cfg.flechasMuevenAgua || cfg.aguaQueArrastraLaFlecha <= 0) return
+
+                const umbral = cfg.ignorarFlechasMuyChiquitas
+                const factor = cfg.aguaQueArrastraLaFlecha
+                const div = Math.max(EPS, cfg.velocidadPorCasillaDeRaycast)
+                const maxN = Math.max(1, cfg.maxCasillasRaycast | 0)
+
+                this.resetDeltas()
+                this.iterarCasillas(casilla => {
+                    if (!esFluido(casilla) && casilla.material !== FLUIDO) return
+
+                    const transferirEje = (v, dx, dy) => {
+                        const absV = Math.abs(v)
+                        if (absV <= umbral) return
+                        let N = Math.floor(absV / div)
+                        if (N < 1) N = 1
+                        if (N > maxN) N = maxN
+                        const dest = this.raycastDestino(casilla, dx, dy, N)
+                        if (!dest) return
+                        this.anotarTransferencia(casilla, dest, absV * factor)
+                    }
+
+                    if (casilla.vx > umbral) transferirEje(casilla.vx, 1, 0)
+                    else if (casilla.vx < -umbral) transferirEje(casilla.vx, -1, 0)
+
+                    if (casilla.vy > umbral) transferirEje(casilla.vy, 0, 1)
+                    else if (casilla.vy < -umbral) transferirEje(casilla.vy, 0, -1)
+                })
+                this.aplicarCambiosDeAgua()
+            }
+
+            // --- Render ---
+
+            mundoAPantalla(wx, wy) {
+                return {
+                    x: wx * this.camara.zoom + this.camara.panX,
+                    y: wy * this.camara.zoom + this.camara.panY,
+                }
+            }
+
+            render() {
+                const cfg = this.config
+                const ctx = this.ctx
+                const cam = this.camara
+
+                ctx.setTransform(1, 0, 0, 1, 0, 0)
+                ctx.fillStyle = cfg.colorFondo
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+
+                ctx.setTransform(cam.zoom, 0, 0, cam.zoom, cam.panX, cam.panY)
+                this.iterarCasillas(c => c.renderizar())
+                if (cfg.mostrarContornoCasillas) this.dibujarContornoCasillas()
+                if (cfg.mostrarFlechas) {
+                    this.dibujarEmpujeMangueras()
+                    this.dibujarFlechasCasillas()
+                }
+                if (cfg.inspeccionConMouse) this.dibujarResalteCasillaBajoMouse()
+
+                ctx.setTransform(1, 0, 0, 1, 0, 0)
+                if (cfg.inspeccionConMouse) {
+                    this.actualizarInspectorMouse()
+                } else {
+                    this.ocultarInspector()
+                    const verNums = cfg.mostrarNumeros || (cfg.mostrarFlechas && cam.zoom >= 3)
+                    if (verNums) this.dibujarNumeros()
+                }
+            }
+
+            dibujarContornoCasillas() {
+                const cfg = this.config
+                const ctx = this.ctx
+                const s = cfg.cellSize
+                ctx.strokeStyle = cfg.colorContorno
+                ctx.lineWidth = 1 / this.camara.zoom
+                // Una sola pasada de grilla (más barato que strokeRect por celda con estado raro)
+                ctx.beginPath()
+                for (let x = 0; x <= cfg.ancho; x++) {
+                    const px = x * s
+                    ctx.moveTo(px, 0)
+                    ctx.lineTo(px, cfg.alto * s)
+                }
+                for (let y = 0; y <= cfg.alto; y++) {
+                    const py = y * s
+                    ctx.moveTo(0, py)
+                    ctx.lineTo(cfg.ancho * s, py)
+                }
+                ctx.stroke()
+            }
+
+            casillaBajoMouse() {
+                const cfg = this.config
+                const x = this.mouse.x
+                const y = this.mouse.y
+                if (x < 0 || y < 0 || x >= cfg.ancho || y >= cfg.alto) return null
+                return this.grilla[x][y]
+            }
+
+            dibujarResalteCasillaBajoMouse() {
+                const c = this.casillaBajoMouse()
+                if (!c) return
+                const cfg = this.config
+                const s = cfg.cellSize
+                const ctx = this.ctx
+                ctx.strokeStyle = cfg.colorResalteInspeccion
+                ctx.lineWidth = 2 / this.camara.zoom
+                ctx.strokeRect(c.x * s + 0.5 / this.camara.zoom, c.y * s + 0.5 / this.camara.zoom, s, s)
+
+                // Flecha y empujes solo de esta casilla (aunque "mostrar flechas" esté apagado)
+                if (!cfg.mostrarFlechas) {
+                    const mag = Math.hypot(c.vx, c.vy)
+                    if (mag >= 0.01 && !esPiedra(c)) {
+                        const x0 = (c.x + 0.5) * s
+                        const y0 = (c.y + 0.5) * s
+                        ctx.strokeStyle = cfg.colorFlecha
+                        ctx.lineWidth = 1.5 / this.camara.zoom
+                        ctx.beginPath()
+                        ctx.moveTo(x0, y0)
+                        ctx.lineTo(x0 + c.vx * cfg.escalaDibujoFlecha, y0 + c.vy * cfg.escalaDibujoFlecha)
+                        ctx.stroke()
+                    }
+                    this.dibujarEmpujeDeManguera(c.mangueraIzq)
+                    this.dibujarEmpujeDeManguera(c.mangueraDer)
+                    this.dibujarEmpujeDeManguera(c.mangueraArr)
+                    this.dibujarEmpujeDeManguera(c.mangueraAba)
+                }
+            }
+
+            dibujarEmpujeDeManguera(m) {
+                if (!m) return
+                const cfg = this.config
+                const ctx = this.ctx
+                const s = cfg.cellSize
+                const e = m.empujeActual
+                if (Math.abs(e) < 0.01) return
+                ctx.strokeStyle = e >= 0 ? cfg.colorEmpujePos : cfg.colorEmpujeNeg
+                ctx.lineWidth = 1.5 / this.camara.zoom
+                if (m.eje === "x") {
+                    // borde entre A (izq) y B (der)
+                    const x0 = (m.casillaA.x + 1) * s
+                    const y0 = (m.casillaA.y + 0.5) * s
+                    ctx.beginPath()
+                    ctx.moveTo(x0, y0)
+                    ctx.lineTo(x0 + e * cfg.escalaDibujoEmpuje, y0)
+                    ctx.stroke()
+                } else {
+                    const x0 = (m.casillaA.x + 0.5) * s
+                    const y0 = (m.casillaA.y + 1) * s
+                    ctx.beginPath()
+                    ctx.moveTo(x0, y0)
+                    ctx.lineTo(x0, y0 + e * cfg.escalaDibujoEmpuje)
+                    ctx.stroke()
+                }
+            }
+
+            nombreMaterial(m) {
+                if (m === PIEDRA) return "piedra"
+                if (m === FLUIDO) return "agua"
+                return "aire"
+            }
+
+            fmtEmpuje(m) {
+                if (!m) return "—"
+                return m.empujeActual.toFixed(3)
+            }
+
+            ocultarInspector() {
+                if (this.inspectorEl) this.inspectorEl.style.display = "none"
+            }
+
+            actualizarInspectorMouse() {
+                const cfg = this.config
+                const el = this.inspectorEl
+                const c = this.casillaBajoMouse()
+                if (!c) {
+                    this.ocultarInspector()
+                    return
+                }
+
+                const texto =
+                    "Casilla (" + c.x + ", " + c.y + ")\n" +
+                    "Material: " + this.nombreMaterial(c.material) + "\n" +
+                    "Agua: " + c.cantidad.toFixed(2) + "\n" +
+                    "Flecha vx: " + c.vx.toFixed(3) + "\n" +
+                    "Flecha vy: " + c.vy.toFixed(3) + "\n" +
+                    "Empuje izq: " + this.fmtEmpuje(c.mangueraIzq) + "\n" +
+                    "Empuje der: " + this.fmtEmpuje(c.mangueraDer) + "\n" +
+                    "Empuje arr: " + this.fmtEmpuje(c.mangueraArr) + "\n" +
+                    "Empuje aba: " + this.fmtEmpuje(c.mangueraAba) +
+                    (cfg.mostrarDivergenciaEnInspector
+                        ? ("\n" +
+                            "div: " + c.div.toFixed(4) + "\n" +
+                            "p: " + c.p.toFixed(4))
+                        : "")
+
+                el.textContent = texto
+                el.style.display = "block"
+
+                // Seguir el mouse, sin salirse del wrap
+                const wrap = document.getElementById("lienzo-wrap")
+                const pad = 14
+                let left = this.mouse.pantallaX + pad
+                let top = this.mouse.pantallaY + pad
+                el.style.left = "0px"
+                el.style.top = "0px"
+                // medir después de mostrar
+                const iw = el.offsetWidth
+                const ih = el.offsetHeight
+                const maxL = this.canvas.width - iw - 4
+                const maxT = this.canvas.height - ih - 4
+                if (left > maxL) left = this.mouse.pantallaX - iw - pad
+                if (top > maxT) top = this.mouse.pantallaY - ih - pad
+                el.style.left = Math.max(4, left) + "px"
+                el.style.top = Math.max(4, top) + "px"
+            }
+
+            dibujarNumeros() {
+                const cfg = this.config
+                const ctx = this.ctx
+                const s = cfg.cellSize
+                ctx.font = "11px Consolas, monospace"
+                ctx.textAlign = "center"
+                ctx.textBaseline = "middle"
+
+                this.iterarManguerasHorizontales((m, x, y) => {
+                    const e = m.empujeActual
+                    if (Math.abs(e) < 0.005) return
+                    const p = this.mundoAPantalla((x + 1) * s, (y + 0.5) * s)
+                    ctx.fillStyle = e >= 0 ? cfg.colorEmpujePos : cfg.colorEmpujeNeg
+                    ctx.fillText(e.toFixed(2), p.x, p.y)
+                })
+                this.iterarManguerasVerticales((m, x, y) => {
+                    const e = m.empujeActual
+                    if (Math.abs(e) < 0.005) return
+                    const p = this.mundoAPantalla((x + 0.5) * s, (y + 1) * s)
+                    ctx.fillStyle = e >= 0 ? cfg.colorEmpujePos : cfg.colorEmpujeNeg
+                    ctx.fillText(e.toFixed(2), p.x, p.y)
+                })
+
+                this.iterarCasillas(casilla => {
+                    if (esPiedra(casilla)) return
+                    const mag = Math.hypot(casilla.vx, casilla.vy)
+                    const tieneAgua = casilla.cantidad > umbralAireDe(casilla)
+                    if (!tieneAgua && mag < 0.01) return
+                    const p = this.mundoAPantalla((casilla.x + 0.5) * s, (casilla.y + 0.5) * s)
+                    // Solo dibujar si está más o menos en pantalla
+                    if (p.x < -40 || p.y < -40 || p.x > this.canvas.width + 40 || p.y > this.canvas.height + 40) return
+                    ctx.fillStyle = "#fa0"
+                    if (tieneAgua) {
+                        ctx.fillText(Math.round(casilla.cantidad).toString(), p.x, p.y - 8)
+                    }
+                    if (mag >= 0.01) {
+                        ctx.fillStyle = cfg.colorFlecha
+                        ctx.fillText(casilla.vx.toFixed(1) + "," + casilla.vy.toFixed(1), p.x, p.y + 8)
+                    }
+                })
+            }
+
+            dibujarEmpujeMangueras() {
+                const cfg = this.config
+                const ctx = this.ctx
+                const s = cfg.cellSize
+                ctx.lineWidth = 1 / this.camara.zoom
+
+                this.iterarManguerasHorizontales((m, x, y) => {
+                    const e = m.empujeActual
+                    if (Math.abs(e) < 0.01) return
+                    const x0 = (x + 1) * s
+                    const y0 = (y + 0.5) * s
+                    ctx.strokeStyle = e >= 0 ? cfg.colorEmpujePos : cfg.colorEmpujeNeg
+                    ctx.beginPath()
+                    ctx.moveTo(x0, y0)
+                    ctx.lineTo(x0 + e * cfg.escalaDibujoEmpuje, y0)
+                    ctx.stroke()
+                })
+
+                this.iterarManguerasVerticales((m, x, y) => {
+                    const e = m.empujeActual
+                    if (Math.abs(e) < 0.01) return
+                    const x0 = (x + 0.5) * s
+                    const y0 = (y + 1) * s
+                    ctx.strokeStyle = e >= 0 ? cfg.colorEmpujePos : cfg.colorEmpujeNeg
+                    ctx.beginPath()
+                    ctx.moveTo(x0, y0)
+                    ctx.lineTo(x0, y0 + e * cfg.escalaDibujoEmpuje)
+                    ctx.stroke()
+                })
+            }
+
+            dibujarFlechasCasillas() {
+                const cfg = this.config
+                const ctx = this.ctx
+                const s = cfg.cellSize
+                ctx.strokeStyle = cfg.colorFlecha
+                ctx.lineWidth = 1 / this.camara.zoom
+                this.iterarCasillas(casilla => {
+                    if (esPiedra(casilla)) return
+                    const mag = Math.hypot(casilla.vx, casilla.vy)
+                    if (mag < 0.01) return
+                    const x0 = (casilla.x + 0.5) * s
+                    const y0 = (casilla.y + 0.5) * s
+                    ctx.beginPath()
+                    ctx.moveTo(x0, y0)
+                    ctx.lineTo(
+                        x0 + casilla.vx * cfg.escalaDibujoFlecha,
+                        y0 + casilla.vy * cfg.escalaDibujoFlecha
+                    )
+                    ctx.stroke()
+                })
+            }
+
+            actualizarHud(ahora) {
+                if (ahora - this.hudUltimaActualizacion < 200) return
+                this.hudUltimaActualizacion = ahora
+                const pausa = this.config.simulacionEnPausa ? " (PAUSA)" : ""
+                let texto =
+                    "FPS dibujo: " + this.fpsMostrado.toFixed(0) + pausa + "\n" +
+                    "Paso física: " + this.msFisica.toFixed(2) + " ms\n" +
+                    "Dibujo: " + this.msDibujo.toFixed(2) + " ms\n" +
+                    "Física objetivo: " + this.config.pasosDeFisicaPorSegundo + " / s\n" +
+                    "Zoom: " + this.camara.zoom.toFixed(2) + "×"
+                if (this.config.mostrarDivergenciaEnHud) {
+                    texto += "\ndiv max: " + this.divergenciaMax.toFixed(4)
+                    if (this.config.proyeccionPrendida) texto += " (proyección ON)"
+                }
+                this.hudEl.textContent = texto
+            }
+
+            // --- Loop ---
+
+            tickFisica() {
+                this.presionEscribeEmpujeEnMangueras()
+                this.suavizarYApagarEmpujeDeMangueras()
+                this.aplicarAceleracionGravedadAEmpujesVerticales()
+                this.armarFlechasDeCasillasDesdeMangueras()
+                this.suavizarYFrenarFlechasDeCasillas()
+                this.aplicarAceleracionGravedadAVy()
+                this.proyectarCampoDeVelocidad()
+                this.moverAguaPorMangueras()
+                this.moverAguaPorFlechasDeCasillas()
+                this.escurrirDiagonalesSiBloqueado()
+                this.frame++
+            }
+
+            gameloop() {
+                const ahora = performance.now()
+                let dt = (ahora - this.ultimoFrameMs) / 1000
+                this.ultimoFrameMs = ahora
+                if (dt > 0.25) dt = 0.25 // evita spiral al volver de pestaña
+
+                // FPS dibujo (promedio móvil)
+                if (dt > 0) {
+                    this.fpsSamples.push(1 / dt)
+                    if (this.fpsSamples.length > 30) this.fpsSamples.shift()
+                    let sum = 0
+                    for (const f of this.fpsSamples) sum += f
+                    this.fpsMostrado = sum / this.fpsSamples.length
+                }
+
+                // Pintar responde al instante (aunque la física vaya lenta)
+                this.pintar()
+
+                const cfg = this.config
+                const pasoFijo = 1 / Math.max(0.25, cfg.pasosDeFisicaPorSegundo)
+                if (!cfg.simulacionEnPausa) {
+                    this.acumuladorFisica += dt
+                    let pasos = 0
+                    const tF0 = performance.now()
+                    while (this.acumuladorFisica >= pasoFijo && pasos < 5) {
+                        this.tickFisica()
+                        this.acumuladorFisica -= pasoFijo
+                        pasos++
+                    }
+                    // Si se acumuló demasiado, descartar resto para no eternizar
+                    if (this.acumuladorFisica > pasoFijo * 5) this.acumuladorFisica = 0
+                    this.msFisica = pasos > 0 ? (performance.now() - tF0) / pasos : 0
+                } else {
+                    this.acumuladorFisica = 0
+                    this.msFisica = 0
+                }
+
+                const tR0 = performance.now()
+                this.render()
+                this.msDibujo = performance.now() - tR0
+
+                this.actualizarHud(ahora)
+                requestAnimationFrame(() => this.gameloop())
+            }
+        }
+
+        const mundo = new Mundo()
+    </script>
+</body>
+</html>

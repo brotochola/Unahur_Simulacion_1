@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mass-Conserving Eulerian Liquid Simulation</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #eeeeee;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h2 { margin-bottom: 5px; }
+        p { color: #aaa; margin-top: 0; font-size: 0.9em; }
+        canvas {
+            border: 2px solid #444;
+            background-color: #000;
+            cursor: pointer;
+            image-rendering: pixelated;
+        }
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background: #2a2a2a;
+            padding: 10px 20px;
+            border-radius: 6px;
+        }
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #005999; }
+        .stats {
+            margin-top: 10px;
+            font-size: 0.85em;
+            color: #00ffcc;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Simulación Euleriana de Líquidos (Masa Conservada)</h2>
+    <p>Basado en Chentanez & Müller (SCA 2012) — Click/Arrastrar para dibujar fluido</p>
+
+    <canvas id="simCanvas" width="512" height="512"></canvas>
+
+    <div class="controls">
+        <button id="btnReset">Reiniciar</button>
+        <label><input type="checkbox" id="chkSharpen" checked> Sharpening Conservativo</label>
+        <label><input type="checkbox" id="chkGravity" checked> Gravedad</label>
+    </div>
+
+    <div class="stats" id="stats">Masa Total: 0.00</div>
+
+    <script>
+        const canvas = document.getElementById("simCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Parámetros de la simulación
+        const NX = 64;
+        const NY = 64;
+        const CELL_SIZE = canvas.width / NX;
+        const DT = 0.1;
+        const ITER_PRESSURE = 30;
+
+        // Grillas de simulación (Staggered Grid)
+        // Densidad de superficie (rho) en centros de celdas
+        let rho = new Float32Array(NX * NY);
+        let rho_next = new Float32Array(NX * NY);
+
+        // Componentes de velocidad (u en caras X, v en caras Y)
+        let u = new Float32Array((NX + 1) * NY);
+        let v = new Float32Array(NX * (NY + 1));
+        let u_next = new Float32Array((NX + 1) * NY);
+        let v_next = new Float32Array(NX * (NY + 1));
+
+        // Presión y Divergencia en centros
+        let p = new Float32Array(NX * NY);
+        let div = new Float32Array(NX * NY);
+
+        // Indexadores helper
+        const IX = (x, y) => x + y * NX;
+        const IX_U = (x, y) => x + y * (NX + 1);
+        const IX_V = (x, y) => x + y * NX;
+
+        // Inicialización
+        function init() {
+            rho.fill(0);
+            u.fill(0);
+            v.fill(0);
+            p.fill(0);
+
+            // Bloque inicial de fluido al centro
+            for (let y = 10; y < 35; y++) {
+                for (let x = 20; x < 44; x++) {
+                    rho[IX(x, y)] = 1.0;
+                }
+            }
+        }
+
+        // Muestreo Bilineal de Velocidad continua
+        function getVelocity(px, py) {
+            // Muestreo de U
+            let x_u = Math.max(0, Math.min(NX, px));
+            let y_u = Math.max(0.5, Math.min(NY - 0.5, py)) - 0.5;
+            let xi_u = Math.floor(x_u), yi_u = Math.floor(y_u);
+            let tx_u = x_u - xi_u, ty_u = y_u - yi_u;
+            xi_u = Math.min(xi_u, NX - 1); yi_u = Math.min(yi_u, NY - 2);
+
+            let u00 = u[IX_U(xi_u, yi_u)], u10 = u[IX_U(xi_u + 1, yi_u)];
+            let u01 = u[IX_U(xi_u, yi_u + 1)], u11 = u[IX_U(xi_u + 1, yi_u + 1)];
+            let u_val = (1 - tx_u) * (1 - ty_u) * u00 + tx_u * (1 - ty_u) * u10 +
+                        (1 - tx_u) * ty_u * u01 + tx_u * ty_u * u11;
+
+            // Muestreo de V
+            let x_v = Math.max(0.5, Math.min(NX - 0.5, px)) - 0.5;
+            let y_v = Math.max(0, Math.min(NY, py));
+            let xi_v = Math.floor(x_v), yi_v = Math.floor(y_v);
+            let tx_v = x_v - xi_v, ty_v = y_v - yi_v;
+            xi_v = Math.min(xi_v, NX - 2); yi_v = Math.min(yi_v, NY - 1);
+
+            let v00 = v[IX_V(xi_v, yi_v)], v10 = v[IX_V(xi_v + 1, yi_v)];
+            let v01 = v[IX_V(xi_v, yi_v + 1)], v11 = v[IX_V(xi_v + 1, yi_v + 1)];
+            let v_val = (1 - tx_v) * (1 - ty_v) * v00 + tx_v * (1 - ty_v) * v10 +
+                        (1 - tx_v) * ty_v * v01 + tx_v * ty_v * v11;
+
+            return { u: u_val, v: v_val };
+        }
+
+        // 1. ADVECCIÓN CONSERVATIVA DE DENSIDAD (Mass-Conserving Advection - Lentine/Chentanez)
+        function advectDensity() {
+            rho_next.fill(0);
+            let weights = new Float32Array(NX * NY);
+
+            // Forward-tracing / Redistribución conservativa de masa
+            for (let y = 0; y < NY; y++) {
+                for (let x = 0; x < NX; x++) {
+                    let idx = IX(x, y);
+                    let m = rho[idx];
+                    if (m <= 0.0001) continue;
+
+                    // Posición central de la celda
+                    let cx = x + 0.5;
+                    let cy = y + 0.5;
+
+                    // Trazar velocidad actual para obtener el destino del flujo
+                    let vel = getVelocity(cx, cy);
+                    let dx = cx + vel.u * DT;
+                    let dy = cy + vel.v * DT;
+
+                    // Limitar a los márgenes de la grilla
+                    dx = Math.max(0.5, Math.min(NX - 0.5, dx));
+                    dy = Math.max(0.5, Math.min(NY - 0.5, dy));
+
+                    // Depositar masa en las 4 celdas adyacentes via pesos bilineales
+                    let x0 = Math.floor(dx - 0.5);
+                    let y0 = Math.floor(dy - 0.5);
+                    let tx = (dx - 0.5) - x0;
+                    let ty = (dy - 0.5) - y0;
+
+                    let w00 = (1 - tx) * (1 - ty);
+                    let w10 = tx * (1 - ty);
+                    let w01 = (1 - tx) * ty;
+                    let w11 = tx * ty;
+
+                    if (x0 >= 0 && x0 < NX && y0 >= 0 && y0 < NY) rho_next[IX(x0, y0)] += m * w00;
+                    if (x0 + 1 >= 0 && x0 + 1 < NX && y0 >= 0 && y0 < NY) rho_next[IX(x0 + 1, y0)] += m * w10;
+                    if (x0 >= 0 && x0 < NX && y0 + 1 >= 0 && y0 + 1 < NY) rho_next[IX(x0, y0 + 1)] += m * w01;
+                    if (x0 + 1 >= 0 && x0 + 1 < NX && y0 + 1 >= 0 && y0 + 1 < NY) rho_next[IX(x0 + 1, y0 + 1)] += m * w11;
+                }
+            }
+            rho.set(rho_next);
+        }
+
+        // 2. SHARPENING CONSERVATIVO LOCAL Y GLOBAL
+        // Comprime valores intermedios (0 < rho < 1) hacia 0 o 1 sin alterar la suma de masa total
+        function sharpenDensity() {
+            if (!document.getElementById("chkSharpen").checked) return;
+
+            let totalMassBefore = 0;
+            for (let i = 0; i < NX * NY; i++) totalMassBefore += rho[i];
+
+            // Filtro de sharpening conservativo
+            for (let y = 1; y < NY - 1; y++) {
+                for (let x = 1; x < NX - 1; x++) {
+                    let idx = IX(x, y);
+                    let val = rho[idx];
+
+                    if (val > 0.01 && val < 0.99) {
+                        // Aplicar función sigmoide/compresión local
+                        let k = 0.15; // Intensidad del afilado
+                        let sharpened = val + k * (val - 0.5);
+                        rho[idx] = Math.max(0, Math.min(1, sharpened));
+                    }
+                }
+            }
+
+            // Normalización Global para garantizar conservación matemática exacta de masa
+            let totalMassAfter = 0;
+            for (let i = 0; i < NX * NY; i++) totalMassAfter += rho[i];
+
+            if (totalMassAfter > 0) {
+                let correctionFactor = totalMassBefore / totalMassAfter;
+                for (let i = 0; i < NX * NY; i++) {
+                    rho[i] = Math.min(1.0, rho[i] * correctionFactor);
+                }
+            }
+        }
+
+        // 3. ADVECCIÓN DE VELOCIDAD (Semi-Lagrangian)
+        function advectVelocity() {
+            // Advectar U
+            for (let y = 0; y < NY; y++) {
+                for (let x = 1; x < NX; x++) {
+                    let cx = x;
+                    let cy = y + 0.5;
+                    let vel = getVelocity(cx, cy);
+                    let srcX = cx - vel.u * DT;
+                    let srcY = cy - vel.v * DT;
+                    u_next[IX_U(x, y)] = getVelocity(srcX, srcY).u;
+                }
+            }
+
+            // Advectar V
+            for (let y = 1; y < NY; y++) {
+                for (let x = 0; x < NX; x++) {
+                    let cx = x + 0.5;
+                    let cy = y;
+                    let vel = getVelocity(cx, cy);
+                    let srcX = cx - vel.u * DT;
+                    let srcY = cy - vel.v * DT;
+                    v_next[IX_V(x, y)] = getVelocity(srcX, srcY).v;
+                }
+            }
+
+            u.set(u_next);
+            v.set(v_next);
+        }
+
+        // 4. INCOMPRESIBILIDAD Y SOLVER DE PRESIÓN (Ecuación de Poisson)
+        function solvePressure() {
+            // Aplicar Gravedad
+            if (document.getElementById("chkGravity").checked) {
+                for (let y = 0; y < NY - 1; y++) {
+                    for (let x = 0; x < NX; x++) {
+                        // Aplica fuerza solo donde hay fluido presente
+                        if (rho[IX(x, y)] > 0.1 || rho[IX(x, y + 1)] > 0.1) {
+                            v[IX_V(x, y + 1)] += 0.25 * DT;
+                        }
+                    }
+                }
+            }
+
+            // Calcular Divergencia de la velocidad
+            for (let y = 0; y < NY; y++) {
+                for (let x = 0; x < NX; x++) {
+                    let du = u[IX_U(x + 1, y)] - u[IX_U(x, y)];
+                    let dv = v[IX_V(x, y + 1)] - v[IX_V(x, y)];
+                    div[IX(x, y)] = -(du + dv);
+                    p[IX(x, y)] = 0; // Reset inicial para Jacobi
+                }
+            }
+
+            // Solver Jacobi para hallar el campo de presión p
+            for (let iter = 0; iter < ITER_PRESSURE; iter++) {
+                for (let y = 0; y < NY; y++) {
+                    for (let x = 0; x < NX; x++) {
+                        let p_left = (x > 0) ? p[IX(x - 1, y)] : 0;
+                        let p_right = (x < NX - 1) ? p[IX(x + 1, y)] : 0;
+                        let p_top = (y > 0) ? p[IX(x, y - 1)] : 0;
+                        let p_bottom = (y < NY - 1) ? p[IX(x, y + 1)] : 0;
+
+                        // Límites sólidos (paredes contenedor)
+                        let neighbors = 4;
+                        if (x === 0) neighbors--;
+                        if (x === NX - 1) neighbors--;
+                        if (y === 0) neighbors--;
+                        if (y === NY - 1) neighbors--;
+
+                        p[IX(x, y)] = (div[IX(x, y)] + p_left + p_right + p_top + p_bottom) / neighbors;
+                    }
+                }
+            }
+
+            // Corregir Velocidades usando el Gradiente de Presión
+            for (let y = 0; y < NY; y++) {
+                for (let x = 1; x < NX; x++) {
+                    u[IX_U(x, y)] -= (p[IX(x, y)] - p[IX(x - 1, y)]);
+                }
+            }
+            for (let y = 1; y < NY; y++) {
+                for (let x = 0; x < NX; x++) {
+                    v[IX_V(x, y)] -= (p[IX(x, y)] - p[IX(x, y - 1)]);
+                }
+            }
+
+            // Condiciones de contorno (Paredes estáticas)
+            for (let y = 0; y < NY; y++) {
+                u[IX_U(0, y)] = 0;
+                u[IX_U(NX, y)] = 0;
+            }
+            for (let x = 0; x < NX; x++) {
+                v[IX_V(x, 0)] = 0;
+                v[IX_V(x, NY)] = 0;
+            }
+        }
+
+        // Renderizado en Canvas
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let totalMass = 0;
+
+            for (let y = 0; y < NY; y++) {
+                for (let x = 0; x < NX; x++) {
+                    let d = rho[IX(x, y)];
+                    totalMass += d;
+
+                    if (d > 0.001) {
+                        // Renderizar densidad con isosuperficie (0.5 es la interfaz libre)
+                        if (d >= 0.5) {
+                            ctx.fillStyle = `rgb(0, ${Math.floor(120 + d * 135)}, ${Math.floor(200 + d * 55)})`;
+                        } else {
+                            // Borde difuso/transparente
+                            ctx.fillStyle = `rgba(0, 150, 255, ${d})`;
+                        }
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
+                }
+            }
+
+            document.getElementById("stats").innerText = `Masa Total Simulada: ${totalMass.toFixed(4)} unidades`;
+        }
+
+        // Loop principal
+        function step() {
+            advectDensity();
+            sharpenDensity();
+            advectVelocity();
+            solvePressure();
+
+            render();
+            requestAnimationFrame(step);
+        }
+
+        // Interacción por usuario (Mouse)
+        let isMouseDown = false;
+        canvas.addEventListener("mousedown", () => isMouseDown = true);
+        canvas.addEventListener("mouseup", () => isMouseDown = false);
+        canvas.addEventListener("mousemove", (e) => {
+            if (!isMouseDown) return;
+            let rect = canvas.getBoundingClientRect();
+            let mx = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+            let my = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+
+            // Inyectar densidad al arrastrar
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    let cx = mx + dx, cy = my + dy;
+                    if (cx >= 0 && cx < NX && cy >= 0 && cy < NY) {
+                        rho[IX(cx, cy)] = 1.0;
+                    }
+                }
+            }
+        });
+
+        document.getElementById("btnReset").addEventListener("click", init);
+
+        // Iniciar
+        init();
+        step();
+    </script>
+</body>
+</html>

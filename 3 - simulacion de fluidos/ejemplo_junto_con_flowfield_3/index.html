@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agua mínima (canvas)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 12px;
+      padding: 24px 16px 48px;
+      background: #1a1a1e;
+      color: #c8c8d0;
+      font: 14px/1.5 system-ui, sans-serif;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #e8e8ee;
+    }
+    .stage {
+      position: relative;
+      width: 640px;
+      height: 480px;
+      max-width: 100%;
+      border: 1px solid #333;
+      flex-shrink: 0;
+    }
+    .stage canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: crosshair;
+    }
+    #overlay {
+      image-rendering: auto;
+      pointer-events: none;
+    }
+    .ui {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      align-items: center;
+      justify-content: center;
+      max-width: 640px;
+      width: 100%;
+      padding: 8px 12px;
+      background: #24242a;
+      border: 1px solid #333;
+      border-radius: 6px;
+    }
+    .ui label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .ui input[type="range"] { width: 100px; }
+    .hint {
+      margin: 0;
+      opacity: 0.85;
+      max-width: 640px;
+      text-align: center;
+    }
+    .doc {
+      max-width: 640px;
+      width: 100%;
+      margin-top: 8px;
+      padding: 20px 22px;
+      background: #24242a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #b8b8c4;
+    }
+    .doc h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+      color: #e8e8ee;
+    }
+    .doc h3 {
+      margin: 20px 0 8px;
+      font-size: 0.95rem;
+      color: #d4d4dc;
+    }
+    .doc p { margin: 0 0 10px; }
+    .doc ul, .doc ol {
+      margin: 0 0 12px;
+      padding-left: 1.25rem;
+    }
+    .doc li { margin-bottom: 6px; }
+    .doc code {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.9em;
+      color: #9ecbff;
+      background: #1a1a1e;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .doc strong { color: #dcdce6; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Simulación de fluido celular 2D</h1>
+  <div class="stage">
+    <canvas id="c" width="80" height="60"></canvas>
+    <canvas id="overlay" width="640" height="480"></canvas>
+  </div>
+  <div class="ui">
+    <label><input type="radio" name="brush-mat" value="water" checked /> agua</label>
+    <label><input type="radio" name="brush-mat" value="solid" /> sólido</label>
+    <label><input type="radio" name="brush-mat" value="erase" /> borrar</label>
+    <label>
+      tamaño
+      <input type="range" id="brush-size" min="1" max="8" value="1" />
+      <span id="brush-size-val">1</span>
+    </label>
+  </div>
+  <div class="ui">
+    <label><input type="checkbox" id="dbg-density" checked /> density (fill)</label>
+    <label><input type="checkbox" id="dbg-pressure" /> pressure</label>
+    <label><input type="checkbox" id="dbg-vectors" checked /> vectors</label>
+    <label>vec scale <input type="range" id="dbg-vec-scale" min="4" max="80" value="24" /></label>
+    <label>vec min <input type="range" id="dbg-vec-min" min="0" max="50" value="2" /></label>
+    <label>stride <input type="range" id="dbg-stride" min="1" max="8" value="2" /></label>
+    <label>press max <input type="range" id="dbg-press-max" min="1" max="40" value="8" /></label>
+  </div>
+  <p class="hint">
+    Arrastrá para pintar el material elegido ·
+    <strong>Clic derecho</strong>: borrar (atajo) ·
+    Tamaño 1 = 1 celda, 2 = 3×3, 3 = 5×5, …
+  </p>
+
+  <article class="doc">
+    <h2>Cómo funciona el algoritmo</h2>
+    <p>
+      Esta demo no resuelve las ecuaciones de Navier–Stokes ni usa partículas (SPH).
+      Es un <strong>fluido celular en grilla</strong>: el mundo se divide en celdas
+      (<code>80×60</code>) y cada una guarda cuánta agua tiene, una presión aproximada
+      y un flujo acumulado para el dibujo de flechas. El modelo es un puerto mínimo
+      del simulador <em>water-caves-simulator-2d</em>, pensado para cuevas y
+      plataformas 2D, no para CFD de precisión.
+    </p>
+
+    <h3>Qué guarda cada celda</h3>
+    <ul>
+      <li><code>fillLevel</code>: volumen de agua en la celda (típicamente entre 0 y 1; puede pasar de 1 un instante y luego se redistribuye).</li>
+      <li><code>pressure</code>: presión hidrostática improvisada, no una presión física exacta.</li>
+      <li><code>flowX</code> / <code>flowY</code>: registro del agua que se movió; sirve sobre todo para visualizar vectores.</li>
+      <li><code>isSolid</code>: pared; no admite agua ni presión útil.</li>
+      <li><code>fillRate</code> / <code>sinkRate</code>: grifo y desagüe (celdas especiales del demo).</li>
+    </ul>
+
+    <h3>Paso de simulación (<code>Cell.step</code>)</h3>
+    <p>
+      En cada fotograma el motor corre varias subpasadas (<code>UPDATES_PER_FRAME</code>).
+      En cada subpasada, cada celda no sólida hace lo siguiente, en este orden:
+    </p>
+    <ol>
+      <li>
+        <strong>Presión local.</strong>
+        Se calcula una presión base a partir del llenado:
+        <code>pressure ≈ fillLevel × WATER_CELL_SIZE / 5</code>.
+        Si hay una celda arriba que no es sólida, se le suma su presión
+        (columna de agua apilada). Si arriba hay techo, se busca hacia los costados
+        una “ventana” a una celda con agua arriba y se hereda esa presión, para
+        simular continuidad hidráulica bajo un techo.
+      </li>
+      <li>
+        <strong>Suavizado lateral.</strong>
+        La presión se mezcla con la de izquierda y/o derecha
+        (por ejemplo 40&nbsp;% propia + 30&nbsp;% izquierda + 30&nbsp;% derecha).
+        Eso evita picos bruscos y ayuda a que el agua se nivele.
+      </li>
+      <li>
+        <strong>Gravedad.</strong>
+        Si la celda de abajo no es sólida, se transfiere agua hacia abajo
+        (hasta llenar el de abajo). Es el efecto dominante de “cae el líquido”.
+      </li>
+      <li>
+        <strong>Flujo horizontal por diferencia de presión.</strong>
+        Solo si abajo está lleno o es sólido (el agua “apoya” sobre algo).
+        Si esta celda tiene más presión y más llenado que el vecino,
+        pasa un poco de volumen a izquierda o derecha, proporcional a
+        <code>Δpressure × dt</code>. Así el agua se esparce en superficies
+        y busca equilibrar niveles.
+      </li>
+      <li>
+        <strong>Desborde.</strong>
+        Si <code>fillLevel &gt; 1</code>, el exceso se reparte hacia arriba,
+        izquierda y derecha (vecinos libres). Evita que una celda acumule
+        volumen imposible.
+      </li>
+      <li>
+        <strong>Grifo y desagüe.</strong>
+        Las celdas con <code>fillRate</code> inyectan agua; las de
+        <code>sinkRate</code> la sacan. Un seno en el tiempo hace el caudal
+        un poco irregular (efecto visual).
+      </li>
+    </ol>
+
+    <h3>Orden de actualización</h3>
+    <p>
+      El motor no actualiza todas las columnas en el mismo sentido siempre.
+      Alterna barridos izquierda→derecha y derecha→izquierda (<code>_ticTac</code>).
+      Eso reduce el sesgo direccional típico de los autómatas celulares
+      secuenciales (el agua “prefiriendo” un lado del mapa).
+    </p>
+
+    <h3>Visualización</h3>
+    <ul>
+      <li><strong>Density</strong>: mapa de calor del <code>fillLevel</code>.</li>
+      <li><strong>Pressure</strong>: mapa de calor de <code>pressure</code> (escalado con “press max”).</li>
+      <li><strong>Vectors</strong>: flechas de <code>flowX</code>/<code>flowY</code> en un canvas encima.</li>
+      <li>Sin debug de densidad/presión: agua azul, sólidos grises, grifo/desagüe en colores marcados.</li>
+    </ul>
+
+    <h3>Qué es y qué no es</h3>
+    <p>
+      <strong>Sí es:</strong> un autómata de volumen + presión ad-hoc + transferencia
+      por gravedad y Δpresión; barato, estable para juegos y demos de cuevas.
+    </p>
+    <p>
+      <strong>No es:</strong> un solver incompresible, Lattice Boltzmann, shallow water
+      ni dinámica de partículas. La “presión” no proviene de un campo de velocidad
+      continuo; es una heurística para que el agua baje, se nivele y desborde
+      de forma creíble en una grilla discreta.
+    </p>
+  </article>
+
+  <script src="water.js"></script>
+</body>
+</html>

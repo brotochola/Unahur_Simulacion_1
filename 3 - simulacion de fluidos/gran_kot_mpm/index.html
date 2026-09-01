@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+    <!-- HTML Meta Tags -->
+    <title>Liquid Layers</title>
+    <meta name="description" content="Colorful & interactive liquid simulator in the browser">
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:url" content="https://grantkot.com/ll">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Liquid Layers">
+    <meta property="og:description" content="Colorful & interactive liquid simulator in the browser">
+    <meta property="og:image" content="https://gkog.pages.dev/ll.png">
+
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta property="twitter:domain" content="grantkot.com">
+    <meta property="twitter:url" content="https://grantkot.com/ll">
+    <meta name="twitter:title" content="Liquid Layers">
+    <meta name="twitter:description" content="Colorful & interactive liquid simulator in the browser">
+    <meta name="twitter:image" content="https://gkog.pages.dev/ll.png">
+
+    <!-- Meta Tags Generated via https://opengraph.dev -->
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: black;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+
+        canvas {
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+
+        #overlay {
+            font-family: sans-serif;
+            position: absolute;
+            top: 0;
+            left: 0;
+            color: #CCC;
+            font-size: 20px;
+            pointer-events: none;
+            background-color: transparent;
+        }
+
+        #overlay p {
+            margin: 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .lil-gui {
+            --font-size: 12px;
+        }
+
+        /* RTL Layout Support */
+        .rtl .lil-gui .controller>.name {
+            direction: rtl;
+            text-align: right;
+        }
+
+        #carbon-wrapper {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            z-index: 100;
+            min-width: 100px;
+            min-height: 100px;
+            max-width: 80vw;
+            background-color: #fff;
+            padding: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            transition: box-shadow 0.3s ease;
+        }
+
+
+
+        #carbon-wrapper:hover {
+            box-shadow: 0 0 20px rgba(255, 102, 0, 0.4);
+        }
+
+        #carbon-wrapper.dragging {
+            box-shadow: 0 0 25px rgba(255, 102, 0, 0.7);
+            opacity: 0.95;
+        }
+
+        .close-carbon {
+            position: absolute;
+            top: -17px;
+            left: -17px;
+            width: 30px;
+            height: 30px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 101;
+            border: 2px solid #ff6600;
+        }
+
+
+
+        .close-carbon:hover {
+            background-color: rgba(255, 128, 0, 0.9);
+        }
+
+        .drag-carbon {
+            position: absolute;
+            top: -17px;
+            left: 17px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 15px;
+            padding: 5px 10px;
+            cursor: move;
+            font-size: 16px;
+            z-index: 101;
+            border: 2px solid #ff6600;
+            font-family: sans-serif;
+        }
+
+
+
+        .drag-carbon:hover {
+            background-color: rgba(255, 128, 0, 0.9);
+        }
+
+        .drag-carbon svg {
+            margin-right: 4px;
+        }
+    </style>
+    <script type="module" src="lil-gui.esm.min.js"></script>
+    <script type="module" src="translations.js?v=6"></script>
+    <script src="metaballs-refraction.js?v=5"></script>
+    <link rel="manifest" href="ll.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+
+<body>
+    <noscript>
+        <p data-i18n="javascriptRequired">This page requires JavaScript to run.</p>
+    </noscript>
+
+    <div id="carbon-wrapper" aria-label="Carbon Ads" data-i18n-aria="carbonAdsLabel" style="display: none;">
+        <div class="close-carbon" aria-label="Close Carbon Ads" data-i18n-aria="closeCarbonAds">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </div>
+        <div class="drag-carbon" data-i18n="drag">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="5 9 2 12 5 15"></polyline>
+                <polyline points="9 5 12 2 15 5"></polyline>
+                <polyline points="15 19 12 22 9 19"></polyline>
+                <polyline points="19 9 22 12 19 15"></polyline>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <line x1="12" y1="2" x2="12" y2="22"></line>
+            </svg>
+            Drag
+        </div>
+    </div>
+
+    <div id="overlay">
+        <p id="fpsDisplay"></p>
+        <div id="info" class="hidden">
+            <!-- Content will be dynamically updated by i18n system -->
+        </div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        let userUpdate; // Hi adventurer! You can run your own function by assigning it to userUpdate. Try going into the console and typing userUpdate = demoFunc0
+        // User functions
+        const demoFunc0 = (sim) => {
+            const count = 5;
+            const minY = 20;
+            const maxY = 30;
+            const bottomY = window.innerHeight;
+
+            const currentTime = performance.now();
+            const midX = window.innerWidth / 2 + Math.sin(currentTime / 1000) * 100;
+            const currentSecond = Math.floor(currentTime / 1000);
+            const matId = currentSecond % 4;
+
+            Module._pvfs_add_particles(sim, count, matId, midX - 5, minY, midX + 5, maxY)
+            Module._pvfs_delete_particles(sim, midX, bottomY, 20);
+        }
+    </script>
+
+    <script>
+        let gui;
+
+        const toggleHidden = (element) => {
+            element.classList.toggle('hidden');
+        };
+
+        const params = {
+            action: 'drag',
+            brushSize: 100,
+            forceFieldStrength: 0.5,
+            emitId: 0,
+            // Simulation
+            sameRestDensity: 8.0,
+            diffRestDensity: 0.0,
+            stiffness: .2,
+            stiffnessNear: 2.0,
+            gravX: 0.0,
+            gravY: 1.0,
+            nbody: false,
+            nbodyStrength: 1.0,
+            // Materials
+            color0: [0.90, 0.16, 0.22],
+            color1: [1.00, 0.63, 0.00],
+            color2: [0.00, 0.89, 0.19],
+            color3: [0.00, 0.47, 0.95],
+            pMass0: 1.0,
+            pMass1: 0.6,
+            pMass2: 0.36,
+            pMass3: 0.216,
+            background: [0, 0, 0],
+            stepsPerFrame: 3,
+            sculptMode: false,
+            sculptVelKeep: 0.0,
+            enableAccelerometer: () => {
+                enableAccelerometer();
+            },
+            invertAccelerometer: false,
+            useGyro: false,
+            // Metaballs refraction
+            liquidGlassMode: 'off',
+            metaballsThreshold: 0.0,
+            refractionStrength: 0.5,
+            chromaticAberration: 0.003,
+            lightIntensity: 5.0,
+            absorption: 1.0,
+            materialMode: 'water', // 'water', 'metal', 'paint'
+        };
+
+        let brushOpacity = 0;
+        let brushSizeController;
+        let stepController;
+        let sculptController;
+        let gravXController;
+        let gravYController;
+
+        let fpsLowCount = 0;
+
+        // Initialize i18n when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.i18n) {
+                window.i18n.updateAll();
+                // Dispatch event to let GUI know i18n is ready
+                window.dispatchEvent(new CustomEvent('i18n-ready'));
+            }
+        });
+    </script>
+    <script type="module">
+        import GUI from './lil-gui.esm.min.js';
+
+        const actions = {
+            moreDemos: () => {
+                // go to homepage of site: grantkot.com in a new tab
+                window.open('https://grantkot.com', '_blank');
+            },
+            toggleInfo: () => {
+                toggleHidden(document.getElementById('info'));
+            },
+            removeControlUI: () => {
+                fpsCounter.display.classList.add('hidden');
+                gui.hide();
+            },
+            changeLanguage: async (lang) => {
+                if (window.i18n) {
+                    await window.i18n.setLanguage(lang);
+                    // Force background update to show new language text
+
+                    // Rebuild GUI with new language
+                    rebuildGUI();
+                }
+            }
+        };
+
+        // Add language selection to params
+        params.language = window.i18n ? window.i18n.currentLanguage : 'en';
+
+        function rebuildGUI() {
+            if (metaballsSystem) {
+                metaballsSystem.forceBackgroundUpdate(params.liquidGlassMode);
+            }
+
+            if (gui) {
+                gui.destroy();
+            }
+            createGUI();
+        }
+
+        function createGUI() {
+            const i18n = window.i18n;
+
+            gui = new GUI({ title: i18n.t('settings'), closeFolders: true });
+            gui.add(actions, 'toggleInfo').name(i18n.t('info'));
+
+            // Use consolidated language options from I18n class
+            const languageOptions = i18n.getOrderedLanguageOptions();
+            gui.add(params, 'language', languageOptions).name('🌍 ' + i18n.t('language')).onChange((value) => {
+                actions.changeLanguage(value);
+            });
+
+            // Create liquid glass mode options with translated labels
+            const liquidGlassModeOptions = {};
+            const modesList = ['off', 'hello', 'clock', 'story'];
+            modesList.forEach(mode => {
+                liquidGlassModeOptions[mode === 'off' ? 'Off' : i18n.t(mode)] = mode;
+            });
+            const liquidGlassController = gui.add(params, 'liquidGlassMode', liquidGlassModeOptions).name('Liquid Glass');
+
+            // Add change listener to update background when mode changes
+            liquidGlassController.onChange((value) => {
+                if (metaballsSystem) {
+                    // Reset story if switching to story mode
+                    if (value === 'story' && metaballsSystem.storyState) {
+                        metaballsSystem.storyState.scrollPosition = 0;
+                        metaballsSystem.storyState.lastTime = Date.now();
+                    }
+                    metaballsSystem.forceBackgroundUpdate(value);
+                }
+            });
+
+            const interFolder = gui.addFolder(i18n.t('interaction'));
+            // Create action dropdown with translated options
+            const actionOptions = {};
+            const actionsList = ['drag', 'attract', 'repel', 'vortex', 'collide', 'emit', 'emit_cycle', 'lock', 'unlock', 'delete'];
+            actionsList.forEach(action => {
+                actionOptions[i18n.t(`actions.${action}`)] = action;
+            });
+            interFolder.add(params, 'action', actionOptions).name(i18n.t('pointerAction'));
+            brushSizeController = interFolder.add(params, 'brushSize', 10, 500, 1).name(i18n.t('brushSize'));
+            interFolder.add(params, 'forceFieldStrength', 0, 1).name(i18n.t('forceFieldStrength'));
+            interFolder.add(params, 'emitId', 0, 3, 1).name(i18n.t('emitMaterial'));
+            interFolder.add(params, 'enableAccelerometer').name(i18n.t('enableAccelerometer'));
+            interFolder.add(params, 'invertAccelerometer').name(i18n.t('invertAccelerometer'));
+            interFolder.add(params, 'useGyro').name(i18n.t('useGyro'));
+
+            const simFolder = gui.addFolder(i18n.t('simulation'));
+            simFolder.add(params, 'sameRestDensity', 0, 8).name(i18n.t('sameRestDensity'));
+            simFolder.add(params, 'diffRestDensity', 0, 8).name(i18n.t('diffRestDensity'));
+            simFolder.add(params, 'stiffness', 0, 1).name(i18n.t('stiffness'));
+            simFolder.add(params, 'stiffnessNear', 0, 4).name(i18n.t('stiffnessNear'));
+            simFolder.add(params, 'forceFieldStrength', 0, 1).name(i18n.t('forceFieldStrength'));
+            gravXController = simFolder.add(params, 'gravX', -1, 1, .1).name(i18n.t('gravX'));
+            gravYController = simFolder.add(params, 'gravY', -1, 1, .1).name(i18n.t('gravY'));
+            simFolder.add(params, 'nbody').name(i18n.t('nbody'));
+            simFolder.add(params, 'nbodyStrength', 0, 5).name(i18n.t('nbodyStrength'));
+            stepController = simFolder.add(params, 'stepsPerFrame', 1, 5, 1).name(i18n.t('stepsPerFrame'));
+            sculptController = simFolder.add(params, 'sculptMode').name(i18n.t('sculptMode'));
+            simFolder.add(params, 'sculptVelKeep', 0, 1, .01).name(i18n.t('sculptVelKeep'));
+
+            const matFolder = gui.addFolder(i18n.t('materials'));
+            matFolder.addColor(params, 'color0').name(i18n.t('color0'));
+            matFolder.add(params, 'pMass0', .1, 1, .01).name(i18n.t('pMass0'));
+            matFolder.addColor(params, 'color1').name(i18n.t('color1'));
+            matFolder.add(params, 'pMass1', .1, 1, .01).name(i18n.t('pMass1'));
+            matFolder.addColor(params, 'color2').name(i18n.t('color2'));
+            matFolder.add(params, 'pMass2', .1, 1, .01).name(i18n.t('pMass2'));
+            matFolder.addColor(params, 'color3').name(i18n.t('color3'));
+            matFolder.add(params, 'pMass3', .1, 1, .01).name(i18n.t('pMass3'));
+            matFolder.addColor(params, 'background').name(i18n.t('background'));
+
+            // Only used when developing
+            // const metaFolder = gui.addFolder(i18n.t('metaballs') || 'Metaballs');
+            // metaFolder.add(params, 'enableMetaballs').name(i18n.t('enableMetaballs') || 'Enable Metaballs');
+
+            // const materialModes = {
+            //   'Colored Water': 'water',
+            //   'Opaque Metal': 'metal',
+            //   'Opaque Paint': 'paint'
+            // };
+            // metaFolder.add(params, 'materialMode', materialModes).name(i18n.t('materialMode') || 'Material Mode');
+
+            // metaFolder.add(params, 'metaballsThreshold', 0.1, 1.0).name(i18n.t('threshold') || 'Threshold');
+            // metaFolder.add(params, 'refractionStrength', 1.0, 10.0).name(i18n.t('refractionStrength') || 'Refraction Strength');
+            // metaFolder.add(params, 'chromaticAberration', 0.0, 10.0).name(i18n.t('chromaticAberration') || 'Chromatic Aberration');
+            // metaFolder.add(params, 'lightIntensity', 0.5, 5.0).name(i18n.t('lightIntensity') || 'Light Intensity');
+            // metaFolder.add(params, 'absorption', 0.0, 1.0).name(i18n.t('absorption') || 'Absorption');
+
+            gravXController.onChange((e) => {
+                if (sim !== undefined)
+                    Module._pvfs_set_sim_gravity(sim, params.gravX, params.gravY);
+            });
+
+            gravYController.onChange((e) => {
+                if (sim !== undefined)
+                    Module._pvfs_set_sim_gravity(sim, params.gravX, params.gravY);
+            });
+
+            const moreFolder = gui.addFolder(i18n.t('more'));
+            moreFolder.add(actions, 'moreDemos').name(i18n.t('moreDemos'));
+            moreFolder.add(actions, 'removeControlUI').name(i18n.t('removeUI'));
+            gui.open();
+
+            gui.onChange((e) => {
+                brushOpacity = 1;
+            });
+        }
+
+        // Wait for i18n to be ready, then create GUI
+        if (window.i18n) {
+            createGUI();
+        } else {
+            // Wait for translations to load
+            window.addEventListener('i18n-ready', createGUI);
+        }
+
+        window.addEventListener('i18n-rebuild', () => {
+            params.language = window.i18n.currentLanguage;
+            rebuildGUI();
+        });
+    </script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const gl = canvas.getContext('webgl', { powerPreference: 'high-performance', antialias: false, depth: false, stencil: false });
+        let ctx2d;
+
+        if (!gl) {
+            console.error('WebGL not supported, falling back to Canvas');
+            ctx2d = canvas.getContext('2d');
+        }
+
+        let orientationAngle = screen.orientation.angle;
+        let isAndroid = false;
+        let isiPad = false;
+        let isWindows = false;
+
+        if (navigator.userAgent.includes('Android')) {
+            isAndroid = true;
+        }
+
+        if (navigator.userAgent.includes('Windows')) {
+            isWindows = true;
+        }
+
+        if (navigator.userAgent.includes('iPad')) {
+            isiPad = true;
+        } else {
+            if (!navigator.userAgent.includes('iPhone') && navigator.userAgent.includes('Mac')) {
+                // check if iPad masquerading as Mac doesn't need to be super accurate cause I just care about orientation
+                if (navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
+                    isiPad = true;
+                }
+            }
+        }
+
+
+        if (isiPad) {
+            orientationAngle -= 90;
+
+            if (orientationAngle < 0) {
+                orientationAngle += 360;
+            }
+        }
+
+        screen.orientation.addEventListener('change', (event) => {
+            orientationAngle = screen.orientation.angle;
+
+            if (isiPad) {
+                orientationAngle -= 90;
+
+                if (orientationAngle < 0) {
+                    orientationAngle += 360;
+                }
+            }
+        });
+
+        function updateGrav(x, y) {
+            let gravX = 0, gravY = 0;
+
+            switch (orientationAngle) {
+                case 0:
+                    gravX = x;
+                    gravY = -y;
+                    break;
+                case 90:
+                    gravX = -y;
+                    gravY = -x;
+                    break;
+                case 180:
+                    gravX = -x;
+                    gravY = y;
+                    break;
+                case 270:
+                    gravX = y;
+                    gravY = x;
+                    break;
+            }
+
+            gravX /= 9.8;
+            gravY /= 9.8;
+
+            if (isAndroid || isWindows) {
+                gravX = -gravX;
+                gravY = -gravY;
+            }
+
+            if (isiPad) {
+                if (orientationAngle == 90 || orientationAngle == 270) {
+                    gravX = -gravX;
+                    gravY = -gravY;
+                }
+            }
+
+            if (params.invertAccelerometer) {
+                gravX = -gravX;
+                gravY = -gravY;
+            }
+
+            if (sim !== undefined) {
+                Module._pvfs_set_sim_gravity(sim, gravX, gravY);
+            }
+        }
+    </script>
+    <script>
+        var Module = {};
+        let sim;
+
+        const pointerTracker = {};
+        const keyTracker = {};
+        let touchCount = 0;
+
+        let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+
+
+
+        const locationHash = window.location.hash;
+        let rotationGamma = 0;
+
+
+        class FPSCounter {
+            constructor() {
+                this.lastTime = performance.now();
+                this.frames = 0;
+                this.fps = 0;
+
+                this.display = document.getElementById('fpsDisplay');
+            }
+
+            update() {
+                const now = performance.now();
+                this.frames++;
+
+                if (now - this.lastTime >= 1000) {
+                    this.fps = this.frames;
+                    this.frames = 0;
+                    this.lastTime = now;
+
+                    this.display.textContent = `${this.fps}`;
+
+                    if (this.fps < 27) {
+                        fpsLowCount++;
+                    } else {
+                        fpsLowCount = 0;
+                    }
+
+                    if (fpsLowCount > 5) {
+                        if (params.stepsPerFrame > 1) {
+                            params.stepsPerFrame--;
+                            stepController.updateDisplay();
+
+                            fpsLowCount = 0;
+                        }
+                    }
+                }
+            }
+
+            getFPS() {
+                return this.fps;
+            }
+        }
+
+        const fpsCounter = new FPSCounter();
+        let dpr = window.devicePixelRatio || 1;
+        let windowScreenXPrev = window.screenX;
+        let windowScreenYPrev = window.screenY;
+        let windowWidthPrev = window.innerWidth;
+        let windowHeightPrev = window.innerHeight;
+        let firstWindowShift = true;
+
+
+        function sizeCanvas() {
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+
+            const rect = canvas.getBoundingClientRect();
+            dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+
+            if (ctx2d) {
+                ctx2d.scale(dpr, dpr);
+            }
+        }
+
+        sizeCanvas();
+
+        window.addEventListener('resize', () => {
+            sizeCanvas();
+            if (metaballsSystem) {
+                metaballsSystem.resize(canvas.width, canvas.height);
+                metaballsSystem.forceBackgroundUpdate(params.liquidGlassMode);
+            }
+        });
+
+        // Add window resize handler for the carbon ad
+        window.addEventListener('resize', function () {
+            if (carbonWrapper) {
+                const rect = carbonWrapper.getBoundingClientRect();
+                const maxX = window.innerWidth - rect.width;
+                const maxY = window.innerHeight - rect.height;
+
+                // Check if the ad is outside the window boundaries
+                if (rect.right > window.innerWidth || rect.bottom > window.innerHeight) {
+                    // Reposition the ad to keep it within bounds
+                    const newX = Math.min(rect.left, maxX);
+                    const newY = Math.min(rect.top, maxY);
+
+                    carbonWrapper.style.left = Math.max(0, newX) + 'px';
+                    carbonWrapper.style.top = Math.max(0, newY) + 'px';
+                    carbonWrapper.style.bottom = 'auto';
+                    carbonWrapper.style.right = 'auto';
+                }
+            }
+        });
+
+        // let logged = false;
+
+        function draw() {
+            if (sim === undefined) {
+                return;
+            }
+
+            const windowScreenX = window.screenX;
+            const windowScreenY = window.screenY;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            if (windowScreenX !== windowScreenXPrev || windowScreenY !== windowScreenYPrev || windowWidth !== windowWidthPrev || windowHeight !== windowHeightPrev) {
+                let shiftX = windowScreenX - windowScreenXPrev;
+                let shiftY = windowScreenY - windowScreenYPrev;
+
+                if (firstWindowShift) {
+                    // Prevent initial window shift from affecting the simulation
+                    firstWindowShift = false;
+                    shiftX = 0;
+                    shiftY = 0;
+                }
+
+                Module._pvfs_set_sim_size(sim, window.innerWidth, window.innerHeight, -shiftX, -shiftY, false);
+                windowScreenXPrev = windowScreenX;
+                windowScreenYPrev = windowScreenY;
+                windowWidthPrev = windowWidth;
+                windowHeightPrev = windowHeight;
+            }
+
+            const numParticles = Module._pvfs_get_particle_count(sim);
+            const sim_position_ptr = Module._pvfs_get_particle_positions(sim);
+            const sim_material_ptr = Module._pvfs_get_particle_material_ids(sim);
+
+            if (gl) {
+                const rect = canvas.getBoundingClientRect();
+
+                if (params.liquidGlassMode !== 'off' && metaballsSystem) {
+                    // Use metaballs refraction rendering
+                    const kernelRadius = Module._pvfs_get_kernel_radius(sim);
+                    const pointSize = Math.max(2, kernelRadius * dpr * 0.8); // Larger points for metaballs
+
+                    const colors = [params.color0, params.color1, params.color2, params.color3];
+
+                    // Begin metaballs rendering (setup once)
+                    metaballsSystem.beginMetaballsRender(pointSize);
+
+                    // Render metaballs to RGBA channels in batches
+                    for (let start = 0; start < numParticles; start += batchSize) {
+                        const end = Math.min(start + batchSize, numParticles);
+                        const len = end - start;
+
+                        const posArray = new Float32Array(Module.HEAPF32.buffer, sim_position_ptr + start * 8, len * 2);
+                        const matArray = new Uint8Array(Module.HEAP32.buffer, sim_material_ptr + start, len);
+
+                        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                        gl.bufferSubData(gl.ARRAY_BUFFER, 0, posArray);
+
+                        gl.bindBuffer(gl.ARRAY_BUFFER, materialBuffer);
+                        gl.bufferSubData(gl.ARRAY_BUFFER, 0, matArray);
+
+                        metaballsSystem.renderMetaballsBatch(positionBuffer, materialBuffer, len);
+                    }
+
+                    // End metaballs rendering (cleanup once)
+                    metaballsSystem.endMetaballsRender();
+
+                    // Apply Gaussian blur
+                    metaballsSystem.applyBlur();
+
+                    // Render with refraction
+                    metaballsSystem.renderRefraction(colors, params.metaballsThreshold, params.refractionStrength, params.chromaticAberration, params.lightIntensity, params.absorption, params.materialMode, params.liquidGlassMode);
+                } else {
+                    // Original rendering
+                    gl.viewport(0, 0, canvas.width, canvas.height);
+                    gl.clearColor(params.background[0], params.background[1], params.background[2], 1);
+                    gl.clear(gl.COLOR_BUFFER_BIT);
+
+                    // Enable blending for antialiasing
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+                    gl.useProgram(program);
+                    gl.uniform2f(resolutionUniformLocation, rect.width, rect.height);
+
+                    const kernelRadius = Module._pvfs_get_kernel_radius(sim);
+                    const pointSize = Math.max(2, kernelRadius * dpr * 0.4);
+                    gl.uniform1f(pointSizeUniformLocation, pointSize);
+
+                    const color0 = params.color0;
+                    const color1 = params.color1;
+                    const color2 = params.color2;
+                    const color3 = params.color3;
+                    gl.uniform3fv(color0Location, color0);
+                    gl.uniform3fv(color1Location, color1);
+                    gl.uniform3fv(color2Location, color2);
+                    gl.uniform3fv(color3Location, color3);
+
+                    for (let start = 0; start < numParticles; start += batchSize) {
+                        const end = Math.min(start + batchSize, numParticles);
+                        const len = end - start;
+
+                        const posArray = new Float32Array(Module.HEAPF32.buffer, sim_position_ptr + start * 8, len * 2);
+                        const matArray = new Uint8Array(Module.HEAP32.buffer, sim_material_ptr + start, len);
+
+                        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                        gl.bufferSubData(gl.ARRAY_BUFFER, 0, posArray);
+                        gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+                        gl.enableVertexAttribArray(positionAttributeLocation);
+
+                        gl.bindBuffer(gl.ARRAY_BUFFER, materialBuffer);
+                        gl.bufferSubData(gl.ARRAY_BUFFER, 0, matArray);
+                        gl.vertexAttribPointer(materialAttributeLocation, 1, gl.UNSIGNED_BYTE, false, 0, 0);
+                        gl.enableVertexAttribArray(materialAttributeLocation);
+
+                        gl.drawArrays(gl.POINTS, 0, len);
+                    }
+
+                    gl.disableVertexAttribArray(positionAttributeLocation);
+                    gl.disableVertexAttribArray(materialAttributeLocation);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+                }
+
+                if (brushOpacity > 0) {
+                    gl.useProgram(circleProgram);
+
+                    const resLoc = gl.getUniformLocation(circleProgram, "u_resolution");
+                    const mouseLoc = gl.getUniformLocation(circleProgram, "u_mousePos");
+                    const brushLoc = gl.getUniformLocation(circleProgram, "u_brushSize");
+
+                    gl.uniform2f(resLoc, rect.width, rect.height);
+
+                    const circlePositionLocation = gl.getAttribLocation(circleProgram, "a_position");
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, circleBuffer);
+                    gl.vertexAttribPointer(circlePositionLocation, 2, gl.FLOAT, false, 0, 0);
+                    gl.enableVertexAttribArray(circlePositionLocation);
+
+                    gl.uniform2f(mouseLoc, mouseX, mouseY);
+                    gl.uniform2f(brushLoc, params.brushSize, brushOpacity);
+
+                    gl.drawArrays(gl.LINE_LOOP, 0, numCircleVerts);
+
+                    gl.disableVertexAttribArray(circlePositionLocation);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+                }
+            } else {
+                ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+
+                const posArray = new Float32Array(Module.HEAPF32.buffer, sim_position_ptr, numParticles * 2);
+                const matArray = new Uint8Array(Module.HEAP32.buffer, sim_material_ptr, numParticles);
+
+                const colorFillstyles = [
+                    "#" + Math.floor(params.color0[0] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color0[1] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color0[2] * 255).toString(16).padStart(2, '0'),
+                    "#" + Math.floor(params.color1[0] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color1[1] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color1[2] * 255).toString(16).padStart(2, '0'),
+                    "#" + Math.floor(params.color2[0] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color2[1] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color2[2] * 255).toString(16).padStart(2, '0'),
+                    "#" + Math.floor(params.color3[0] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color3[1] * 255).toString(16).padStart(2, '0') +
+                    Math.floor(params.color3[2] * 255).toString(16).padStart(2, '0')
+                ];
+
+
+                let lastMatIdx = -1;
+
+                for (let i = 0; i < numParticles; i++) {
+                    const x = posArray[i * 2];
+                    const y = posArray[i * 2 + 1];
+
+                    if (matArray[i] !== lastMatIdx) {
+                        lastMatIdx = matArray[i];
+                        ctx2d.fillStyle = colorFillstyles[lastMatIdx];
+                    }
+
+                    ctx2d.fillRect(x, y, 3, 3);
+                }
+
+                if (brushOpacity > 0) {
+                    ctx2d.strokeStyle = "rgba(255, 255, 255, " + brushOpacity.toFixed(2) + ")";
+                    ctx2d.beginPath();
+                    ctx2d.arc(mouseX, mouseY, params.brushSize, 0, Math.PI * 2);
+                    ctx2d.stroke();
+                }
+            }
+
+            brushOpacity -= .01;
+
+            fpsCounter.update();
+
+            // ctx.fillText(`FPS: ${fpsCounter.getFPS()}`, 10, 20);
+
+            Module._pvfs_set_parameters(sim, params.sameRestDensity, params.diffRestDensity, params.stiffness, params.stiffnessNear, params.pMass0, params.pMass1, params.pMass2, params.pMass3);
+            const numSubsteps = params.stepsPerFrame;
+
+            for (let substep = 0; substep < numSubsteps; substep++) {
+                for (const id in pointerTracker) {
+                    const pointer = pointerTracker[id];
+
+                    switch (params.action) {
+                        case 'drag':
+                            Module._pvfs_drag_particles(sim, pointer.x, pointer.y, params.brushSize, pointer.velX / numSubsteps, pointer.velY / numSubsteps);
+                            break;
+                        case 'attract':
+                            Module._pvfs_attract_particles(sim, pointer.x, pointer.y, params.brushSize, params.forceFieldStrength);
+                            break;
+                        case 'repel':
+                            Module._pvfs_attract_particles(sim, pointer.x, pointer.y, params.brushSize, -params.forceFieldStrength);
+                            break;
+                        case 'emit':
+                            Module._pvfs_add_particles(sim, 5, params.emitId, pointer.x - 10, pointer.y - 10, pointer.x + 10, pointer.y + 10);
+                            break;
+                        case 'emit_cycle':
+                            Module._pvfs_add_particles(sim, 5, pointer.emitId, pointer.x - 10, pointer.y - 10, pointer.x + 10, pointer.y + 10);
+                            break;
+                        case 'vortex':
+                            Module._pvfs_vortex_sim(sim, pointer.x, pointer.y, params.brushSize, params.forceFieldStrength);
+                            break;
+                        case 'lock':
+                            Module._pvfs_lock_particles(sim, pointer.x, pointer.y, params.brushSize);
+                            break;
+                        case 'unlock':
+                            Module._pvfs_unlock_particles(sim, pointer.x, pointer.y, params.brushSize);
+                            break;
+                        case 'delete':
+                            Module._pvfs_delete_particles(sim, pointer.x, pointer.y, params.brushSize);
+                            break;
+                    }
+                }
+
+                for (let i = 0; i < 4; i++) {
+                    if (keyTracker[i + 1]) {
+                        Module._pvfs_add_particles(sim, 10, i, mouseX - 10, mouseY - 10, mouseX + 10, mouseY + 10);
+                    }
+                }
+
+                if (keyTracker['a']) {
+                    Module._pvfs_attract_particles(sim, mouseX, mouseY, params.brushSize, params.forceFieldStrength);
+                }
+
+                if (keyTracker['r']) {
+                    Module._pvfs_attract_particles(sim, mouseX, mouseY, params.brushSize, -params.forceFieldStrength);
+                }
+
+                if (keyTracker['x']) {
+                    Module._pvfs_vortex_sim(sim, mouseX, mouseY, params.brushSize, params.forceFieldStrength);
+                }
+
+                if (keyTracker['z']) {
+                    Module._pvfs_vortex_sim(sim, mouseX, mouseY, params.brushSize, -params.forceFieldStrength);
+                }
+
+                if (keyTracker['d']) {
+                    Module._pvfs_delete_particles(sim, mouseX, mouseY, params.brushSize);
+                }
+
+                if (keyTracker['`'] || keyTracker['q']) {
+                    Module._pvfs_lock_particles(sim, mouseX, mouseY, params.brushSize);
+                }
+
+                if (keyTracker['w']) {
+                    Module._pvfs_unlock_particles(sim, mouseX, mouseY, params.brushSize);
+                }
+
+                // console.log(keyTracker)
+
+                if (params.useGyro) {
+                    Module._pvfs_rotate_sim(sim, rotationGamma / numSubsteps);
+                }
+
+                if (typeof userUpdate === 'function') {
+                    userUpdate(sim);
+                }
+
+                Module._pvfs_update_sim_before_collisions(sim, 1.0);
+
+                if (keyTracker['c']) {
+                    Module._pvfs_collide_particles_circle(sim, mouseX, mouseY, params.brushSize);
+
+                }
+
+                if (keyTracker['v']) {
+                    Module._pvfs_collide_particles_line(sim, mouseX - params.brushSize, mouseY - params.brushSize, mouseX, mouseY, 20);
+                    Module._pvfs_collide_particles_line(sim, mouseX, mouseY, mouseX + params.brushSize, mouseY - params.brushSize, 20);
+                }
+
+                if (keyTracker['b']) {
+                    Module._pvfs_collide_particles_rect(sim, mouseX - params.brushSize, mouseY - params.brushSize, mouseX + params.brushSize, mouseY + params.brushSize);
+                }
+
+                // Carbon ad collision - works in the same way as the 'b' key
+                if (carbonWrapper && carbonWrapper.style.display !== 'none') {
+                    const adRect = carbonWrapper.getBoundingClientRect();
+                    Module._pvfs_collide_particles_rect(
+                        sim,
+                        Number(adRect.left),
+                        Number(adRect.top),
+                        Number(adRect.right),
+                        Number(adRect.bottom)
+                    );
+                }
+
+                // Clock hand collision - when in clock mode
+                if (params.liquidGlassMode === 'clock' && metaballsSystem) {
+                    const rect = canvas.getBoundingClientRect();
+                    const clockCollisions = metaballsSystem.getClockHandCollisions(rect.width, rect.height);
+
+                    // Collide with clock hands using line collision
+                    Module._pvfs_collide_particles_line(
+                        sim,
+                        clockCollisions.hourHand.x1,
+                        clockCollisions.hourHand.y1,
+                        clockCollisions.hourHand.x2,
+                        clockCollisions.hourHand.y2,
+                        clockCollisions.hourHand.thickness
+                    );
+
+                    Module._pvfs_collide_particles_line(
+                        sim,
+                        clockCollisions.minuteHand.x1,
+                        clockCollisions.minuteHand.y1,
+                        clockCollisions.minuteHand.x2,
+                        clockCollisions.minuteHand.y2,
+                        clockCollisions.minuteHand.thickness
+                    );
+
+                    Module._pvfs_collide_particles_line(
+                        sim,
+                        clockCollisions.secondHand.x1,
+                        clockCollisions.secondHand.y1,
+                        clockCollisions.secondHand.x2,
+                        clockCollisions.secondHand.y2,
+                        clockCollisions.secondHand.thickness
+                    );
+                }
+
+                if (keyTracker['g']) {
+                    const radius = Math.min(params.brushSize, 40);
+                    for (let centerX = 0; centerX < window.innerWidth; centerX += 100) {
+                        for (let yIdx = -1; yIdx < 2; yIdx++) {
+                            Module._pvfs_collide_particles_circle(sim, centerX, mouseY + yIdx * 100, radius);
+                        }
+                    }
+
+                }
+
+                if (params.action === 'collide') {
+                    for (const id in pointerTracker) {
+                        const pointer = pointerTracker[id];
+                        Module._pvfs_collide_particles_circle(sim, pointer.x, pointer.y, params.brushSize);
+                    }
+                }
+
+                if (params.nbody) {
+                    Module._pvfs_nbody(sim, params.nbodyStrength);
+                }
+
+                Module._pvfs_update_sim_after_collisions(sim, 1.0);
+
+                if (params.sculptMode) {
+                    Module._pvfs_dampen_sim(sim, params.sculptVelKeep);
+                }
+            }
+
+            for (const id in pointerTracker) {
+                const pointer = pointerTracker[id];
+                pointer.velX = 0;
+                pointer.velY = 0;
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+
+        let metaballsSystem;
+
+        Module.onRuntimeInitialized = () => {
+            sim = Module._pvfs_new_sim(40000, 4, 40000, 4096);
+
+            sim_position_ptr = Module._pvfs_get_particle_positions(sim);
+            sim_material_ptr = Module._pvfs_get_particle_material_ids(sim);
+
+            // Initialize metaballs system
+            if (gl) {
+                metaballsSystem = new MetaballsRefraction(gl, canvas);
+            }
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            Module._pvfs_set_sim_size(sim, width, height, 0, 0, true);
+
+            // const masses = [1, .6, .36, .216];
+            const masses = [.216, .36, .6, 1];
+            for (let i = 0; i < 4; i++) {
+                Module._pvfs_add_material(sim, masses[i], 2.0, .25, .25);
+            }
+
+            for (let i = 0; i < 4; i++) {
+                Module._pvfs_add_particles(sim, 5000, i, 0, 0, width, height);
+            }
+
+            draw();
+        };
+
+        function enableAccelerometer() {
+            console.log('Requesting permission');
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission().then(permissionState => {
+                    if (permissionState === 'granted') {
+                        window.addEventListener('devicemotion', (event) => {
+                            updateGrav(event.accelerationIncludingGravity.x, event.accelerationIncludingGravity.y);
+                            rotationGamma = event.rotationRate.gamma * 2 * Math.PI / 360 / 60;
+                        });
+                    }
+                });
+            } else {
+                window.addEventListener('devicemotion', (event) => {
+                    updateGrav(event.accelerationIncludingGravity.x, event.accelerationIncludingGravity.y);
+                    rotationGamma = event.rotationRate.gamma * 2 * Math.PI / 360 / 60;
+                });
+            }
+
+        }
+
+
+        // Pointer handling
+        canvas.addEventListener('pointerdown', (e) => {
+            if (e.button === 3) {
+                window.history.back();
+                return;
+            } else if (e.button === 4) {
+                window.history.forward();
+                return;
+            }
+
+            e.preventDefault();
+            pointerTracker[e.pointerId] = { x: e.clientX, y: e.clientY, velX: 0, velY: 0, moved: false, emitId: touchCount % 4 };
+            touchCount++;
+
+            const activeElement = document.activeElement;
+            if (activeElement !== document.body) {
+                activeElement.blur();
+            }
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            e.preventDefault();
+            if (pointerTracker[e.pointerId]) {
+                const pointer = pointerTracker[e.pointerId];
+                if (!pointer.moved) {
+                    pointer.moved = true;
+                    pointer.velX = 0;
+                    pointer.velY = 0;
+                } else {
+                    pointer.velX = e.clientX - pointer.x;
+                    pointer.velY = e.clientY - pointer.y;
+                }
+
+                pointer.x = e.clientX;
+                pointer.y = e.clientY;
+            }
+
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+
+            const activeElement = document.activeElement;
+            if (activeElement !== document.body) {
+                activeElement.blur();
+            }
+        });
+
+        ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture', 'pointerout'].forEach((eventName) => {
+            canvas.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                delete pointerTracker[e.pointerId];
+            });
+        });
+
+        // Key handling
+        document.addEventListener('keydown', (e) => {
+            keyTracker[e.key] = true;
+
+            if (e.key === 's') {
+                params.sculptMode = !params.sculptMode;
+                sculptController.updateDisplay();
+            }
+
+            if (e.key === 'u') {
+                if (gui._hidden) {
+                    gui.show();
+
+                    if (fpsCounter.display.classList.contains('hidden')) {
+                        fpsCounter.display.classList.remove('hidden');
+                    }
+                } else {
+                    gui.hide();
+
+                    if (!fpsCounter.display.classList.contains('hidden')) {
+                        fpsCounter.display.classList.add('hidden');
+                    }
+                }
+            }
+
+            if (e.key === 'i') {
+                toggleHidden(document.getElementById('info'));
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keyTracker[e.key] = false;
+        });
+
+        document.addEventListener('blur', () => {
+            for (const key in keyTracker) {
+                keyTracker[key] = false;
+            }
+        });
+
+        // Prevent scrolling
+        canvas.addEventListener('wheel', (e) => {
+
+            // e.preventDefault();
+
+            params.brushSize -= e.deltaY * .25;
+            params.brushSize = Math.max(10, params.brushSize);
+            brushOpacity = 1; // Make brush visible every time it's resized
+            brushSizeController.updateDisplay();
+        });
+
+        // Prevent right-click context menu
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+    </script>
+    <script>
+        // Setup WebGL
+        const vsSource = `
+      attribute vec2 a_position;
+      attribute float a_material;
+      uniform vec2 u_resolution;
+      uniform float u_pointSize;
+      uniform vec3 u_color0;
+      uniform vec3 u_color1;
+      uniform vec3 u_color2;
+      uniform vec3 u_color3;
+      varying vec4 v_color;
+
+      void main() {
+        vec2 clipSpace = (a_position / u_resolution) * 2.0 - 1.0;
+        gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+        gl_PointSize = u_pointSize;
+        // v_color = materials[a_material];
+
+        if (a_material < 2.0) {
+          if (a_material < 1.0) {
+            v_color = vec4(u_color0, 1.0);
+          } else {
+            v_color = vec4(u_color1, 1.0);
+          }
+        } else {
+          if (a_material < 3.0) {
+            v_color = vec4(u_color2, 1.0);
+          } else {
+            v_color = vec4(u_color3, 1.0);
+          }
+        }
+      }
+      `;
+
+        const fsSource = `
+      precision highp float;
+      uniform float u_pointSize;
+      varying vec4 v_color;
+
+      void main() {
+        vec2 center = vec2(0.5, 0.5);
+        vec2 coord = gl_PointCoord - center;
+        float dist = length(coord);
+        float radius = 0.5;
+
+        // 1 pixel antialiasing edge
+        float edge = 1.0 / u_pointSize;
+        float alpha = 1.0 - smoothstep(radius - edge, radius, dist);
+
+        if (alpha <= 0.0)
+            discard;
+
+        gl_FragColor = vec4(v_color.rgb, v_color.a * alpha);
+      }
+      `;
+
+        const circleVertShaderSource = `
+        attribute vec2 a_position;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mousePos;
+        uniform vec2 u_brushSize;
+        varying vec4 v_color;
+
+        void main() {
+          vec2 pos = u_mousePos + u_brushSize.x * a_position;
+          vec2 clipSpace = (pos / u_resolution) * 2.0 - 1.0;
+          gl_Position = vec4(clipSpace* vec2(1, -1), 0, 1);
+          v_color = u_brushSize.yyyy;
+        }
+      `;
+
+        const circleFragShaderSource = `
+      precision highp float;
+      varying vec4 v_color;
+
+      void main() {
+        gl_FragColor = v_color;
+      }
+      `;
+
+        //https://webgl2fundamentals.org/webgl/lessons/webgl-fundamentals.html
+        function createShader(gl, type, source) {
+            if (!gl) return;
+
+            var shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+            if (success) {
+                return shader;
+            }
+
+            console.log(gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+        }
+
+        function createProgram(gl, vsSource, fsSource) {
+            if (!gl) return;
+
+            var vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+            var fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+            var program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            var success = gl.getProgramParameter(program, gl.LINK_STATUS);
+            if (success) {
+                return program;
+            }
+
+            console.log(gl.getProgramInfoLog(program));
+            gl.deleteProgram(program);
+        }
+
+        let program, positionAttributeLocation, materialAttributeLocation, resolutionUniformLocation, pointSizeUniformLocation, color0Location, color1Location, color2Location, color3Location;
+        let positionBuffer, materialBuffer;
+        const batchSize = 65536;
+
+        if (gl) {
+            program = createProgram(gl, vsSource, fsSource);
+
+            positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+            materialAttributeLocation = gl.getAttribLocation(program, "a_material");
+            resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+            pointSizeUniformLocation = gl.getUniformLocation(program, "u_pointSize");
+            color0Location = gl.getUniformLocation(program, "u_color0");
+            color1Location = gl.getUniformLocation(program, "u_color1");
+            color2Location = gl.getUniformLocation(program, "u_color2");
+            color3Location = gl.getUniformLocation(program, "u_color3");
+
+            positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, batchSize * 2 * 4, gl.DYNAMIC_DRAW);
+
+            materialBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, materialBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, batchSize, gl.DYNAMIC_DRAW);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        }
+
+        let circleProgram, circleBuffer;
+        const numCircleVerts = 64;
+
+        if (gl) {
+            circleProgram = createProgram(gl, circleVertShaderSource, circleFragShaderSource);
+            circleBuffer = gl.createBuffer();
+
+            const circleVerts = new Float32Array(numCircleVerts * 2);
+
+            for (let i = 0; i < numCircleVerts; i++) {
+                const angle = 2 * Math.PI * i / numCircleVerts;
+
+                circleVerts[i * 2] = Math.sin(angle);
+                circleVerts[i * 2 + 1] = Math.cos(angle);
+            }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, circleBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, circleVerts, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        }
+
+    </script>
+    <script>
+        // Touch events are already handled by pointer events
+        ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach((e) => {
+            canvas.addEventListener(e, (e) => {
+                e.preventDefault();
+            });
+        });
+    </script>
+
+    <script src="pvfs2d_v2_7.js"></script>
+
+    <!-- Add script for closing Carbon ads -->
+    <script>
+        const ENABLE_CARBON_ADS = false;
+        const carbonWrapper = document.getElementById('carbon-wrapper');
+        const closeCarbonButton = document.querySelector('.close-carbon');
+
+        if (ENABLE_CARBON_ADS && carbonWrapper) {
+            carbonWrapper.style.display = 'block';
+
+            const carbonScript = document.createElement('script');
+            carbonScript.async = true;
+            carbonScript.type = 'text/javascript';
+            carbonScript.src = 'https://cdn.carbonads.com/carbon.js?serve=CW7IKKJN&placement=grantkotcom&format=cover';
+            carbonScript.id = '_carbonads_js';
+            carbonWrapper.appendChild(carbonScript);
+        } else if (carbonWrapper) {
+            carbonWrapper.remove();
+        }
+
+        closeCarbonButton?.addEventListener('pointerdown', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            carbonWrapper.style.display = 'none';
+        });
+
+        // Make the ad draggable using the drag-carbon element
+        (function () {
+            if (!carbonWrapper) {
+                return;
+            }
+
+            const dragHandle = document.querySelector('.drag-carbon');
+            let isDragging = false;
+            let offsetX, offsetY;
+            let lastX = 0, lastY = 0;
+            let adRect;
+
+            dragHandle.addEventListener('pointerdown', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                isDragging = true;
+
+                adRect = carbonWrapper.getBoundingClientRect();
+                offsetX = e.clientX - adRect.left;
+                offsetY = e.clientY - adRect.top;
+
+                lastX = e.clientX;
+                lastY = e.clientY;
+
+                // Add dragging class for visual feedback
+                carbonWrapper.classList.add('dragging');
+
+                // Add pointerup and pointermove to document to allow dragging outside the element
+                document.addEventListener('pointermove', onPointerMove);
+                document.addEventListener('pointerup', onPointerUp);
+            });
+
+            function onPointerMove(e) {
+                if (!isDragging) return;
+
+                const newX = e.clientX - offsetX;
+                const newY = e.clientY - offsetY;
+
+                // Keep the ad within viewport bounds
+                const maxX = window.innerWidth - adRect.width;
+                const maxY = window.innerHeight - adRect.height;
+
+                const boundedX = Math.min(Math.max(0, newX), maxX);
+                const boundedY = Math.min(Math.max(0, newY), maxY);
+
+                carbonWrapper.style.left = boundedX + 'px';
+                carbonWrapper.style.bottom = 'auto'; // Override the default bottom position
+                carbonWrapper.style.right = 'auto'; // Override the default right position
+                carbonWrapper.style.top = boundedY + 'px';
+
+                // Additional circle collision at pointer for more interaction
+                if (sim !== undefined) {
+                    const currentRect = carbonWrapper.getBoundingClientRect();
+                    const brushSize = Math.min(currentRect.width, currentRect.height) / 4;
+                    Module._pvfs_collide_particles_circle(sim, e.clientX, e.clientY, brushSize);
+                }
+
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+
+            function onPointerUp() {
+                isDragging = false;
+                carbonWrapper.classList.remove('dragging');
+                document.removeEventListener('pointermove', onPointerMove);
+                document.removeEventListener('pointerup', onPointerUp);
+            }
+
+            // Make the ad's initial position absolute
+            carbonWrapper.style.position = 'absolute';
+        })();
+    </script>
+
+    <!-- 100% privacy-first analytics -->
+    <script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+
+    <!-- Cloudflare Pages Analytics -->
+    <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
+        data-cf-beacon='{"token": "2837289d1b6e480b9d46a1f813efc1f8"}'></script><!-- Cloudflare Pages Analytics -->
+    <script type="module"
+        src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925"
+        integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A=="
+        data-cf-beacon='{"version":"2024.11.0","token":"1136486322ee4e2d918396f28048e346","r":1}'
+        crossorigin="anonymous"></script>
+</body>
+
+</html>
