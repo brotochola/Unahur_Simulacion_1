@@ -1,174 +1,603 @@
-# Simulación de fluidos 2D — hilo de la clase
+# Simulación de fluidos 2D — guía de clase (3 horas)
 
-Imaginen una hoja cuadriculada. En cada casilla guardamos “cuánta agua hay” (y a veces una flecha que dice hacia dónde empuja). El problema de toda esta clase es el mismo:
+Imaginen una hoja cuadriculada. En cada casilla podemos guardar “cuánta agua hay”, o bien podemos representar el agua como un montón de puntitos que se mueven. El problema de toda esta clase es el mismo:
 
-**¿Cómo hacemos que esa agua se mueva de casilla en casilla de forma creíble?**
+**¿Cómo hacemos que el agua (o el humo, o la arena “líquida”) se mueva de forma creíble en una computadora?**
 
-No hay una sola respuesta. Abajo hay ocho demos. Las cuatro primeras se parecen por fuera (pintás agua, hay paredes, cae con gravedad) pero **adentro usan motores distintos**. Las cuatro siguientes muestran otras familias: Lattice Boltzmann, partículas PIC/FLIP y Material Point Method.
+No hay una sola respuesta. Hay familias enteras de algoritmos. Esta guía las recorre **en orden de complejidad conceptual**, como las iría inventando un programador que empieza por lo más simple y va pidiendo más realismo.
 
-Abrí siempre este archivo primero. Cada sección linkea a su demo.
+Abrí siempre este archivo primero. Cada sección linkea a una demo (o a material de la clase anterior).
+
+**Importante:** los HTML de esta carpeta son **demos didácticas**. Ilustran una idea; no son la definición canónica del método ni un sustituto del paper. Donde el texto diga “en esta demo…”, léase como implementación de ejemplo.
 
 ---
 
-## Mapa de la clase
+## Tres maneras de “mirar” el fluido
 
-| # | Carpeta / demo | Idea en una línea |
-|---|----------------|-------------------|
-| 01 | [Autómata celular · presión por columna](./01-automata-celular-presion-por-columna-water-caves/index.html) | Reglas locales tipo juego: cae, empuja al costado, desborda |
-| 02 | [Fick–Jacobi · falling sand · flowfield](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html) | El “exceso” sobre el reposo se difunde; una V recuerda el movimiento |
-| 03 | [Fick en caras MAC · flechas · Stam light](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) | Mangueras entre casillas + flechas; proyección opcional |
-| 04 | [Stam Stable Fluids · grilla MAC](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) | Velocidad en caras + presión que fuerza `div v ≈ 0` |
-| 05 | [Lattice Boltzmann (LBM)](./05-lattice-boltzmann-lbm-thurey/index.html) | Distribuciones en direcciones de red; dam break |
-| 06 | [PIC/FLIP (partículas)](./06-particulas-pic-flip-muller/index.html) | Partículas llevan masa/velocidad; la grilla resuelve presión |
-| 07 | [MLS-MPM](./07-mls-mpm-material-point-method/index.html) | Puntos de materia ↔ grilla (híbrido partículas/campo) |
-| 08 | [MPM / PVFS (demo externa)](./08-mpm-pvfs-demo-externa/index.html) | Demo pulida de capas líquidas (referencia visual) |
+Antes de tocar código, conviene fijar el vocabulario. Van a aparecer una y otra vez.
 
-**Núcleo del contraste (imprescindible):** 01 → 02 → 03 → 04.  
-**Si sobra tiempo:** 05–08.
+**Euleriano (mirada fija en el espacio).**  
+Fijamos una grilla en el mundo. Cada celda pregunta: “¿qué pasa *acá*?”. La masa y la velocidad viven en casillas; el fluido “pasa” por ellas. Es como sensores clavados en un río. Casi todos los juegos 2D de “agua en tiles” y el método de Stam son eulerianos.
+
+**Lagrangiano (mirada que viaja con la materia).**  
+Representamos el fluido con **partículas**. Cada partícula pregunta: “¿dónde estoy y a qué velocidad voy?”. No hay casilla dueña del agua: el agua *es* el conjunto de partículas. **SPH** (Smoothed Particle Hydrodynamics) es el ejemplo clásico.
+
+**Híbrido.**  
+Se usan **partículas y grilla a la vez**. Las partículas llevan masa e historia; la grilla sirve para calcular fuerzas/presión de forma eficiente. **PIC**, **FLIP** y **MPM** viven acá.
+
+En esta clase el recorrido es:
+
+1. Reglas discretas tipo **falling sand** (todavía no es “fluido continuo”).
+2. Euleriano celular cada vez más sofisticado, hasta **Stam / Stable Fluids**.
+3. Otra familia euleriana: **LBM** (Lattice Boltzmann).
+4. Lagrangiano puro (**SPH**) e híbridos (**PIC/FLIP**, **MPM**).
+
+---
+
+## Glosario de siglas
+
+Toda sigla de esta guía aparece acá. La primera vez que aparece en el texto también se explica en prosa.
+
+| Sigla | Significado | En una frase |
+| ----- | ----------- | ------------ |
+| **CA** | Cellular Automaton (autómata celular) | Reglas locales sobre una grilla de celdas. |
+| **CFD** | Computational Fluid Dynamics | Simulación numérica de fluidos en general. |
+| **NS** | Navier–Stokes | Ecuaciones clásicas del fluido viscoso continuo. |
+| **MAC** | Marker-And-Cell | Grilla donde la velocidad vive en las *caras* de la celda y la presión en el centro. |
+| **LBM** | Lattice Boltzmann Method | El fluido se representa con “paquetes” de densidad que viajan en direcciones discretas de una red. |
+| **BGK** | Bhatnagar–Gross–Krook | Modelo simple de colisión en LBM (relajación hacia un equilibrio). |
+| **SPH** | Smoothed Particle Hydrodynamics | Partículas que estiman densidad/presión promediando vecinas con un kernel suave. |
+| **PIC** | Particle-In-Cell | Partículas ↔ grilla: se esparce a la grilla, se resuelve ahí, se interpola de vuelta. |
+| **FLIP** | FLuid-Implicit Particle | Variante de PIC que mezcla el *incremento* de velocidad de la grilla para menos difusión numérica. |
+| **MPM** | Material Point Method | Híbrido partícula–grilla (familia cercana a PIC) muy usado en gráficos y sólidos/fluidos. |
+| **MLS** | Moving Least Squares | Técnica de aproximación; en **MLS-MPM** mejora la transferencia partícula↔grilla. |
+| **PVFS** | (en esta repo) demo externa tipo MPM/capas líquidas | Nombre de la demo 08; no es un acrónimo de curso estándar como SPH/MPM. |
+| **FVM** | Finite Volume Method | Discretización por volúmenes de control (mencionado solo como contexto CFD). |
+| **PDE** | Partial Differential Equation | Ecuación en derivadas parciales (NS es un sistema de PDEs). |
+
+---
+
+## Cronograma sugerido (3 horas ≈ 180 min)
+
+| Bloque | Min | Qué hacer | Abrir |
+| ------ | --- | --------- | ----- |
+| 0. Marco | 0–15 | Euleriano vs lagrangiano vs híbrido; mapa de la clase | este `.md` |
+| 1. Falling sand | 15–35 | Reglas discretas; qué *no* modela | [`../2 - falling_sand/falling-sand.html`](../2%20-%20falling_sand/falling-sand.html) |
+| 2. CA con volumen parcial | 35–55 | Fill continuo; presión hidrostática aproximada | [01](./01-automata-celular-presion-por-columna-water-caves/index.html) |
+| 3. Fick + falling sand + flowfield | 55–80 | Exceso, difusión, campo auxiliar inercial | [02](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html) |
+| 4. Puente MAC | 80–100 | Flujos en caras + proyección parcial | [03](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) |
+| 5. **Stam en profundidad** | 100–130 | Stable Fluids, proyección, `div v ≈ 0` | [04](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) |
+| 6. LBM | 130–150 | Otra euleriana; dam break free-surface | [05](./05-lattice-boltzmann-lbm-thurey/index.html) |
+| 7. SPH → PIC/FLIP → MPM | 150–170 | Partículas y híbridos | [SPHjs](./SPHjs/index.html), [06](./06-particulas-pic-flip-muller/index.html), [07](./07-mls-mpm-material-point-method/index.html), [08](./08-mpm-pvfs-demo-externa/index.html) |
+| 8. Cierre | 170–180 | Cuadro “cuándo usar qué” | este `.md` |
+
+Si se atrasa el reloj: recortar LBM a 10 min y la demo 08 a “solo mirar 2 minutos”. El núcleo intocable es **falling sand → 01 → 02 → 03 → 04**.
+
+---
+
+## Mapa de demos (links rápidos)
+
+| # | Demo | Familia |
+| - | ---- | ------- |
+| — | [Falling sand (clase 2)](../2%20-%20falling_sand/falling-sand.html) | Reglas discretas / precursor |
+| 01 | [Autómata celular · presión por columna](./01-automata-celular-presion-por-columna-water-caves/index.html) | Euleriano (CA) |
+| 02 | [Fick–Jacobi · falling sand · flowfield](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html) | Euleriano (difusión + CA) |
+| 03 | [Fick en caras MAC · campo auxiliar · proyección](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) | Euleriano (puente MAC) |
+| 04 | [Stam Stable Fluids · grilla MAC](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) | Euleriano (NS simplificado) |
+| 05 | [Lattice Boltzmann (LBM)](./05-lattice-boltzmann-lbm-thurey/index.html) | Euleriano (red de Boltzmann) |
+| — | [SPH (SPHjs)](./SPHjs/index.html) | Lagrangiano |
+| 06 | [PIC/FLIP](./06-particulas-pic-flip-muller/index.html) | Híbrido |
+| 07 | [MLS-MPM](./07-mls-mpm-material-point-method/index.html) | Híbrido |
+| 08 | [MPM / PVFS (demo externa)](./08-mpm-pvfs-demo-externa/index.html) | Híbrido (referencia visual) |
+
+---
+
+# Acto I — Falling sand (todavía no es un fluido continuo)
+
+[Abrir falling sand](../2%20-%20falling_sand/falling-sand.html)
+
+## Idea
+
+Cada celda tiene un **tipo** (vacío, arena, agua, piedra…). En cada frame aplicamos reglas del estilo: “si abajo está vacío, caigo; si no, pruebo diagonales”. Es un **autómata celular** (**CA**): el próximo estado de una celda depende solo de ella y de sus vecinos.
+
+Es el punto de partida perfecto porque:
+
+- se programa en una tarde,
+- se ve “materia que cae”,
+- y deja clarísimo el costo de *no* modelar presión, incompresibilidad ni campo de velocidad continuo.
+
+## Qué guarda el estado
+
+En lo más crudo: un `grid[x][y] = materialId`. A veces un poco de “vida” o color. No hay `vx, vy` reales de fluido.
+
+## Cómo avanza un frame
+
+Barrido de celdas (a menudo de abajo hacia arriba para la gravedad) + reglas de intercambio con vecinos.
+
+## Límites (por eso seguimos)
+
+- El “agua” de falling sand no empuja como un líquido real: no hay chorros incompresibles, ni olas con inercia creíble, ni vaso comunicante físico.
+- No hay campo de velocidad continuo: no podés preguntar “¿cuál es la velocidad en este punto del espacio?” de forma estable.
+- Escalar a fenómenos de fluido (salpicaduras, vórtices) obliga a *cambiar de modelo*, no solo a retocar reglas.
+
+**Lecturas:** [Cellular automaton (Wikipedia)](https://en.wikipedia.org/wiki/Cellular_automaton). Ejemplos populares de CA de materiales: *The Powder Toy*, *Noita* (contexto cultural, no papers).
+
+En esta misma carpeta de la clase 2 hay variantes (`falling_sand_gravedad.html`, marching squares, etc.): sirven de laboratorio de reglas, no de CFD.
+
+---
+
+# Acto II — Euleriano: de autómatas celulares con volumen a Stable Fluids
+
+Seguimos en representación **euleriana** (estado en una grilla fija). La progresión suma ingredientes del continuo: volumen parcial por celda, difusión, discretización **MAC**, y finalmente **proyección de presión** (incompresibilidad aproximada). Cada carpeta numerada es una demo que acerca ese salto; el método “de verdad” está en la bibliografía.
 
 ---
 
 ## 01 — Autómata celular con presión por columna
 
-[Abrir demo](./01-automata-celular-presion-por-columna-water-caves/index.html)
+[Abrir demo 01](./01-automata-celular-presion-por-columna-water-caves/index.html)
 
-Pensá un videojuego de cuevas: el agua “quiere” caer, llenar huecos y nivelarse. No resolvemos las ecuaciones del continuo; aplicamos **reglas locales** celda por celda.
+### Idea
 
-Cada celda guarda, entre otras cosas:
+Seguimos en un **autómata celular** sobre grilla, pero el estado deja de ser solo un enum de material: cada celda guarda un **volumen parcial** (fill ∈ [0,1]) y una **presión heurística** aproximando la columna de fluido encima (idea tipo hidrostática `ρgh`, sin resolver Poisson).
 
-- `fillLevel` — cuánta agua hay (típicamente 0–1)
-- `pressure` — una presión improvisada a partir del llenado y de lo que hay arriba (como apilar vasos)
-- `flowX` / `flowY` — registro de lo que se movió (sirve sobre todo para dibujar flechas)
+Reglas locales típicas: transferencia vertical por gravedad; si el vecino inferior está saturado o es sólido, flujo horizontal según Δpresión; redistribución si `fill > 1`.
 
-En cada subpaso la celda suele: calcular presión (incluyendo herencia de la columna), suavizar un poco con vecinos laterales, **transferir hacia abajo** si puede, y si abajo está lleno o es pared, **empujar horizontalmente** según diferencia de presión. Si se pasa de 1, **desborda** hacia arriba/lados.
+Es el salto natural desde falling sand: misma familia **CA**, estado más rico.
 
-Nombre informal: autómata de volumen al estilo *water-caves-simulator-2d*.  
-**No es** un solver incompresible, ni Stam, ni LBM. La “presión” es una heurística para que el agua baje y se nivele de forma barata y estable.
+### Cómo se calcula el “fill” (altura / volumen en la celda)
+
+En esta demo **no hay una variable `altura` aparte**. Lo que hace de altura local es `fillLevel` ∈ [0, 1+] (a veces > 1 un instante):
+
+- `0` = celda vacía,
+- `1` = celda “llena” (capacidad de una celda de grilla),
+- valores intermedios = volumen parcial (se dibuja como nivel dentro del tile).
+
+`WATER_CELL_SIZE = 1` es solo un factor de escala del puerto; con ese valor, el fill ya está normalizado a “fracción de celda”. La evolución de `fillLevel` no es una integral de altura libre: cambia por **transferencias** (abajo, laterales por Δpresión, desborde si `fillLevel > 1`, grifo/desagüe).
+
+### Cómo se calcula la presión (en esta demo)
+
+Cada subpaso, en celdas no sólidas (`water.js`, `Cell.step`):
+
+1. **Base local (heurística tipo columna corta):**  
+   `pressure ← (WATER_CELL_SIZE × fillLevel) / 5`  
+   Con `WATER_CELL_SIZE = 1`: `pressure ← fillLevel / 5`.  
+   No es `ρ g h` de un solver; es un escalado ad hoc del fill.
+
+2. **Aporte de la columna (arriba):**  
+   - Si el vecino superior existe y no es sólido: `pressure ← pressure + pressure_arriba` (se apila la presión ya calculada de arriba).  
+   - Si arriba es sólido/techo: se busca a izquierda/derecha un “hueco” hacia una celda con agua arriba y se suma esa presión (continuidad bajo techo, también heurística).
+
+3. **Suavizado lateral:** mezcla con vecinos izquierdo/derecho, p. ej.  
+   `0.4·propia + 0.3·izq + 0.3·der` (o 50/50 si solo hay un lado).
+
+4. **Clamp:** `pressure ← max(pressure, 0)`.
+
+Esa `pressure` **no** mueve masa por sí sola en vertical (la caída es transferencia directa hacia abajo). Sirve sobre todo para el **flujo horizontal** cuando abajo está lleno o es sólido: se transfiere ~ `(Δpressure) × 200 × dt`, acotado por los fills.
+
+Orden de actualización: el motor barre columnas alternando sentido (`tic-tac`) para reducir sesgo izquierda/derecha.
+
+**Lectura del código:** [`water.js`](./01-automata-celular-presion-por-columna-water-caves/water.js) (`Cell.step`). Recordar: demo didáctica, no hidrostática de libro.
+
+### Qué guarda cada celda (típico)
+
+- `fillLevel` — cuánta agua hay
+- `pressure` — heurística (columna + suavizado lateral)
+- `flowX` / `flowY` — registro de transferencias (casi siempre para dibujar flechas)
+- flags de sólido / grifo / desagüe
+
+### Cómo avanza un frame
+
+Varias subpasadas: recalcular presión → transferir hacia abajo → si no puede, flujo horizontal por Δpresión → desborde → fuentes/sumideros.
+
+### Qué gana vs falling sand
+
+Volumen parcial, equilibrado horizontal aproximado (vasos comunicantes *heurísticos*), superficie más legible que un CA de tipos discretos.
+
+### Límites
+
+La presión **no** sale de una ecuación de Poisson ni de Navier–Stokes. No hay campo de velocidad incompresible (`∇ · v = 0`). Sirve para gameplay/prototipo; no es CFD de ingeniería.
+
+**No es:** Stable Fluids, LBM, SPH.
+
+**Lecturas:** [Cellular automaton](https://en.wikipedia.org/wiki/Cellular_automaton) · [Hydrostatics](https://en.wikipedia.org/wiki/Hydrostatics) (solo como intuición de presión por columna; esta demo no integra hidrostática formal).
 
 ---
 
 ## 02 — Fick–Jacobi, falling sand y flowfield inercial
 
-[Abrir demo](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html)
+[Abrir demo 02](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html)
 
-Acá la metáfora cambia. Cada celda tiene una capacidad de **reposo** (`N_reposo`). Si hay más agua que eso, el **exceso** se comporta un poco como gas comprimido: empuja hacia vecinos con menos exceso. Eso se implementa como **difusión de Fick** con esquema **Jacobi** (doble buffer: se lee un mapa de masa y se escribe en otro, luego se intercambian).
+### Idea
 
-Separado de eso, hay un paso de **gravedad tipo falling sand** (prioridad: abajo, diagonales, laterales).
+Cambiamos la metáfora de presión. Cada celda tiene una capacidad de **reposo** `N_reposo`. Si hay más masa que eso, el **exceso** `C = max(0, N − N_reposo)` se comporta un poco como gas comprimido: tiende a repartirse hacia vecinos con menos exceso.
 
-Además cada celda guarda un vector **flowfield** `V`: se actualiza por inercia (`lerp` hacia la dirección en la que realmente salió masa) y, a su vez, **sesga** el outflow de Fick. No es la velocidad de un fluido incompresible; es memoria direccional del flujo celular.
+Eso se implementa como **difusión de Fick** (flujo proporcional a la diferencia) con esquema **Jacobi**: se lee un buffer de masa y se escribe en otro (doble buffer), luego se intercambian. Así evitamos actualizar “en el lugar” y sesgar el barrido.
 
-Resumen técnico: fluido celular con conservación de masa por transferencias escaladas, presión = `max(0, N − N_reposo)` (no `ρgh`), path CPU y GPU (WebGL2).  
-**No es** Navier–Stokes / Stam / SPH / LBM clásico.
+Separado, sigue habiendo un paso de **gravedad tipo falling sand**.
 
-Detalle útil en clase: cargá el vaso en U y mirá cómo el exceso, no la altura sola, empuja el equilibrio.
+Además cada celda guarda un vector **flowfield** `V`: memoria inercial de “hacia dónde estuvo saliendo masa”. Ese `V` **sesga** el outflow de Fick. Ojo: acá “flowfield” **no** significa todavía el campo de velocidad incompresible de Stam.
 
----
+### Qué guarda el estado
 
-## 03 — Fick en caras MAC, flechas (flowfield) y proyección Stam liviana
+- masa `N` (y a veces tipo AIR/SOLID/WATER)
+- `flowX`, `flowY` (el flowfield inercial)
+- en la versión studio: chunks, path CPU/GPU
 
-[Abrir demo](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html)
+### Cómo avanza un substep (simplificado)
 
-Este laboratorio es el **puente** entre el mundo celular (01–02) y Stam (04).
+1. Fick/Jacobi: calcular outflows por exceso, escalar si hace falta para no bajar bajo reposo, swap de buffers.
+2. Falling sand: mover masa hacia abajo / diagonales / laterales.
+3. Actualizar `V` hacia la dirección del flujo real; opcional snap a cero si es muy chico.
 
-Imaginen que entre dos casillas vecinas hay una **manguera** (una cara de la grilla MAC). Si una casilla tiene más agua que la otra, la manguera siente un **empuje**; ese empuje puede **pasar masa** (Fick / intercambio en aristas). Al mismo tiempo, cada casilla arma una **flecha** mirando sus mangueras: esa flecha se suaviza, tiene fricción y también puede arrastrar agua (a menudo con un raycast multicelda).
+### Qué gana vs 01
 
-Opcionalmente se corre una **proyección de presión estilo Stam** sobre los empujes de las mangueras para bajar la divergencia y mejorar curls. Esa proyección **no reemplaza** el transporte de masa: la masa sigue viajando por mangueras/flechas, no por advección bilineal completa como en el 04.
+- Conservación de masa más explícita en el paso de difusión.
+- Presión = exceso sobre reposo (útil para vasos en U sin usar `ρgh` literales).
+- Una noción de **inercia direccional** (el flowfield).
 
-Sirve para jugar con knobs: “¿quién mueve el agua, la manguera o la flecha?” y “¿qué cambia al prender la proyección?”.
+### Límites
 
----
+Sigue sin proyección incompresible. Los chorros “de verdad” (salpicadura con `div ≈ 0`) aparecen recién en Stam.
 
-## 04 — Stable Fluids (Stam) en grilla MAC
-
-[Abrir demo](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html)
-
-Acá sí estamos cerca del paper clásico de **Jos Stam — Stable Fluids**. La velocidad vive en las **caras** de la grilla (MAC: `u` en caras verticales, `v` en horizontales); la presión vive en los **centros**.
-
-Pipeline típico de un tick:
-
-1. **Fuerzas** (gravedad sobre las caras)
-2. **Advección de velocidad** (semi-Lagrangiana: backtrace + interpolación bilineal)
-3. **Proyección** — se resuelve una presión (Jacobi sobre Poisson) para que lo que entra a una celda sea ≈ lo que sale (`div v ≈ 0`): agua **incompresible**
-4. **Advección de masa** con el campo ya proyectado
-
-El “flowfield” acá **es** el campo de velocidad. Por eso aparecen chorros y salpicaduras más creíbles que en los autómatas. La advección semi-Lagrangiana no conserva masa exacta; la demo puede renormalizar (knob didáctico). Miren `divMax` en el header: baja cuando la proyección hace bien su trabajo.
+**Lecturas:** [Fick's laws of diffusion](https://en.wikipedia.org/wiki/Fick%27s_laws_of_diffusion) · [Jacobi method](https://en.wikipedia.org/wiki/Jacobi_method) · antecedente visual en [`_refs/ca-masa-conservada.html`](./_refs/ca-masa-conservada.html).
 
 ---
 
-## 05 — Lattice Boltzmann (LBM)
+## 03 — Fick en caras MAC, flechas y proyección Stam liviana
 
-[Abrir demo](./05-lattice-boltzmann-lbm-thurey/index.html)
+[Abrir demo 03](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html)
 
-En LBM no guardamos solo “masa + una flecha”. En cada nodo de la red hay **distribuciones** que viajan en un conjunto discreto de direcciones. Un paso típico: **streaming** (las distribuciones saltan al vecino) y **colisión** (se relajan hacia un equilibrio local). De ahí se reconstruyen densidad y velocidad.
+### Idea
 
-Esta demo (línea Thürey / free-surface) muestra un **dam break**: pared que suelta agua con superficie libre. Es otra discretización del fluido; no es el mismo código que Stam, aunque ambos pueden verse “como agua de verdad”.
+Esta demo es un **puente pedagógico** entre el CA con volumen (01–02) y Stable Fluids (04). Introduce la grilla **MAC** (Marker-And-Cell):
+
+- en cada **cara** entre celdas hay un flujo / empuje (analogía útil: “flujo por la arista”);
+- en el **centro** de la celda vive la cantidad de masa.
+
+El transporte de masa puede hacerse por diferencia de fill en las caras (Fick en aristas). Además se mantiene un campo auxiliar en celdas (visualizado como flechas), suavizado y con fricción, que también puede desplazar masa. Opcionalmente se aplica una **proyección de presión** (estilo Stam, pocas iteraciones) sobre los flujos de cara para reducir `∇ · v`.
+
+Importante: acá la proyección corrige empujes; el transporte **no** es aún la advección semi-Lagrangiana completa del paper de Stam. Es una demo intermedia, no el método canónico.
+
+### Sigla nueva: MAC
+
+**MAC** = Marker-And-Cell (Harlow & Welch, 1965): velocidad en caras, presión (y escalares) en centros. Facilita medir la **divergencia** celda a celda (balance de flujo entrante/saliente).
+
+### Qué gana vs 02
+
+- Separación cara / centro (vocabulario estándar de CFD en grilla).
+- Primera aparición de **proyección** en el sentido de métodos de proyección para flujo incompresible.
+- Experimentos controlados: flujo por caras vs campo auxiliar en celdas.
+
+### Límites
+
+Híbrido didáctico: no es el pipeline Stable Fluids completo ni un solver MAC de producción.
+
+**Lecturas:** [Marker-and-cell method](https://en.wikipedia.org/wiki/Marker-and-cell_method) · paper clásico: Harlow & Welch, *Numerical Calculation of Time-Dependent Viscous Incompressible Flow*, 1965.
+
+---
+
+## 04 — Stable Fluids (Stam) en grilla MAC — núcleo de la clase
+
+[Abrir demo 04](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html)
+
+Esta sección es más larga a propósito. Si un programador se lleva **una** idea de las 3 horas, que sea esta.
+
+### ¿Quién es Stam y qué problema resolvió?
+
+**Jos Stam** publicó en SIGGRAPH 1999 el paper [*Stable Fluids*](https://doi.org/10.1145/311535.311548) ([PDF en la página del autor / mirrors académicos](https://www.dgp.toronto.edu/people/stam/reality/Research/pdf/GDC03.pdf) — hay también la charla GDC “Real-Time Fluid Dynamics for Games”).
+
+El problema práctico: integrar las ecuaciones de fluido (familia **Navier–Stokes**, **NS**) en tiempo real sin que la simulación **explote** cuando el paso de tiempo es grande. Los esquemas explícitos clásicos obligan a pasos chiquitos (condición tipo CFL). Stam popularizó un pipeline **incondicionalmente estable** para gráficos usando:
+
+1. advección **semi-Lagrangiana** (backtrace),
+2. y una **proyección** que fuerza el campo de velocidad a ser (casi) **incompresible**.
+
+No pretende ser el CFD de ingeniería más preciso del mundo: pretende ser **estable, rápido y creíble en pantalla**.
+
+### Navier–Stokes (forma reducida)
+
+Para un fluido incompresible viscoso, la velocidad `v` y la presión `p` cumplen, en esencia:
+
+- transporte + viscosidad + fuerzas + gradiente de presión = evolución de la velocidad,
+- más la restricción **`∇ · v = 0`** (divergencia nula: el flujo es solenoidal; el volumen de fluido se conserva localmente).
+
+Stam, en la práctica de juegos/demos, suele:
+
+- aplicar fuerzas (gravedad, mouse),
+- (a veces) difundir velocidad/viscosidad,
+- advectar,
+- **proyectar** para restaurar `∇ · v ≈ 0`.
+
+### Grilla MAC en este demo
+
+- `u` en caras verticales (flujo horizontal entre celdas vecinas en X),
+- `v` en caras horizontales (flujo vertical),
+- presión `p` (y a menudo la densidad/masa de tinta o agua) en centros.
+
+Así, la divergencia de una celda se calcula sumando flujos de sus cuatro caras: es el corazón de la proyección.
+
+### Pipeline de un tick (el orden importa)
+
+1. **Fuerzas** — por ejemplo sumar gravedad a las caras con fluido. Acá “nace” la caída.
+2. **Advección de velocidad (semi-Lagrangiana)** — para cada cara, *mirar hacia atrás* a lo largo de la velocidad (`x − v Δt`), interpolar bilinealmente el valor viejo, y traerlo. Intuición: “esta cara pregunta de dónde vino el fluido que ahora está acá”.  
+   Por qué es estable: no empujás valores hacia adelante de forma explícita que se salgan de control; **muestreás** el campo pasado. El precio es difusión numérica (se borronean detalles) y, en cantidad, posible deriva de masa.
+3. **Proyección (presión)** — calcular la divergencia del campo; resolver una ecuación de **Poisson** para la presión (`∇² p = ∇ · v / Δt` en la forma discreta típica); restar el gradiente de presión a la velocidad: `v ← v − Δt ∇p`.  
+   Intuición geométrica (descomposición de Helmholtz–Hodge): un campo vectorial se descompone en una parte **solenoidal** (`∇ · v = 0`) más un **gradiente**. La proyección **sustrae** la componente irrotacional asociada a la compresión/expansión y retiene la parte compatible con incompresibilidad.
+4. **Advección de masa / densidad** — con el `v` ya proyectado, transportás el color, el humo o la cantidad de agua.
+
+En la demo de esta carpeta el pipeline es configurable (podés reordenar/apagar pasos) y suele mostrar `divMax`: si la proyección funciona, ese número baja.
+
+### La ecuación de Poisson de la presión (y cómo se “resuelve”)
+
+En la proyección aparece una **ecuación de Poisson** para la presión. En continuo, Poisson tiene la forma genérica
+
+\[
+\nabla^2 p = f
+\]
+
+donde \(\nabla^2\) (laplaciano) mide “cuánto se curva” un campo escalar, y \(f\) es un dato conocido. En Stable Fluids, \(f\) se construye a partir de la **divergencia** del campo de velocidad *antes* de proyectar: en la forma discreta habitual algo como \(\nabla^2 p = (\nabla \cdot v)/\Delta t\).
+
+**Qué significa “resolverla”:** no es una fórmula cerrada tipo \(p = \ldots\) que evalúas una vez. Tras discretizar en la grilla, obtenés un **sistema lineal grande** \(A\mathbf{p} = \mathbf{b}\): una incógnita de presión por celda (o por nodo), acoplada a las vecinas porque el laplaciano mira diferencias con los vecinos. “Resolver Poisson” = encontrar ese campo \(p\) (aproximado) que hace consistente la corrección \(v \leftarrow v - \Delta t\,\nabla p\) con \(\nabla \cdot v \approx 0\).
+
+Métodos iterativos clásicos (no invierten \(A\) de golpe):
+
+- **Jacobi:** en cada iteración, **todas** las celdas actualizan su \(p\) usando solo valores de la iteración *anterior* (doble buffer). Simple de entender y de paralelizar; converge despacio.
+- **Gauss–Seidel:** igual idea local (promedio/correción con vecinos), pero usa **de inmediato** los valores ya actualizados en la misma pasada. Suele converger más rápido que Jacobi con el mismo trabajo por celda; el orden del barrido importa y paralelizar es más delicado.
+- En motores más serios aparecen también **gradiente conjugado**, multigrid, etc.: misma ecuación, menos iteraciones para el mismo error.
+
+En tiempo real casi nunca se itera hasta convergencia matemática. Se hacen **pocas** pasadas Jacobi/Gauss–Seidel: más iteraciones ⇒ \(\nabla \cdot v\) más chico (mejor incompresibilidad aparente) ⇒ más CPU. Ese trade-off se discute en clase mirando `divMax` (o el header de la demo).
+
+**Lecturas cortas:** [Poisson equation](https://en.wikipedia.org/wiki/Poisson_equation) · [Jacobi method](https://en.wikipedia.org/wiki/Jacobi_method) · [Gauss–Seidel method](https://en.wikipedia.org/wiki/Gauss%E2%80%93Seidel_method).
+
+### Qué es el “flowfield” acá
+
+Acá sí: el flowfield **es** el campo de velocidad MAC. Las flechas verdes suelen ser el promedio de las 4 caras (velocidad centrada) solo para visualizar.
+
+### Qué gana vs 01–03
+
+- Chorros, remolinos y salpicaduras con aspecto de líquido incompresible.
+- Un modelo mental transferable a motores eulerianos en tiempo real (humo, agua estilizada, campos de densidad advectados).
+
+### Límites honestos
+
+- Advección semi-Lagrangiana **difunde** y no conserva masa exacta (por eso a veces se renormaliza).
+- Condiciones de borde y superficie libre son delicadas.
+- No es SPH ni un solver industrial de NS con todos los términos y turbulencia modelada.
+- Viscosidad real vs difusión numérica: a menudo el “look” viscoso viene más del esquema que de un parámetro físico limpio.
+
+### Lecturas (Stam y NS)
+
+- Paper: Jos Stam, **Stable Fluids**, SIGGRAPH 1999 — [DOI 10.1145/311535.311548](https://doi.org/10.1145/311535.311548)
+- Charla/notas: [Real-Time Fluid Dynamics for Games (GDC)](https://www.dgp.toronto.edu/people/stam/reality/Research/pdf/GDC03.pdf)
+- Contexto: [Navier–Stokes equations](https://en.wikipedia.org/wiki/Navier%E2%80%93Stokes_equations) · [Incompressible flow](https://en.wikipedia.org/wiki/Incompressible_flow) · [Semi-Lagrangian scheme](https://en.wikipedia.org/wiki/Semi-Lagrangian_scheme) · [Projection method (CFD)](https://en.wikipedia.org/wiki/Projection_method_(fluid_dynamics%29)
+
+---
+
+# Acto II-b — Otra familia euleriana: Lattice Boltzmann (LBM)
+
+[Abrir demo 05](./05-lattice-boltzmann-lbm-thurey/index.html)
+
+## Idea
+
+En **LBM** (Lattice Boltzmann Method) no guardamos solo “masa + velocidad” como en Stam. En cada nodo de una red hay **distribuciones** `f_i`: “cuánto ‘fluido probabilístico’ viaja en la dirección discreta `i`” (por ejemplo 9 direcciones en 2D: modelo D2Q9).
+
+Un paso típico:
+
+1. **Colisión** — las `f_i` se relajan hacia un equilibrio local (modelo **BGK** u otros).
+2. **Streaming** — cada `f_i` salta al vecino en su dirección.
+
+Después se reconstruyen densidad y velocidad sumando momentos de las `f_i`. Con la matemática adecuada, LBM **aproxima Navier–Stokes**.
+
+## ¿LBM es “agua vista desde arriba” o “gases”?
+
+**No es “principalmente vista desde arriba”.** Esa es una confusión frecuente.
+
+- **LBM es un método general de CFD**: se usa para gases, líquidos, flujos en poros, aerodinámica simplificada, etc.
+- Lo que cambia es *qué física extra* le agregás:
+  - humo/gas en un canal,
+  - flujo interno,
+  - **superficie libre** (agua con aire) tipo **dam break**.
+
+La demo de esta carpeta sigue la línea de **free-surface LBM** asociada a trabajo de **Nils Thürey** y colaboradores: típico **corte lateral** de un tanque que se rompe (pared que suelta agua), no un mapa top-down de ríos.
+
+La simulación de agua “vista desde arriba” suele ser otra familia (**shallow water equations**, water heightfields, etc.), que puede implementarse con varios solvers; no hay que mezclarla con “LBM = cenital”.
+
+## Qué gana vs Stam (y qué no)
+
+- Muy paralelizable (colisión local + stream).
+- Buena para ciertas fronteras y fenómenos multi-fase con extensiones.
+- Otro set de knobs (relajación, velocidades de red); el debugging mental es distinto al de proyección Poisson.
+
+No reemplaza a Stam en pedagogía: son dos discretizaciones distintas del mundo euleriano.
+
+**Lecturas:** [Lattice Boltzmann methods](https://en.wikipedia.org/wiki/Lattice_Boltzmann_methods) · introducción clásica en libros de Succi · free-surface: trabajos de Thürey / Pohl / Rüde (buscar “Free Surface Lattice-Boltzmann”).
+
+---
+
+# Acto III — Lagrangiano: el fluido son partículas
+
+Hasta acá, el espacio tenía dueño (la grilla). Ahora la materia tiene dueño (las partículas).
+
+---
+
+## SPH — Smoothed Particle Hydrodynamics (SPHjs)
+
+[Abrir SPHjs](./SPHjs/index.html)
+
+### Idea
+
+**SPH** = Smoothed Particle Hydrodynamics. Cada partícula lleva masa, posición y velocidad. Para saber la densidad en un punto, **promediás partículas vecinas** con un **kernel** suave (una campana: cerca pesa más, lejos pesa menos). De la densidad se obtiene presión; de la presión, fuerzas; luego integrás movimiento (leapfrog / semi-implícito, etc.).
+
+Analogía: cada partícula pregunta a sus vecinas “¿estoy muy apretada?” y se empujan.
+
+### Qué gana
+
+- Superficie libre natural (donde no hay partículas, no hay fluido).
+- Salpicaduras y gotas emergen de forma natural (la superficie libre es el borde del soporte de partículas).
+- Intuición lagrangiana clara para programadores.
+
+### Límites
+
+- Vecinos: necesitás búsqueda espacial (grilla de hash, árbol).
+- Compresibilidad artificial / choice de ecuación de estado.
+- Condiciones de borde más engorrosas que un MAC bien hecho.
+- Costo crece con el número de partículas y el radio de kernel.
+
+**Lecturas:** [Smoothed-particle hydrodynamics](https://en.wikipedia.org/wiki/Smoothed-particle_hydrodynamics) · papers fundacionales: Gingold & Monaghan 1977; Lucy 1977.
 
 ---
 
 ## 06 — PIC / FLIP (partículas + grilla)
 
-[Abrir demo](./06-particulas-pic-flip-muller/index.html)
+[Abrir demo 06](./06-particulas-pic-flip-muller/index.html)
 
-Ahora el agua son **partículas** que llevan posición y velocidad. Para calcular fuerzas/presión se **transfieren** datos a una grilla (PIC), se resuelve ahí (por ejemplo proyección), y se **devuelve** velocidad a las partículas. FLIP mezcla eso con el incremento de velocidad de la grilla para conservar mejor detalles y menos difusión numérica que PIC puro.
+### Idea
 
-Demo de Matthias Müller (*Ten Minute Physics*): buen contraste visual con los métodos 100 % eulerianos (solo grilla) de 01–04.
+**PIC** (Particle-In-Cell) y **FLIP** (FLuid-Implicit Particle) son **híbridos**: las partículas llevan la información, pero las fuerzas difíciles (presión / incompresibilidad) se resuelven en una grilla.
+
+Pipeline típico:
+
+1. Transferir masa/velocidad de partículas → grilla (**P2G**, particle-to-grid).
+2. En la grilla: fuerzas, proyección de presión (como en Stam), etc.
+3. Devolver velocidad a partículas (**G2P**).
+   - **PIC** puro: la partícula *adopta* la velocidad interpolada de la grilla → estable pero difusivo (se “borra” el detalle).
+   - **FLIP**: la partícula suma el *cambio* de velocidad de la grilla → conserva mejor vórtices y detalle; puede ser más ruidoso.
+   - En la práctica se mezcla PIC/FLIP con un factor.
+
+La demo de **Matthias Müller** (*Ten Minute Physics*) es un gran contraste visual después de 01–04: misma meta (agua), otra representación.
+
+### Qué gana vs SPH puro
+
+- Presión/incompresibilidad con herramientas eulerianas (Poisson en grilla).
+- Suele ser más estable en “líquidos grandes” de gráficos.
+
+### Qué gana vs Stam puro
+
+- Mejor advección de interfaz y menos difusión de detalles que semi-Lagrangiana pura sobre una densidad.
+
+**Lecturas:** [Particle-in-cell](https://en.wikipedia.org/wiki/Particle-in-cell) · FLIP en gráficos: Zhu & Bridson, *Animating Sand as a Fluid*, SIGGRAPH 2005 · curso/demos de Müller.
 
 ---
+
+# Acto IV — Híbridos modernos: MPM
 
 ## 07 — MLS-MPM (Material Point Method)
 
-[Abrir demo](./07-mls-mpm-material-point-method/index.html)
+[Abrir demo 07](./07-mls-mpm-material-point-method/index.html)
 
-MPM también es híbrido: **puntos de materia** + grilla de fondo. En cada paso se esparce información de partículas a la grilla, se actualiza el momento ahí, y se interpola de vuelta (con pesos MLS — Moving Least Squares — en esta variante). Sirve para fluidos y también para sólidos blandos; acá lo usamos como demo de fluido 2D (con worker).
+**MPM** (Material Point Method) también combina puntos de materia + grilla de fondo. Históricamente viene de mecánica de sólidos/continuum; en gráficos explotó para nieve, arena, líquidos, etc.
 
-Familia cercana a PIC/FLIP, con otro acento en cómo se transferen y deforman las cantidades.
+**MLS-MPM** usa **Moving Least Squares** (**MLS**) para mejorar la transferencia y el cálculo de deformación/fuerzas respecto de MPM ingenuo.
 
----
+Ciclo mental (parecido a PIC, con acento en tensores de deformación / modelo constitutivo según el material):
 
-## 08 — MPM / PVFS (demo externa)
+1. Partículas → grilla  
+2. Actualizar momento en grilla  
+3. Grilla → partículas (y actualizar estado interno)
 
-[Abrir demo](./08-mpm-pvfs-demo-externa/index.html)
+### Qué gana
 
-Demo de referencia visual (capas líquidas interactivas, build externo). No es el lugar para diseccionar el código en clase: sirve para mostrar **hasta dónde puede llegar** un solver MPM/PVFS pulido en el navegador, después de haber entendido 06–07.
+- Un mismo framework puede hacer fluido *y* sólido blando cambiando el modelo de material.
+- Muy usado en investigación de gráficos contemporánea.
 
----
-
-## Cuadro comparativo (núcleo 01–04)
-
-| | 01 CA columna | 02 Fick–Jacobi | 03 Lab mangueras | 04 Stam MAC |
-|--|---------------|----------------|------------------|-------------|
-| **Presión** | Heurística por columna / fill | Exceso `N − N_reposo` | Diferencia de cantidad en caras (+ Stam opcional) | Poisson Jacobi → corrige `v` |
-| **Cómo se mueve la masa** | Transferencias locales (g, ΔP, desborde) | Fick + falling sand | Empuje de mangueras + flechas/raycast | Advección semi-Lagrangiana |
-| **¿Incompresible?** | No | No | Parcial (proyección light) | Sí (objetivo `div ≈ 0`) |
-| **Rol del “flow”** | Casi solo visual | `V` inercial que sesga Fick | Flechas + empujes MAC | Velocidad del fluido |
-
-Mensaje unificador para la pizarra:
-
-> Misma grilla 2D. Cambia **quién define la presión** y **quién mueve la masa**.
-
-Ojo: la palabra **flowfield** en 02/03 no significa lo mismo que la **velocidad MAC** de 04.
+**Lecturas:** [Material point method](https://en.wikipedia.org/wiki/Material_point_method) · Sulsky et al. (MPM clásico) · Hu et al., *MLS-MPM* (SIGGRAPH / papers de APIC/MLS-MPM).
 
 ---
 
-## Cómo dictar (tiempos orientativos)
+## 08 — MPM / PVFS (demo externa, referencia visual)
 
-Clase de ~90–120 min:
+[Abrir demo 08](./08-mpm-pvfs-demo-externa/index.html)
 
-1. **01** (10–15 min) — “funciona para juegos; no es CFD”. Density / Pressure / Vectors.
-2. **02** (20–25) — reposo, exceso, vaso en U, inercia de `V`.
-3. **03** (20–25) — knobs: mangueras vs flechas; prender/apagar proyección.
-4. **04** (25–30) — pipeline completo; mirar `divMax`.
-5. **05–08** si sobra — “misma meta, otra discretización” (red LBM / partículas / MPM).
+Demo pulida de capas líquidas interactivas (build externo). En clase: **2–5 minutos** para mostrar el techo visual de un solver híbrido moderno en el navegador, no para leer el código línea a línea.
 
-Si la clase es corta: solo **01, 02 y 04**, y usá **03** como estación de 10 minutos para conectar ideas.
+El nombre de carpeta habla de MPM/PVFS como rótulo de la demo; el concepto a retener es: **híbrido partícula–grilla de producción**.
 
 ---
 
-## Referencias (`_refs/`)
+# Cuadro comparativo (todos los métodos del hilo)
 
-Material que no es paso obligatorio del recorrido, pero ayuda a contextualizar:
+| Método | Representación | Presión / incompresibilidad | Transporte de masa | ¿Cuándo tiene sentido? |
+| ------ | -------------- | --------------------------- | ------------------ | ---------------------- |
+| Falling sand | Grilla de tipos | No | Reglas de intercambio | Gameplay de arena/polvo; enseñar CA |
+| 01 CA + volumen parcial | Grilla + fill | Heurística tipo columna (`ρgh` aproximado) | Transferencias locales | Prototipos 2D con fill continuo |
+| 02 Fick + flowfield | Grilla + exceso | Exceso sobre reposo | Fick + falling sand | Conservación + presión por exceso |
+| 03 MAC (puente) | Centros + caras | Proyección parcial (pocas iteraciones) | Flujos en caras + campo auxiliar | Introducir MAC y proyección |
+| 04 Stam MAC | Velocidad en caras | Poisson → `div v ≈ 0` | Advección semi-Lagrangiana | Humo/líquido incompresible en tiempo real |
+| 05 LBM | Distribuciones `f_i` | Emergente del esquema (+ free-surface) | Stream + collide | CFD paralelo; dam break free-surface |
+| SPH | Partículas | Ecuación de estado / densidad kernel | Movimiento de partículas | Gotas, salpicaduras, superficie libre |
+| 06 PIC/FLIP | Partículas + grilla | Proyección en grilla | Advección por partículas | Líquidos de gráficos con detalle |
+| 07–08 MPM | Partículas + grilla | Según modelo / proyección | P2G / G2P | Fluidos y sólidos en un framework |
 
-- [CA de masa conservada (antecedente visual del 02)](./_refs/ca-masa-conservada.html) — reposo, presión visual, vaso en U.
-- [Inside LiquidFun (PDF)](./_refs/Inside%20LiquidFun.pdf) — lectura sobre un motor de líquidos 2D de producción.
+Mensaje unificador:
 
-En este mismo directorio también pueden aparecer submódulos o demos hermanas (`SPHjs`, `water-caves-simulator-2d`, etc.) que no forman parte del hilo numerado 01–08.
+> Primero elegís **quién lleva el estado** (celda, partícula, o ambos). Después elegís **cómo imponés presión / volumen**. Ahí se juega casi toda la diferencia visual.
+
+Ojo con la palabra **flowfield**: en 02/03 es memoria o flecha auxiliar; en 04 es la velocidad del fluido.
+
+---
+
+## Si programás X, empezá por Y
+
+| Querés… | Empezá por… |
+| ------- | ----------- |
+| Entender grillas y reglas | Falling sand → 01 |
+| Conservación y “presión por exceso” | 02 |
+| Entender caras MAC y divergencia | 03 luego 04 |
+| Humo/líquido incompresible en tiempo real | **04 Stam** (leer el paper) |
+| Dam break / otra discretización euleriana | 05 LBM |
+| Gotas y superficie libre sin tracking explícito | SPH (SPHjs) |
+| Líquido con detalle y proyección seria | 06 PIC/FLIP |
+| Framework unificado fluido/sólido | 07 MPM |
+
+---
+
+## Bibliografía rápida (Wikipedia + papers)
+
+### Wikipedia (conceptos)
+
+- [Cellular automaton](https://en.wikipedia.org/wiki/Cellular_automaton)
+- [Fick's laws of diffusion](https://en.wikipedia.org/wiki/Fick%27s_laws_of_diffusion)
+- [Jacobi method](https://en.wikipedia.org/wiki/Jacobi_method)
+- [Marker-and-cell method](https://en.wikipedia.org/wiki/Marker-and-cell_method)
+- [Navier–Stokes equations](https://en.wikipedia.org/wiki/Navier%E2%80%93Stokes_equations)
+- [Incompressible flow](https://en.wikipedia.org/wiki/Incompressible_flow)
+- [Projection method (fluid dynamics)](https://en.wikipedia.org/wiki/Projection_method_(fluid_dynamics%29)
+- [Semi-Lagrangian scheme](https://en.wikipedia.org/wiki/Semi-Lagrangian_scheme)
+- [Lattice Boltzmann methods](https://en.wikipedia.org/wiki/Lattice_Boltzmann_methods)
+- [Smoothed-particle hydrodynamics](https://en.wikipedia.org/wiki/Smoothed-particle_hydrodynamics)
+- [Particle-in-cell](https://en.wikipedia.org/wiki/Particle-in-cell)
+- [Material point method](https://en.wikipedia.org/wiki/Material_point_method)
+- [Computational fluid dynamics](https://en.wikipedia.org/wiki/Computational_fluid_dynamics)
+
+### Papers / fuentes canónicas
+
+- Harlow & Welch (1965) — Marker-and-Cell / flujos viscosos incompresibles.
+- Jos Stam (1999) — **Stable Fluids**, SIGGRAPH — [DOI](https://doi.org/10.1145/311535.311548) · [PDF GDC notes](https://www.dgp.toronto.edu/people/stam/reality/Research/pdf/GDC03.pdf)
+- Gingold & Monaghan (1977); Lucy (1977) — SPH.
+- Zhu & Bridson (2005) — FLIP para arena/fluidos en gráficos.
+- Sulsky et al. — MPM clásico; Hu et al. — MLS-MPM.
+- Thürey et al. — free-surface Lattice Boltzmann (dam break / liquids).
+
+### En esta carpeta (`_refs/`)
+
+- [CA de masa conservada](./_refs/ca-masa-conservada.html) — antecedente visual del enfoque “reposo / exceso”.
+- [Inside LiquidFun (PDF)](./_refs/Inside%20LiquidFun.pdf) — motor de líquidos 2D de producción (Box2D/LiquidFun).
+
+### Hermanas en el directorio (no numeradas)
+
+- [`SPHjs/`](./SPHjs/index.html) — ya integrada al Acto III.
+- [`mls mpm vs sph/`](./mls%20mpm%20vs%20sph/index.html) — contraste visual extra MPM vs SPH si sobra tiempo.
+- [`water-caves-simulator-2d/`](./water-caves-simulator-2d/) — implementación afín al CA con volumen parcial (demo 01).
+
+---
+
+## Síntesis
+
+1. **Falling sand** — autómatas celulares de materiales sobre grilla.  
+2. **01–02** — volumen/masa continua por celda y modelos de presión *heurísticos* (columna o exceso).  
+3. **03–04** — grilla MAC, divergencia y métodos de proyección; Stable Fluids (advect + project).  
+4. **LBM** — otra discretización euleriana (no “Stam con otro nombre”).  
+5. **SPH → PIC/FLIP → MPM** — eje lagrangiano/híbrido cuando la superficie libre y el detalle material pesan más que una sola grilla de celdas.
+
+Pregunta guía al cerrar: *¿quién almacena el estado del fluido y cómo se impone (o no) la incompresibilidad?* Si eso se puede responder para cada demo, el hilo de la clase cerró bien.
+
+Recordatorio final: estas demos **ilustran**; la referencia normativa es la bibliografía.

@@ -133,4 +133,4 @@ GPU (Chrome con WebGL2), servir la carpeta y abrir `js/gpu-smoke.html` — conse
 ## Referencias en esta carpeta
 
 - `4.html` — UI studio, chunks, flowfield inercial.
-- `Mass-Conserving Cellular Automata.html` — reposo, presión visual, vaso en U.
+- `../_refs/ca-masa-conservada.html` — reposo, presión visual, vaso en U.
