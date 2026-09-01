@@ -67,6 +67,7 @@
 - [Mejoras a falling sand para simulación de agua]_(https://www.youtube.com/watch?v=2qfjJ-0ZeVM)
 - [Lattice-Boltzmann Method](https://www.youtube.com/watch?v=iKAVRgIrUOU)
 - [Navier-stokes](https://topaz1008.github.io/canvas-fluid-solver/)
+- [SPH de cero](https://www.youtube.com/watch?v=rSKMYc1CQHE&list=PLFt_AvWsXl0dJrPelwdVSMVC_MDTYPJWn)
 - [Liquid Fun](https://google.github.io/liquidfun/)
 - [Liquid Fun: explicación](/3%20-%20simulacion%20de%20fluidos/Inside%20LiquidFun.pdf)
 - [PIC + FLIP](https://matthias-research.github.io/pages/tenMinutePhysics/18-flip.pdf)
