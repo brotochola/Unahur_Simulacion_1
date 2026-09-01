@@ -53,15 +53,21 @@
   - Continuous Celullar Automata / Liquid Automata
   - Height fields
   - Reconstrucción de superficie mediante marching squares.
+  - Navier-Stokes
+  - Lattice Boltzmann Method
 - Enfoque basado en partículas: fundamentos y motores de referencia
   - PIC / FLIP
   - (Liquid Fun).
   - Smoothed Particle Hydrodynamics (SPH)
 
-
+- [Historia de la simulación de agua en el cine](https://www.youtube.com/watch?v=qdvNNm1kNu4)
+- [Falling sand con velocidad variable](https://powder-simulation.vercel.app/)
+- [Navier-stokes](https://topaz1008.github.io/canvas-fluid-solver/)
 - [Liquid Fun](https://google.github.io/liquidfun/)
 - [Liquid Fun: explicación](/3%20-%20simulacion%20de%20fluidos/Inside%20LiquidFun.pdf)
 - [PIC + FLIP](https://matthias-research.github.io/pages/tenMinutePhysics/18-flip.pdf)
+- [Modelo MLS-MPM](https://github.com/matsuoka-601/Splash)
+- [Position Based MPM](https://github.com/electronicarts/pbmpm)
 
 ## Unidad 4 — Vida artificial y autómatas celulares
 
