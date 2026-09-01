@@ -60,6 +60,8 @@
   - (Liquid Fun).
   - Smoothed Particle Hydrodynamics (SPH)
 
+- [DEMOS web — guía de clase (fluidos)](./3%20-%20simulacion%20de%20fluidos/3-simulacion_de_fluidos.md)
+
 - [Historia de la simulación de agua en el cine](https://www.youtube.com/watch?v=qdvNNm1kNu4)
 - [Falling sand con velocidad variable](https://powder-simulation.vercel.app/)
 - [Mejoras a falling sand para simulación de agua]_(https://www.youtube.com/watch?v=2qfjJ-0ZeVM)

@@ -8,7 +8,9 @@ No hay una sola respuesta. Hay familias enteras de algoritmos. Esta guía las re
 
 Abrí siempre este archivo primero. Cada sección linkea a una demo (o a material de la clase anterior).
 
-**Importante:** los HTML de esta carpeta son **demos didácticas**. Ilustran una idea; no son la definición canónica del método ni un sustituto del paper. Donde el texto diga “en esta demo…”, léase como implementación de ejemplo.
+**Importante:** los HTML de esta carpeta son **demos didácticas**. Ilustran una idea; no son la definición canónica del método ni un sustituto del paper. Donde el texto diga "en esta demo…", léase como implementación de ejemplo.
+
+**Demos online:** también están en GitHub Pages: [https://brotochola.github.io/Unahur_Simulacion_1/](https://brotochola.github.io/Unahur_Simulacion_1/). En cada sección, **Demo online** abre la página publicada; **Código** apunta al HTML del repo (relativo). Si una carpeta recién renombrada aún no está en `main` desplegado, el link Pages puede fallar hasta el próximo publish.
 
 ---
 
@@ -62,14 +64,14 @@ Toda sigla de esta guía aparece acá. La primera vez que aparece en el texto ta
 | Bloque | Min | Qué hacer | Abrir |
 | ------ | --- | --------- | ----- |
 | 0. Marco | 0–15 | Euleriano vs lagrangiano vs híbrido; mapa de la clase | este `.md` |
-| 1. Falling sand | 15–35 | Reglas discretas; qué *no* modela | [`../2 - falling_sand/falling-sand.html`](../2%20-%20falling_sand/falling-sand.html) |
-| 2. CA con volumen parcial | 35–55 | Fill continuo; presión hidrostática aproximada | [01](./01-automata-celular-presion-por-columna-water-caves/index.html) |
-| 3. Fick + falling sand + flowfield | 55–80 | Exceso, difusión, campo auxiliar inercial | [02](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html) |
-| 4. Puente MAC | 80–100 | Flujos en caras + proyección parcial | [03](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) |
-| 5. **Stam en profundidad** | 100–130 | Stable Fluids, proyección, `div v ≈ 0` | [04](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) |
-| 6. LBM | 130–150 | Otra euleriana; dam break free-surface | [05](./05-lattice-boltzmann-lbm-thurey/index.html) |
-| 7. SPH → PIC/FLIP → MPM | 150–170 | Partículas y híbridos | [SPHjs](./SPHjs/index.html), [06](./06-particulas-pic-flip-muller/index.html), [07](./07-mls-mpm-material-point-method/index.html), [08](./08-mpm-pvfs-demo-externa/index.html) |
-| 8. Cierre | 170–180 | Cuadro “cuándo usar qué” | este `.md` |
+| 1. Falling sand | 15–35 | Reglas discretas; qué *no* modela | [Código](../2%20-%20falling_sand/falling-sand.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/2%20-%20falling_sand/falling-sand.html) |
+| 2. CA con volumen parcial | 35–55 | Fill continuo; presión hidrostática aproximada | [Código](./01-automata-celular-presion-por-columna-water-caves/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/01-automata-celular-presion-por-columna-water-caves/index.html) |
+| 3. Fick + falling sand + flowfield | 55–80 | Exceso, difusión, campo auxiliar inercial | [Código](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/02-fick-jacobi-falling-sand-flowfield-inercial/index.html) |
+| 4. Puente MAC | 80–100 | Flujos en caras + proyección parcial | [Código](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) |
+| 5. **Stam en profundidad** | 100–130 | Stable Fluids, proyección, `div v ≈ 0` | [Código](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) |
+| 6. LBM | 130–150 | Otra euleriana; dam break free-surface | [Código](./05-lattice-boltzmann-lbm-thurey/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/05-lattice-boltzmann-lbm-thurey/index.html) |
+| 7. SPH → PIC/FLIP → MPM | 150–170 | Partículas y híbridos | [Código SPH](./SPHjs/index.html) · [Online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/SPHjs/index.html); [Código 06](./06-particulas-pic-flip-muller/index.html) · [Online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/06-particulas-pic-flip-muller/index.html); [Código 07](./07-mls-mpm-material-point-method/index.html) · [Online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/07-mls-mpm-material-point-method/index.html); [Código 08](./08-mpm-pvfs-demo-externa/index.html) · [Online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/08-mpm-pvfs-demo-externa/index.html) |
+| 8. Cierre | 170–180 | Cuadro "cuándo usar qué" | este `.md` |
 
 Si se atrasa el reloj: recortar LBM a 10 min y la demo 08 a “solo mirar 2 minutos”. El núcleo intocable es **falling sand → 01 → 02 → 03 → 04**.
 
@@ -77,24 +79,24 @@ Si se atrasa el reloj: recortar LBM a 10 min y la demo 08 a “solo mirar 2 minu
 
 ## Mapa de demos (links rápidos)
 
-| # | Demo | Familia |
-| - | ---- | ------- |
-| — | [Falling sand (clase 2)](../2%20-%20falling_sand/falling-sand.html) | Reglas discretas / precursor |
-| 01 | [Autómata celular · presión por columna](./01-automata-celular-presion-por-columna-water-caves/index.html) | Euleriano (CA) |
-| 02 | [Fick–Jacobi · falling sand · flowfield](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html) | Euleriano (difusión + CA) |
-| 03 | [Fick en caras MAC · campo auxiliar · proyección](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) | Euleriano (puente MAC) |
-| 04 | [Stam Stable Fluids · grilla MAC](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) | Euleriano (NS simplificado) |
-| 05 | [Lattice Boltzmann (LBM)](./05-lattice-boltzmann-lbm-thurey/index.html) | Euleriano (red de Boltzmann) |
-| — | [SPH (SPHjs)](./SPHjs/index.html) | Lagrangiano |
-| 06 | [PIC/FLIP](./06-particulas-pic-flip-muller/index.html) | Híbrido |
-| 07 | [MLS-MPM](./07-mls-mpm-material-point-method/index.html) | Híbrido |
-| 08 | [MPM / PVFS (demo externa)](./08-mpm-pvfs-demo-externa/index.html) | Híbrido (referencia visual) |
+| # | Demo | Familia | Links |
+| - | ---- | ------- | ----- |
+| — | Falling sand (clase 2) | Reglas discretas / precursor | [Código](../2%20-%20falling_sand/falling-sand.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/2%20-%20falling_sand/falling-sand.html) |
+| 01 | Autómata celular · presión por columna | Euleriano (CA) | [Código](./01-automata-celular-presion-por-columna-water-caves/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/01-automata-celular-presion-por-columna-water-caves/index.html) |
+| 02 | Fick–Jacobi · falling sand · flowfield | Euleriano (difusión + CA) | [Código](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/02-fick-jacobi-falling-sand-flowfield-inercial/index.html) |
+| 03 | Fick en caras MAC · campo auxiliar · proyección | Euleriano (puente MAC) | [Código](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) |
+| 04 | Stam Stable Fluids · grilla MAC | Euleriano (NS simplificado) | [Código](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) |
+| 05 | Lattice Boltzmann (LBM) | Euleriano (red de Boltzmann) | [Código](./05-lattice-boltzmann-lbm-thurey/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/05-lattice-boltzmann-lbm-thurey/index.html) |
+| — | SPH (SPHjs) | Lagrangiano | [Código](./SPHjs/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/SPHjs/index.html) |
+| 06 | PIC/FLIP | Híbrido | [Código](./06-particulas-pic-flip-muller/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/06-particulas-pic-flip-muller/index.html) |
+| 07 | MLS-MPM | Híbrido | [Código](./07-mls-mpm-material-point-method/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/07-mls-mpm-material-point-method/index.html) |
+| 08 | MPM / PVFS (demo externa) | Híbrido (referencia visual) | [Código](./08-mpm-pvfs-demo-externa/index.html) · [Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/08-mpm-pvfs-demo-externa/index.html) |
 
 ---
 
 # Acto I — Falling sand (todavía no es un fluido continuo)
 
-[Abrir falling sand](../2%20-%20falling_sand/falling-sand.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/2%20-%20falling_sand/falling-sand.html) · [Código](../2%20-%20falling_sand/falling-sand.html)
 
 ## Idea
 
@@ -134,7 +136,7 @@ Seguimos en representación **euleriana** (estado en una grilla fija). La progre
 
 ## 01 — Autómata celular con presión por columna
 
-[Abrir demo 01](./01-automata-celular-presion-por-columna-water-caves/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/01-automata-celular-presion-por-columna-water-caves/index.html) · [Código](./01-automata-celular-presion-por-columna-water-caves/index.html)
 
 ### Idea
 
@@ -205,7 +207,7 @@ La presión **no** sale de una ecuación de Poisson ni de Navier–Stokes. No ha
 
 ## 02 — Fick–Jacobi, falling sand y flowfield inercial
 
-[Abrir demo 02](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/02-fick-jacobi-falling-sand-flowfield-inercial/index.html) · [Código](./02-fick-jacobi-falling-sand-flowfield-inercial/index.html)
 
 ### Idea
 
@@ -245,7 +247,7 @@ Sigue sin proyección incompresible. Los chorros “de verdad” (salpicadura co
 
 ## 03 — Fick en caras MAC, flechas y proyección Stam liviana
 
-[Abrir demo 03](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html) · [Código](./03-fick-en-caras-mac-flowfield-flechas-proyeccion-stam/index.html)
 
 ### Idea
 
@@ -278,7 +280,7 @@ Híbrido didáctico: no es el pipeline Stable Fluids completo ni un solver MAC d
 
 ## 04 — Stable Fluids (Stam) en grilla MAC — núcleo de la clase
 
-[Abrir demo 04](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html) · [Código](./04-stam-stable-fluids-grilla-mac-proyeccion-presion/index.html)
 
 Esta sección es más larga a propósito. Si un programador se lleva **una** idea de las 3 horas, que sea esta.
 
@@ -374,7 +376,7 @@ Acá sí: el flowfield **es** el campo de velocidad MAC. Las flechas verdes suel
 
 # Acto II-b — Otra familia euleriana: Lattice Boltzmann (LBM)
 
-[Abrir demo 05](./05-lattice-boltzmann-lbm-thurey/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/05-lattice-boltzmann-lbm-thurey/index.html) · [Código](./05-lattice-boltzmann-lbm-thurey/index.html)
 
 ## Idea
 
@@ -421,7 +423,7 @@ Hasta acá, el espacio tenía dueño (la grilla). Ahora la materia tiene dueño 
 
 ## SPH — Smoothed Particle Hydrodynamics (SPHjs)
 
-[Abrir SPHjs](./SPHjs/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/SPHjs/index.html) · [Código](./SPHjs/index.html)
 
 ### Idea
 
@@ -448,7 +450,7 @@ Analogía: cada partícula pregunta a sus vecinas “¿estoy muy apretada?” y 
 
 ## 06 — PIC / FLIP (partículas + grilla)
 
-[Abrir demo 06](./06-particulas-pic-flip-muller/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/06-particulas-pic-flip-muller/index.html) · [Código](./06-particulas-pic-flip-muller/index.html)
 
 ### Idea
 
@@ -482,7 +484,7 @@ La demo de **Matthias Müller** (*Ten Minute Physics*) es un gran contraste visu
 
 ## 07 — MLS-MPM (Material Point Method)
 
-[Abrir demo 07](./07-mls-mpm-material-point-method/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/07-mls-mpm-material-point-method/index.html) · [Código](./07-mls-mpm-material-point-method/index.html)
 
 **MPM** (Material Point Method) también combina puntos de materia + grilla de fondo. Históricamente viene de mecánica de sólidos/continuum; en gráficos explotó para nieve, arena, líquidos, etc.
 
@@ -505,7 +507,7 @@ Ciclo mental (parecido a PIC, con acento en tensores de deformación / modelo co
 
 ## 08 — MPM / PVFS (demo externa, referencia visual)
 
-[Abrir demo 08](./08-mpm-pvfs-demo-externa/index.html)
+[Demo online](https://brotochola.github.io/Unahur_Simulacion_1/3%20-%20simulacion%20de%20fluidos/08-mpm-pvfs-demo-externa/index.html) · [Código](./08-mpm-pvfs-demo-externa/index.html)
 
 Demo pulida de capas líquidas interactivas (build externo). En clase: **2–5 minutos** para mostrar el techo visual de un solver híbrido moderno en el navegador, no para leer el código línea a línea.
 
