@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+  >
+  <meta name="theme-color" content="#cccccc">
+  <meta http-equiv="Permissions-Policy" content="accelerometer=(self), gyroscope=(self)">
+  <link rel="icon" href="circle.png">
+  <title>SPH Fluid</title>
+  <style>
+    :root {
+      --app-height: 100dvh;
+      font-family: Tahoma, Arial, sans-serif;
+      color: #1f1f1f;
+      background: #ccc;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: #ccc;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      min-height: -webkit-fill-available;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0 0 auto 0;
+      width: auto;
+      height: 100vh;
+      height: 100svh;
+      height: var(--app-height);
+      overflow: hidden;
+      background: #ccc;
+    }
+
+    #fluid-canvas {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .topbar {
+      position: absolute;
+      z-index: 2;
+      top: max(12px, env(safe-area-inset-top));
+      right: max(12px, env(safe-area-inset-right));
+      left: max(12px, env(safe-area-inset-left));
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      pointer-events: none;
+    }
+
+    .brand strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .brand small,
+    .stats,
+    .hint {
+      color: #4d4d4d;
+      font-size: 11px;
+    }
+
+    .backend-dot {
+      display: none;
+    }
+
+    .stats {
+      padding-top: 4px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .stats span + span::before {
+      content: " · ";
+      color: #777;
+    }
+
+    .stats b {
+      color: #222;
+      font-weight: normal;
+    }
+
+    .hint {
+      position: absolute;
+      z-index: 2;
+      top: max(58px, calc(env(safe-area-inset-top) + 46px));
+      left: max(12px, env(safe-area-inset-left));
+      max-width: min(540px, calc(100vw - 24px));
+      line-height: 1.45;
+      pointer-events: none;
+      transition: opacity 180ms linear;
+    }
+
+    .hint.is-hidden {
+      opacity: 0;
+    }
+
+    .toolbar {
+      position: absolute;
+      z-index: 3;
+      right: max(8px, env(safe-area-inset-right));
+      bottom: max(8px, env(safe-area-inset-bottom));
+      display: flex;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid rgba(80, 80, 80, 0.55);
+      border-radius: 5px;
+      background: rgba(238, 238, 238, 0.88);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.13);
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid #999;
+      border-radius: 3px;
+      padding: 0 11px;
+      color: #222;
+      background: rgba(238, 238, 238, 0.9);
+      font: 12px Tahoma, Arial, sans-serif;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:hover {
+      background: #f7f7f7;
+    }
+
+    button:focus-visible {
+      outline: 2px solid #3087a8;
+      outline-offset: 2px;
+    }
+
+    button[hidden] {
+      display: none;
+    }
+
+    .toolbar-button {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      min-height: 32px;
+      place-items: center;
+      border: 0;
+      border-radius: 3px;
+      padding: 0;
+      color: #3e3e3e;
+      background: transparent;
+    }
+
+    .toolbar-button:hover {
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .toolbar-button.is-active,
+    .toolbar-button[aria-pressed="true"] {
+      color: #176d8d;
+      background: rgba(136, 206, 234, 0.3);
+    }
+
+    .toolbar-button svg {
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+    .motion-prompt {
+      position: absolute;
+      z-index: 4;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.16);
+    }
+
+    .motion-prompt[hidden] {
+      display: none;
+    }
+
+    .motion-prompt__card {
+      width: min(350px, 100%);
+      border: 1px solid #999;
+      border-radius: 4px;
+      padding: 18px;
+      background: #eee;
+      box-shadow: 0 5px 18px rgba(0, 0, 0, 0.18);
+    }
+
+    .motion-prompt h1 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+
+    .motion-prompt p {
+      margin: 0 0 16px;
+      color: #444;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .motion-prompt__actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 7px;
+    }
+
+    .status-message {
+      position: absolute;
+      z-index: 5;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: calc(max(12px, env(safe-area-inset-bottom)) + 45px);
+      max-width: min(340px, calc(100vw - 24px));
+      border: 1px solid #999;
+      border-radius: 3px;
+      padding: 8px 10px;
+      color: #222;
+      background: rgba(238, 238, 238, 0.94);
+      font-size: 11px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms linear;
+    }
+
+    .status-message.is-visible {
+      opacity: 1;
+    }
+
+    @media (max-width: 560px) {
+      .brand small {
+        display: none;
+      }
+
+      .toolbar {
+        right: max(6px, env(safe-area-inset-right));
+        bottom: max(6px, env(safe-area-inset-bottom));
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <canvas id="fluid-canvas" aria-label="Interactive particle fluid simulation"></canvas>
+
+    <div class="topbar" aria-hidden="true">
+      <div class="brand">
+        <strong>SPH Fluid</strong>
+        <span class="backend-dot"></span>
+        <small id="backend-label">starting renderer</small>
+      </div>
+      <div class="stats">
+        <span><b id="particle-count">0</b> particles</span>
+        <span class="fps-stat"><b id="fps-count">60</b> fps</span>
+      </div>
+    </div>
+
+    <div id="interaction-hint" class="hint">
+      Drag to pour water. Use the hand to push and the tilted phone for motion gravity. Right-click also pushes.
+    </div>
+
+    <nav class="toolbar" aria-label="Simulation tools">
+      <button
+        id="water-tool-button"
+        class="toolbar-button is-active"
+        type="button"
+        aria-label="Water mode: pour particles"
+        aria-pressed="true"
+        title="Water mode"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2.8S6.5 9.2 6.5 14a5.5 5.5 0 0 0 11 0C17.5 9.2 12 2.8 12 2.8Z" />
+        </svg>
+      </button>
+      <button
+        id="touch-tool-button"
+        class="toolbar-button"
+        type="button"
+        aria-label="Touch mode: push water"
+        aria-pressed="false"
+        title="Touch mode"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 11V6.5a1.5 1.5 0 0 1 3 0V10" />
+          <path d="M12 10V5a1.5 1.5 0 0 1 3 0v5.5" />
+          <path d="M15 10.5V7a1.5 1.5 0 0 1 3 0v6" />
+          <path d="M9 10.5 7.7 9.2a1.6 1.6 0 0 0-2.3 2.2l4.2 6.1A4 4 0 0 0 12.9 19H15a4 4 0 0 0 4-4v-3.5" />
+        </svg>
+      </button>
+      <button
+        id="motion-button"
+        class="toolbar-button"
+        type="button"
+        aria-label="Turn on motion gravity"
+        aria-pressed="false"
+        title="Motion gravity"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="8" y="3" width="8" height="18" rx="2" transform="rotate(-10 12 12)" />
+          <path d="M4.5 8.5a8 8 0 0 0 .2 7.6M19.5 15.5a8 8 0 0 0-.2-7.6" />
+        </svg>
+      </button>
+      <button
+        id="reset-button"
+        class="toolbar-button"
+        type="button"
+        aria-label="Clear all water"
+        title="Clear"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 7h14M9 7V4h6v3M7.5 7l.8 13h7.4l.8-13M10 10.5v6M14 10.5v6" />
+        </svg>
+      </button>
+    </nav>
+
+    <div id="motion-prompt" class="motion-prompt" hidden>
+      <section class="motion-prompt__card" role="dialog" aria-modal="true" aria-labelledby="motion-title">
+        <h1 id="motion-title">Use the phone’s gravity?</h1>
+        <p>Allow motion access and the water will follow the direction you tilt your phone. Sensor data stays in this page.</p>
+        <div class="motion-prompt__actions">
+          <button id="motion-dismiss" type="button">Not now</button>
+          <button id="motion-enable" type="button">Allow motion</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="status-message" class="status-message" role="status" aria-live="polite"></div>
+  </main>
+
+  <noscript>This demo needs JavaScript enabled.</noscript>
+  <script type="module" src="js/index.js"></script>
+</body>
+</html>
