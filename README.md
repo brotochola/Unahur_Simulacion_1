@@ -85,10 +85,14 @@
 - [Multiple Neighborhoods Cellular Automata] (https://softologyblog.wordpress.com/2018/03/09/multiple-neighborhoods-cellular-automata/)
 - [Kernel Convolution](https://www.youtube.com/watch?v=C_zFhWdM4ic)
 - [Game of Life + Smooth Life + Lenia](https://www.youtube.com/watch?v=6kiBYjvyojQ)
+- [SmoothLife] (https://rreusser.github.io/notebooks/smooth-life/)
+- [SmoothLife] (https://fuzzy-life.netlify.app/)
 - [Lenia](https://www.youtube.com/watch?v=iE46jKYcI4Y)
 - [Más sobre Lenia](https://www.youtube.com/playlist?list=PLxls5YhYdJ0xYabkHAP63cMhPq2mJVSe-)
 - [Particle Lenia](https://google-research.github.io/self-organising-systems/particle-lenia/)
 - [Particle Life](/4 - artificial_life/particle_life_standalone.html)
+- [Particle Life] (https://www.youtube.com/watch?v=SYDAcivFV-U)
+- [Particle Lenia](https://www.youtube.com/watch?v=vfI36yzl6nU)
 
 ## Unidad 5 — Optimización de simulaciones
 
