@@ -88,11 +88,14 @@
 - [SmoothLife] (https://rreusser.github.io/notebooks/smooth-life/)
 - [SmoothLife] (https://fuzzy-life.netlify.app/)
 - [Lenia](https://www.youtube.com/watch?v=iE46jKYcI4Y)
+- [NeatAI Lenia](- https://www.youtube.com/watch?v=7-97RhAZhXI)
 - [Más sobre Lenia](https://www.youtube.com/playlist?list=PLxls5YhYdJ0xYabkHAP63cMhPq2mJVSe-)
-- [Particle Lenia](https://google-research.github.io/self-organising-systems/particle-lenia/)
+
 - [Particle Life](/4 - artificial_life/particle_life_standalone.html)
 - [Particle Life] (https://www.youtube.com/watch?v=SYDAcivFV-U)
+
 - [Particle Lenia](https://www.youtube.com/watch?v=vfI36yzl6nU)
+- [Particle Lenia](https://google-research.github.io/self-organising-systems/particle-lenia/)
 
 ## Unidad 5 — Optimización de simulaciones
 
