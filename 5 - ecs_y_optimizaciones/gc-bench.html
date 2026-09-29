@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GC bench: alloc vs zero-alloc</title>
+<style>
+:root{--bg:#12151c;--panel:#1a1f2b;--line:#2b3244;--tx:#e6e9ef;--mut:#8b94a8;--A:#ff5d8f;--B:#3ee0c1;--C:#ffb454}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+.num,td,th,input,select{font-variant-numeric:tabular-nums}
+.wrap{display:grid;grid-template-columns:290px 1fr;gap:16px;padding:16px;max-width:1300px;margin:0 auto}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+h1{font-size:18px;margin:0 0 2px}
+.sub{color:var(--mut);margin:0 0 14px;font-size:13px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.side .panel{margin-bottom:12px}
+label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0}
+input[type=number],select{width:120px;background:var(--bg);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font:inherit}
+.var{justify-content:flex-start;gap:8px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+button{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--tx);border-radius:7px;padding:7px 12px;cursor:pointer}
+button.go{background:var(--B);color:#062a24;border-color:var(--B);font-weight:600}
+button.go.stop{background:var(--A);border-color:var(--A);color:#2a0612}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--B);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:2px 9px;color:var(--mut)}
+.chip.ok{color:var(--B);border-color:#1f6b5d}.chip.bad{color:var(--A);border-color:#7a2a44}
+#status{color:var(--mut);margin:0 0 10px;min-height:20px}
+.charts{display:grid;gap:12px}
+.ch h3{font-size:13px;font-weight:600;margin:0 0 6px}
+.ch h3 span{color:var(--mut);font-weight:400}
+canvas.c{width:100%;height:170px;display:block}
+#view{width:100%;height:auto;aspect-ratio:5/3;background:var(--bg);border-radius:6px;display:none}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mut);font-weight:500}
+.tw{overflow-x:auto}
+small{color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="side">
+  <div class="panel">
+    <h1>GC bench</h1>
+    <p class="sub">Misma lógica, distinta estrategia de memoria. Lo que importa es la cola (p99, max), no el promedio.</p>
+    <label class="var"><input type="checkbox" id="vA" checked><span class="dot" style="background:var(--A)"></span>A: inmutable, genera basura</label>
+    <label class="var"><input type="checkbox" id="vB" checked><span class="dot" style="background:var(--B)"></span>B: Float64Array, zero-alloc</label>
+    <label class="var"><input type="checkbox" id="vC" checked><span class="dot" style="background:var(--C)"></span>C: objetos mutables in-place</label>
+    <hr style="border:0;border-top:1px solid var(--line);margin:10px 0">
+    <label>Partículas <input type="number" id="n" value="50000" min="100" step="1000"></label>
+    <label>Live set (objetos) <input type="number" id="live" value="500000" min="0" step="100000"></label>
+    <label>Medición (s) <input type="number" id="dur" value="8" min="1"></label>
+    <label>Warmup (s) <input type="number" id="warm" value="2" min="0"></label>
+    <label>Repeticiones <input type="number" id="reps" value="3" min="1" max="20"></label>
+    <label>Modo <select id="mode"><option value="raf">frames (rAF)</option><option value="loop">loop cerrado</option></select></label>
+    <label>Dibujar <input type="checkbox" id="render"></label>
+    <div class="row">
+      <button class="go" id="go">Iniciar</button>
+      <button id="exp">Exportar JSON</button>
+      <button id="clr">Limpiar</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <div class="panel"><canvas id="view" width="500" height="300"></canvas><small id="hint">Activá "Dibujar" para ver las partículas (modo rAF).</small></div>
+</div>
+
+<div>
+  <p id="status">Listo. Elegí variantes y tocá Iniciar.</p>
+  <div class="charts">
+    <div class="panel ch"><h3>Costo por paso <span>(ms, últimos 400 pasos, línea en 16.7 ms)</span></h3><canvas class="c" id="c1"></canvas></div>
+    <div class="panel ch"><h3>Heap usado <span>(MB, el diente de sierra es el GC)</span></h3><canvas class="c" id="c2"></canvas></div>
+    <div class="panel ch"><h3>Distribución del costo por paso <span>(eje Y logarítmico: la cola es lo que se separa)</span></h3><canvas class="c" id="c3"></canvas></div>
+    <div class="panel ch"><h3>Resultados <span>(mediana entre repeticiones)</span></h3><div class="tw"><table id="tbl"></table></div></div>
+  </div>
+</div>
+</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const W=1000,H=600,DT=1/60;
+const COL={A:'#ff5d8f',B:'#3ee0c1',C:'#ffb454'};
+const NAME={A:'A inmutable',B:'B zero-alloc',C:'C in-place'};
+let sink=null,live=null,stop=false,running=false,results=[],cur=null,ltCount=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const mem=()=>performance.memory?performance.memory.usedJSHeapSize/1048576:0;
+const gx=$('view').getContext('2d');
+
+try{new PerformanceObserver(l=>{ltCount+=l.getEntries().length}).observe({entryTypes:['longtask']});var HAS_LT=true}catch(e){var HAS_LT=false}
+
+/* ---------- workloads ---------- */
+function rng(s){s>>>=0;return()=>(s=(s*1664525+1013904223)>>>0)/4294967296}
+class V{constructor(x,y){this.x=x;this.y=y}add(o){return new V(this.x+o.x,this.y+o.y)}mul(k){return new V(this.x*k,this.y*k)}}
+
+function mkA(n){ // muchas allocs por frame: Vec2 inmutables, map/filter, strings
+  const r=rng(1);
+  let ps=Array.from({length:n},()=>({p:new V(r()*W,r()*H),v:new V((r()-.5)*400,(r()-.5)*400)}));
+  return{
+    step(){
+      ps=ps.map(o=>{
+        let p=o.p.add(o.v.mul(DT)),v=o.v;
+        if(p.x<0){p=new V(-p.x,p.y);v=new V(-v.x,v.y)}else if(p.x>W){p=new V(2*W-p.x,p.y);v=new V(-v.x,v.y)}
+        if(p.y<0){p=new V(p.x,-p.y);v=new V(v.x,-v.y)}else if(p.y>H){p=new V(p.x,2*H-p.y);v=new V(v.x,-v.y)}
+        return{p,v};
+      }).filter(o=>o.p.x>=0);
+      for(let i=0;i<ps.length;i+=32)sink='p'+i+':'+ps[i].p.x.toFixed(1);
+    },
+    sum(){let s=0;for(const o of ps)s+=o.p.x+o.p.y;return s},
+    draw(g){pts(g,i=>ps[i].p.x,i=>ps[i].p.y,n)}
+  };
+}
+function mkB(n){ // struct-of-arrays, in-place
+  const r=rng(1),x=new Float64Array(n),y=new Float64Array(n),vx=new Float64Array(n),vy=new Float64Array(n);
+  for(let i=0;i<n;i++){x[i]=r()*W;y[i]=r()*H;vx[i]=(r()-.5)*400;vy[i]=(r()-.5)*400}
+  return{
+    step(){
+      for(let i=0;i<n;i++){
+        let a=x[i]+vx[i]*DT,b=y[i]+vy[i]*DT;
+        if(a<0){a=-a;vx[i]=-vx[i]}else if(a>W){a=2*W-a;vx[i]=-vx[i]}
+        if(b<0){b=-b;vy[i]=-vy[i]}else if(b>H){b=2*H-b;vy[i]=-vy[i]}
+        x[i]=a;y[i]=b;
+      }
+    },
+    sum(){let s=0;for(let i=0;i<n;i++)s+=x[i]+y[i];return s},
+    draw(g){pts(g,i=>x[i],i=>y[i],n)}
+  };
+}
+function mkC(n){ // array of objects, mutados in-place
+  const r=rng(1);
+  const ps=Array.from({length:n},()=>({x:r()*W,y:r()*H,vx:(r()-.5)*400,vy:(r()-.5)*400}));
+  return{
+    step(){
+      for(let i=0;i<n;i++){
+        const o=ps[i];
+        let a=o.x+o.vx*DT,b=o.y+o.vy*DT;
+        if(a<0){a=-a;o.vx=-o.vx}else if(a>W){a=2*W-a;o.vx=-o.vx}
+        if(b<0){b=-b;o.vy=-o.vy}else if(b>H){b=2*H-b;o.vy=-o.vy}
+        o.x=a;o.y=b;
+      }
+    },
+    sum(){let s=0;for(const o of ps)s+=o.x+o.y;return s},
+    draw(g){pts(g,i=>ps[i].x,i=>ps[i].y,n)}
+  };
+}
+const MK={A:mkA,B:mkB,C:mkC};
+function pts(g,fx,fy,n){
+  const c=g.canvas,sx=c.width/W,sy=c.height/H,m=Math.min(n,2000);
+  g.fillStyle='#12151c';g.fillRect(0,0,c.width,c.height);g.fillStyle='#e6e9ef';
+  for(let i=0;i<m;i++)g.fillRect(fx(i)*sx,fy(i)*sy,2,2);
+}
+function allocLive(m){const a=new Array(m);for(let i=0;i<m;i++)a[i]={id:i,arr:[i,i+1],s:'n'+i};return a}
+
+/* ---------- runner ---------- */
+function pump(w,ms,rec,cfg){
+  return new Promise(res=>{
+    const t0=performance.now();let last=0,k=0,ld=0;
+    const tick=(a,b)=>{
+      if(!rec)return;
+      rec.work.push(b-a);
+      if(cfg.mode==='raf'||k++%8===0)rec.heap.push(mem());
+      const n=performance.now();
+      if(n-ld>120){ld=n;drawLive(rec)}
+    };
+    if(cfg.mode==='raf'){
+      const f=ts=>{
+        if(stop||performance.now()-t0>=ms)return res();
+        const a=performance.now();w.step();const b=performance.now();
+        if(cfg.render)w.draw(gx);
+        if(rec&&last)rec.iv.push(ts-last);
+        last=ts;tick(a,b);requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    }else{
+      const mc=new MessageChannel();
+      mc.port1.onmessage=()=>{
+        const s=performance.now();
+        while(performance.now()-s<30){const a=performance.now();w.step();tick(a,performance.now())}
+        if(stop||performance.now()-t0>=ms)res();else mc.port2.postMessage(0);
+      };
+      mc.port2.postMessage(0);
+    }
+  });
+}
+const median=a=>{const s=Float64Array.from(a).sort();return s.length?s[s.length>>1]:NaN};
+function finalize(r){
+  const s=Float64Array.from(r.work).sort(),q=p=>s[Math.min(s.length-1,Math.floor(p*s.length))];
+  r.p50=q(.5);r.p95=q(.95);r.p99=q(.99);r.max=s[s.length-1];
+  r.sps=r.work.length/(r.wall/1000);
+  if(r.iv.length){const m=median(r.iv);r.slow=r.iv.filter(x=>x>1.5*m).length/r.iv.length*100}else r.slow=null;
+  let d=0;for(let i=1;i<r.heap.length;i++)if(r.heap[i-1]-r.heap[i]>0.125)d++;
+  r.gc=performance.memory?d:null;
+  r.work=Float64Array.from(r.work);
+}
+async function runOne(v,cfg,rep){
+  const tag=`Rep ${rep+1}/${cfg.reps} · ${NAME[v]}`;
+  live=null;sink=null;if(typeof gc==='function')gc();
+  $('status').textContent=tag+' · enfriando';await sleep(cfg.cool);
+  if(stop)return;
+  $('status').textContent=tag+' · armando live set';await sleep(30);
+  live=allocLive(cfg.live);
+  const w=MK[v](cfg.n);
+  $('status').textContent=tag+' · warmup';await pump(w,cfg.warm*1000,null,cfg);
+  if(stop)return;
+  const rec={v,rep,work:[],iv:[],heap:[]};cur=rec;const lt0=ltCount;
+  $('status').textContent=tag+' · midiendo';
+  const t=performance.now();await pump(w,cfg.dur*1000,rec,cfg);rec.wall=performance.now()-t;
+  await sleep(150);
+  rec.lt=HAS_LT?ltCount-lt0:null;rec.chk=w.sum();
+  if(stop||!rec.work.length)return;
+  finalize(rec);results.push(rec);drawAll();
+}
+function verify(cfg){
+  const n=Math.min(cfg.n,3000);
+  const s=cfg.vs.map(v=>{const w=MK[v](n);for(let i=0;i<30;i++)w.step();return w.sum()});
+  return s.every(x=>Math.abs(x-s[0])<1e-6);
+}
+function chips(ok){
+  const c=[[!!performance.memory,'performance.memory'],[typeof gc==='function','gc() expuesto'],[HAS_LT,'longtask']];
+  if(ok!==undefined)c.push([ok,ok?'checksums iguales':'checksums distintos']);
+  $('chips').innerHTML=c.map(([o,t])=>`<span class="chip ${o?'ok':'bad'}">${t}</span>`).join('');
+}
+
+$('go').onclick=async()=>{
+  if(running){stop=true;return}
+  const vs=['A','B','C'].filter(v=>$('v'+v).checked);
+  if(!vs.length)return;
+  const cfg={vs,n:+$('n').value|0,live:+$('live').value|0,dur:+$('dur').value,warm:+$('warm').value,
+    reps:+$('reps').value|0,mode:$('mode').value,render:$('render').checked&&$('mode').value==='raf',cool:400};
+  running=true;stop=false;$('go').textContent='Detener';$('go').classList.add('stop');
+  $('view').style.display=cfg.render?'block':'none';
+  chips(verify(cfg));
+  for(let rep=0;rep<cfg.reps&&!stop;rep++){
+    const order=rep%2?[...vs].reverse():vs; // orden alternado para repartir la contaminación
+    for(const v of order){if(stop)break;await runOne(v,cfg,rep)}
+  }
+  live=null;running=false;$('go').textContent='Iniciar';$('go').classList.remove('stop');
+  $('status').textContent=stop?'Detenido.':'Terminado. Repetí con más live set para ver los major GC.';
+};
+$('clr').onclick=()=>{results=[];cur=null;drawAll();$('status').textContent='Resultados borrados.'};
+$('exp').onclick=()=>{
+  const out=results.map(({work,iv,heap,...r})=>r);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({ua:navigator.userAgent,results:out},null,2)],{type:'application/json'}));
+  a.download='gc-bench.json';a.click();
+};
+
+/* ---------- charts ---------- */
+function setup(cv){
+  const d=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
+  if(cv.width!==Math.round(w*d)){cv.width=Math.round(w*d);cv.height=Math.round(h*d)}
+  const g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);
+  g.font='11px system-ui';return{g,w,h};
+}
+function frame(g,w,h,pl,ymax,fmt){
+  g.strokeStyle='#2b3244';g.fillStyle='#8b94a8';g.lineWidth=1;g.textAlign='right';
+  for(let i=0;i<=3;i++){const y=h-18-(h-26)*i/3;g.beginPath();g.moveTo(pl,y);g.lineTo(w-6,y);g.stroke();g.fillText(fmt(ymax*i/3),pl-5,y+4)}
+}
+function line(cv,series,o){
+  const{g,w,h}=setup(cv),pl=44;
+  let mx=o.max||0;
+  if(!mx)for(const s of series)for(const v of s.d)if(v>mx)mx=v;
+  mx=Math.max(mx*1.1,o.min||0.1);
+  frame(g,w,h,pl,mx,o.fmt);
+  const Y=v=>h-18-(h-26)*v/mx;
+  if(o.ref&&o.ref<mx){g.strokeStyle='#8b94a8';g.setLineDash([4,4]);g.beginPath();g.moveTo(pl,Y(o.ref));g.lineTo(w-6,Y(o.ref));g.stroke();g.setLineDash([])}
+  for(const s of series){
+    if(!s.d.length)continue;
+    g.strokeStyle=s.c;g.lineWidth=1.3;g.beginPath();
+    s.d.forEach((v,i)=>{const x=pl+(w-pl-6)*i/Math.max(1,o.len-1);i?g.lineTo(x,Y(v)):g.moveTo(x,Y(v))});
+    g.stroke();
+  }
+}
+function drawLive(rec){
+  if(!rec)return;
+  line($('c1'),[{d:rec.work.slice(-400),c:COL[rec.v]}],{len:400,ref:16.7,fmt:v=>v.toFixed(v<10?1:0),min:1});
+  const hp=rec.heap.slice(-600);
+  line($('c2'),[{d:hp,c:COL[rec.v]}],{len:600,fmt:v=>v.toFixed(0),min:1});
+}
+function hist(){
+  const{g,w,h}=setup($('c3')),pl=44,B=48,vs=[...new Set(results.map(r=>r.v))];
+  if(!vs.length)return;
+  let lo=Infinity,hi=0;
+  for(const r of results)for(const x of r.work){if(x>0&&x<lo)lo=x;if(x>hi)hi=x}
+  lo=Math.max(lo,0.0005);hi=Math.max(hi,lo*2);
+  const L=Math.log(lo),R=Math.log(hi)-L;
+  frame(g,w,h,pl,6,v=>'1e-'+(6-Math.round(v)));
+  const X=i=>pl+(w-pl-6)*i/B,Y=f=>h-18-(h-26)*(Math.log10(Math.max(f,1e-6))+6)/6;
+  for(const v of vs){
+    const bins=new Float64Array(B);let tot=0;
+    for(const r of results)if(r.v===v)for(const x of r.work){
+      bins[Math.min(B-1,Math.max(0,Math.floor((Math.log(Math.max(x,lo))-L)/R*B)))]++;tot++;
+    }
+    g.beginPath();g.moveTo(X(0),h-18);
+    for(let i=0;i<B;i++){const y=bins[i]?Y(bins[i]/tot):h-18;g.lineTo(X(i),y);g.lineTo(X(i+1),y)}
+    g.lineTo(X(B),h-18);g.closePath();
+    g.fillStyle=COL[v]+'40';g.fill();g.strokeStyle=COL[v];g.lineWidth=1.3;g.stroke();
+  }
+  g.fillStyle='#8b94a8';g.textAlign='left';g.fillText(lo.toFixed(3)+' ms',pl,h-4);
+  g.textAlign='right';g.fillText(hi.toFixed(1)+' ms',w-6,h-4);
+  if(16.7>lo&&16.7<hi){const x=pl+(w-pl-6)*(Math.log(16.7)-L)/R;g.strokeStyle='#8b94a8';g.setLineDash([4,4]);g.beginPath();g.moveTo(x,6);g.lineTo(x,h-18);g.stroke();g.setLineDash([]);g.textAlign='left';g.fillText('16.7',x+3,14)}
+}
+function table(){
+  const vs=['A','B','C'].filter(v=>results.some(r=>r.v===v));
+  const f=(x,d=2)=>x==null||!isFinite(x)?'–':x.toFixed(d);
+  const hd=['Variante','p50 ms','p95 ms','p99 ms','max ms','frames lentos %','caídas de heap','long tasks','pasos/s','reps'];
+  let html='<tr>'+hd.map(t=>`<th>${t}</th>`).join('')+'</tr>';
+  for(const v of vs){
+    const rs=results.filter(r=>r.v===v),m=k=>median(rs.map(r=>r[k]).filter(x=>x!=null));
+    const p=rs.map(r=>r.p99),rg=p.length>1?` <small>(${f(Math.min(...p))}–${f(Math.max(...p))})</small>`:'';
+    html+=`<tr><td><span class="dot" style="background:${COL[v]}"></span> ${NAME[v]}</td><td>${f(m('p50'),3)}</td><td>${f(m('p95'))}</td><td>${f(m('p99'))}${rg}</td><td>${f(m('max'))}</td><td>${f(m('slow'),1)}</td><td>${f(m('gc'),0)}</td><td>${f(m('lt'),0)}</td><td>${f(m('sps'),0)}</td><td>${rs.length}</td></tr>`;
+  }
+  $('tbl').innerHTML=vs.length?html:'';
+}
+function drawAll(){drawLive(cur);hist();table()}
+addEventListener('resize',drawAll);
+chips();drawAll();
+</script>
+</body>
+</html>
