@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sparse Set vs Dense Array — Benchmark interactivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14161a;
+    --bg-panel:#1b1e24;
+    --bg-panel-2:#20242c;
+    --bg-cell:#262b33;
+    --border:#2e333c;
+    --border-soft:#262b33;
+    --text:#eae7e0;
+    --text-dim:#9aa0aa;
+    --text-faint:#5f6672;
+    --accent-sparse:#e0a63f;
+    --accent-sparse-dim:rgba(224,166,63,0.14);
+    --accent-dense:#4fb3c9;
+    --accent-dense-dim:rgba(79,179,201,0.14);
+    --accent-map:#b490e0;
+    --accent-map-dim:rgba(180,144,224,0.14);
+    --accent-naive:#e07a6f;
+    --accent-naive-dim:rgba(224,122,111,0.14);
+    --good:#7cc47c;
+    --radius:10px;
+    --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+    --sans:'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    --display:'Space Grotesk', var(--sans);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background-color:var(--bg);
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size:28px 28px;
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:56px 20px 80px;}
+  h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.2;margin:0 0 12px;}
+  h1{font-size:clamp(28px,5vw,40px);letter-spacing:-0.01em;}
+  h2{font-size:22px;margin-top:0;}
+  h3{font-size:15px;text-transform:none;color:var(--text);margin-bottom:8px;}
+  p{margin:0 0 14px;color:var(--text-dim);max-width:66ch;}
+  a{color:var(--accent-dense);}
+  code, .mono{font-family:var(--mono);}
+  .kicker{
+    font-family:var(--mono);font-size:13px;color:var(--text-faint);
+    margin-bottom:14px;
+  }
+  .kicker a{color:var(--text-faint);text-decoration-color:var(--border);}
+  .kicker a:hover{color:var(--accent-dense);}
+
+  /* ---------- hero ---------- */
+  .hero p.lead{font-size:16.5px;color:var(--text);max-width:64ch;}
+  .cta-row{display:flex;gap:12px;margin-top:22px;flex-wrap:wrap;}
+  .btn{
+    font-family:var(--sans);font-size:14.5px;font-weight:500;
+    border-radius:8px;border:1px solid var(--border);
+    padding:10px 18px;cursor:pointer;background:var(--bg-panel);
+    color:var(--text);transition:transform .08s ease, border-color .15s ease;
+  }
+  .btn:hover{border-color:var(--text-faint);}
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--accent-sparse);border-color:var(--accent-sparse);color:#231a08;font-weight:600;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-primary:disabled{opacity:0.5;cursor:not-allowed;filter:none;}
+  .btn-ghost{background:transparent;}
+  .btn:focus-visible, input:focus-visible, select:focus-visible{
+    outline:2px solid var(--accent-dense); outline-offset:2px;
+  }
+
+  /* ---------- panels ---------- */
+  .panel{
+    background:var(--bg-panel);border:1px solid var(--border);
+    border-radius:var(--radius);padding:26px 26px 28px;margin-top:28px;
+  }
+  .panel-note{font-size:13px;color:var(--text-faint);margin-top:14px;}
+
+  /* ---------- diagrams ---------- */
+  .diagrams{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;}
+  @media (max-width:660px){.diagrams{grid-template-columns:1fr;}}
+  .diagram{border:1px solid var(--border-soft);border-radius:8px;padding:16px 16px 18px;background:var(--bg-panel-2);}
+  .diagram-title{font-family:var(--mono);font-size:12.5px;color:var(--text-dim);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+  .swatch{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .diagram-row{margin-bottom:10px;}
+  .diagram-row:last-child{margin-bottom:0;}
+  .diagram-row-label{font-family:var(--mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;}
+  .cell-row{display:flex;gap:4px;flex-wrap:wrap;}
+  .cell{
+    width:34px;height:34px;border-radius:5px;background:var(--bg-cell);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:12px;color:var(--text);border:1px solid var(--border-soft);
+    position:relative;
+  }
+  .cell .cell-sub{font-size:8.5px;color:var(--text-faint);line-height:1;}
+  .cell.hole{color:var(--text-faint);background:transparent;border-style:dashed;}
+  .cell.hole .cell-sub{color:var(--text-faint);}
+  .cell.on-sparse{background:var(--accent-sparse-dim);border-color:var(--accent-sparse);color:var(--accent-sparse);}
+  .cell.on-dense{background:var(--accent-dense-dim);border-color:var(--accent-dense);color:var(--accent-dense);}
+  .diagram-caption{font-size:12.5px;color:var(--text-faint);margin-top:12px;margin-bottom:0;}
+
+  .swap-demo{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;}
+  .swap-demo .cell-row{margin:6px 0;}
+  .swap-arrow{font-family:var(--mono);color:var(--text-faint);font-size:20px;}
+
+  /* ---------- controls ---------- */
+  .controls-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px 28px;margin-top:6px;}
+  @media (max-width:660px){.controls-grid{grid-template-columns:1fr;}}
+  .field label{display:block;font-size:13px;color:var(--text-dim);margin-bottom:8px;}
+  .field .field-value{font-family:var(--mono);color:var(--text);}
+  .presets{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .preset-btn{
+    font-family:var(--mono);font-size:12px;padding:5px 10px;border-radius:6px;
+    border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;
+  }
+  .preset-btn:hover{border-color:var(--text-faint);color:var(--text);}
+  input[type=number]{
+    width:100%;background:var(--bg-panel-2);border:1px solid var(--border);border-radius:7px;
+    color:var(--text);font-family:var(--mono);font-size:14px;padding:9px 10px;
+  }
+  input[type=range]{width:100%;accent-color:var(--accent-sparse);}
+  select{
+    width:100%;background:var(--bg-panel-2);border:1px solid var(--border);border-radius:7px;
+    color:var(--text);font-family:var(--mono);font-size:14px;padding:9px 10px;
+  }
+  .checks{display:flex;flex-direction:column;gap:10px;}
+  .check-row{display:flex;align-items:flex-start;gap:9px;}
+  .check-row input{margin-top:3px;}
+  .check-row .check-label{font-size:13.5px;color:var(--text);}
+  .check-row .check-hint{font-size:12px;color:var(--text-faint);display:block;margin-top:2px;}
+
+  .run-row{display:flex;align-items:center;gap:14px;margin-top:24px;flex-wrap:wrap;}
+  .status-line{font-family:var(--mono);font-size:12.5px;color:var(--text-faint);}
+  .status-line.active{color:var(--accent-dense);}
+
+  /* ---------- bar groups (shared by results + sweep) ---------- */
+  .bar-group{margin-top:22px;}
+  .bar-group:first-child{margin-top:8px;}
+  .bar-group-label{font-family:var(--mono);font-size:12.5px;color:var(--text-dim);margin-bottom:8px;text-transform:none;}
+  .bar-rows{display:flex;flex-direction:column;gap:6px;}
+  .bar-row{
+    display:grid;grid-template-columns:118px 1fr 82px;gap:10px;align-items:center;
+    padding:4px 6px;border-radius:6px;
+  }
+  .bar-row.bar-winner{background:rgba(124,196,124,0.06);}
+  .bar-name{font-family:var(--mono);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bar-winner .bar-name::after{content:" ✓";color:var(--good);}
+  .bar-track{height:16px;background:var(--bg-panel-2);border-radius:4px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:4px;transition:width .5s cubic-bezier(.2,.7,.3,1);width:0%;}
+  .bar-value{font-family:var(--mono);font-size:12.5px;text-align:right;color:var(--text-dim);white-space:nowrap;}
+  @media (max-width:560px){
+    .bar-row{grid-template-columns:84px 1fr 70px;}
+    .bar-name{font-size:11px;}
+  }
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:14px 0 6px;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--text-dim);}
+
+  .results-empty{color:var(--text-faint);font-size:13.5px;font-family:var(--mono);padding:10px 0;}
+
+  /* ---------- memory stat cards ---------- */
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:14px;}
+  .stat-card{border:1px solid var(--border-soft);background:var(--bg-panel-2);border-radius:8px;padding:14px 16px;}
+  .stat-card .stat-name{font-family:var(--mono);font-size:12px;margin-bottom:8px;}
+  .stat-card .stat-big{font-family:var(--display);font-size:22px;font-weight:600;color:var(--text);}
+  .stat-card .stat-caption{font-size:12.5px;color:var(--text-faint);margin-top:6px;}
+
+  .verify-line{font-family:var(--mono);font-size:12.5px;color:var(--good);margin-top:16px;}
+  .verify-line.bad{color:var(--accent-naive);}
+
+  footer{margin-top:44px;border-top:1px solid var(--border);padding-top:22px;}
+  footer p{font-size:13px;color:var(--text-faint);}
+  footer a{color:var(--text-faint);}
+  footer a:hover{color:var(--accent-dense);}
+
+  ::selection{background:var(--accent-sparse-dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">basado en <a href="https://github.com/chrischristakis/seecs" target="_blank" rel="noopener">chrischristakis/seecs</a> — sparse set de un ECS en C++</div>
+
+  <header class="hero">
+    <h1>Sparse Set vs Dense Array</h1>
+    <p class="lead">
+      seecs implementa el almacenamiento de componentes con un <strong>sparse set</strong>:
+      un arreglo disperso de índices más un arreglo denso y empaquetado de datos.
+      Esta página porta ese mismo algoritmo a JavaScript y lo corre en tu navegador contra
+      un <strong>arreglo denso indexado directamente</strong> (la alternativa obvia) y un par
+      de contendientes extra, para ver en qué casos la indirección realmente vale la pena.
+    </p>
+    <div class="cta-row">
+      <button class="btn btn-primary" onclick="document.getElementById('benchmark').scrollIntoView({behavior:'smooth'})">Ir al benchmark</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('como-funciona').scrollIntoView({behavior:'smooth'})">Cómo funciona</button>
+    </div>
+  </header>
+
+  <section class="panel" id="como-funciona">
+    <h2>Cómo funciona</h2>
+    <p>
+      La idea del sparse set: en vez de guardar un valor por cada entidad posible (que
+      desperdicia espacio e iteración cuando pocas entidades tienen el componente), se guardan
+      dos arreglos. <code>sparse[entidad]</code> apunta a una posición dentro de
+      <code>dense[]</code>, que contiene solo los valores que realmente existen, bien
+      empaquetados. Un tercer arreglo <code>denseToEntity[]</code> permite volver de una
+      posición densa a su entidad original.
+    </p>
+    <div class="diagrams">
+      <div class="diagram">
+        <div class="diagram-title"><span class="swatch" style="background:var(--accent-sparse)"></span>Sparse Set</div>
+        <div class="diagram-row">
+          <span class="diagram-row-label">sparse[entidad] → índice denso</span>
+          <div class="cell-row" id="diagram-sparse-row"></div>
+        </div>
+        <div class="diagram-row">
+          <span class="diagram-row-label">dense[] (empaquetado)</span>
+          <div class="cell-row" id="diagram-dense-of-sparse-row"></div>
+        </div>
+        <p class="diagram-caption">Iterar recorre solo 4 celdas: las que existen.</p>
+      </div>
+      <div class="diagram">
+        <div class="diagram-title"><span class="swatch" style="background:var(--accent-dense)"></span>Dense Array (directo)</div>
+        <div class="diagram-row">
+          <span class="diagram-row-label">data[entidad] — mismas 4 entidades</span>
+          <div class="cell-row" id="diagram-direct-row"></div>
+        </div>
+        <p class="diagram-caption">Iterar recorre las 8 celdas, saltando los huecos. Con millones de entidades y pocos componentes, esa diferencia se vuelve enorme.</p>
+      </div>
+    </div>
+    <p style="margin-top:20px">
+      Para borrar sin dejar huecos en <code>dense[]</code>, seecs usa el clásico
+      <strong>swap-and-pop</strong>: mueve el último elemento denso al lugar del que se borra
+      y achica el arreglo en uno, en vez de correr todo lo que está después (como haría un
+      <code>splice</code>). Así, insertar, leer, borrar e iterar terminan siendo O(1) por
+      elemento — excepto iterar, que es O(cantidad real), no O(rango de entidades).
+    </p>
+    <div class="swap-demo">
+      <div>
+        <span class="diagram-row-label">antes de eliminar la entidad 2</span>
+        <div class="cell-row">
+          <div class="cell on-sparse">e0</div>
+          <div class="cell on-sparse">e5</div>
+          <div class="cell on-sparse" style="outline:1px dashed var(--accent-naive)">e2</div>
+          <div class="cell on-sparse">e7</div>
+        </div>
+      </div>
+      <span class="swap-arrow">→</span>
+      <div>
+        <span class="diagram-row-label">después (swap con el último + pop)</span>
+        <div class="cell-row">
+          <div class="cell on-sparse">e0</div>
+          <div class="cell on-sparse">e5</div>
+          <div class="cell on-sparse">e7</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="benchmark">
+    <h2>Configurá el benchmark</h2>
+    <p>Se generan N entidades con datos, distribuidas al azar dentro de un "universo" de
+      entidades posibles. La densidad controla qué fracción de ese universo tiene datos:
+      bajarla simula un componente raro repartido entre muchas entidades — el caso de uso
+      real que motiva al sparse set.</p>
+
+    <div class="controls-grid">
+      <div class="field">
+        <label>Cantidad de elementos (N): <span class="field-value" id="nValueLabel">20.000</span></label>
+        <input type="number" id="nInput" min="100" max="2000000" step="100" value="20000">
+        <div class="presets">
+          <button class="preset-btn" data-n="1000">1.000</button>
+          <button class="preset-btn" data-n="20000">20.000</button>
+          <button class="preset-btn" data-n="200000">200.000</button>
+          <button class="preset-btn" data-n="1000000">1.000.000</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Densidad: <span class="field-value" id="densityValueLabel">10%</span></label>
+        <input type="range" id="densitySlider" min="1" max="100" value="10">
+        <div class="presets">
+          <button class="preset-btn" data-d="100">100%</button>
+          <button class="preset-btn" data-d="20">20%</button>
+          <button class="preset-btn" data-d="10">10%</button>
+          <button class="preset-btn" data-d="1">1%</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Repeticiones por prueba (se toma la mediana)</label>
+        <select id="repsSelect">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="7">7</option>
+          <option value="9">9</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Estructuras a comparar</label>
+        <div class="checks">
+          <div class="check-row">
+            <input type="checkbox" id="chkMap" checked>
+            <div><span class="check-label" style="color:var(--accent-map)">Map nativo (hash)</span>
+              <span class="check-hint">lo que la mayoría usaría por defecto en JS</span></div>
+          </div>
+          <div class="check-row">
+            <input type="checkbox" id="chkNaive">
+            <div><span class="check-label" style="color:var(--accent-naive)">Array ingenuo (búsqueda lineal)</span>
+              <span class="check-hint">indexOf + splice; se saltea sola si N &gt; 5.000 para no colgar la pestaña</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <button class="btn btn-primary" id="runBtn">Ejecutar benchmark</button>
+      <span class="status-line" id="statusLine">listo para correr</span>
+    </div>
+
+    <div id="verifyLine"></div>
+  </section>
+
+  <section class="panel" id="resultados">
+    <h2>Resultados</h2>
+    <div class="legend" id="resultsLegend"></div>
+    <div id="resultsContainer"><p class="results-empty">Todavía no corriste el benchmark.</p></div>
+    <p class="panel-note">
+      Los tiempos son de este navegador, en esta máquina, ahora — no son comparables 1:1 con
+      la tabla en C++ del README de seecs (compilada en Release, sin motor de JS de por
+      medio). Lo que sí es comparable es el patrón: cómo escala cada estructura al cambiar N
+      y densidad.
+    </p>
+  </section>
+
+  <section class="panel" id="barrido">
+    <h2>Barrido de densidad</h2>
+    <p>
+      Esta corrida fija una cantidad de elementos y repite solo la prueba de
+      <strong>iterar</strong> en varios niveles de densidad, de 100% a 1%. Es el gráfico que
+      mejor explica por qué existe el sparse set: a medida que baja la densidad, el arreglo
+      denso directo tiene que recorrer un universo cada vez más grande para encontrar cada
+      vez menos datos.
+    </p>
+    <div class="controls-grid" style="margin-bottom:6px">
+      <div class="field">
+        <label>N fijo para el barrido: <span class="field-value" id="sweepNValueLabel">10.000</span></label>
+        <input type="number" id="sweepNInput" min="500" max="100000" step="500" value="10000">
+      </div>
+      <div class="field" style="display:flex;align-items:flex-end">
+        <button class="btn" id="sweepBtn" style="width:100%">Correr barrido de densidad</button>
+      </div>
+    </div>
+    <span class="status-line" id="sweepStatusLine"></span>
+    <div class="legend" id="sweepLegend"></div>
+    <div id="sweepContainer"><p class="results-empty">Todavía no corriste el barrido.</p></div>
+  </section>
+
+  <section class="panel" id="memoria">
+    <h2>Costo estructural (memoria)</h2>
+    <p>
+      Esto no es un cronómetro — son cuentas directas sobre la última corrida del benchmark
+      principal. La ventaja en velocidad de iteración del sparse set no es gratis: paga con
+      un arreglo índice del tamaño del universo, aunque ese arreglo guarda enteros chicos, no
+      los valores completos.
+    </p>
+    <div id="memoryContainer"><p class="results-empty">Corré el benchmark principal para ver esta comparación.</p></div>
+  </section>
+
+  <footer>
+    <p>
+      Algoritmo de referencia: sparse set de
+      <a href="https://github.com/chrischristakis/seecs" target="_blank" rel="noopener">chrischristakis/seecs</a>
+      (arreglo disperso + arreglo denso + swap-and-pop al eliminar). La técnica en sí es
+      clásica en la literatura de estructuras de datos y se usa en varios ECS (EnTT, seecs,
+      etc.); acá está reimplementada en JS para este benchmark, no copiada del código C++
+      original.
+    </p>
+    <p>
+      Metodología: cada operación se mide con <code>performance.now()</code>, se repite N
+      veces y se reporta la mediana para amortiguar el ruido del JIT y del recolector de
+      basura. Los arreglos base se pre-dimensionan al tamaño del universo antes de medir, así
+      la comparación aísla el patrón de acceso de cada estructura en vez del costo incidental
+      de ir agrandando un arreglo de a poco.
+    </p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // Estructuras de datos
+  // ============================================================
+  const TOMBSTONE = -1;
+
+  class SparseSet {
+    constructor(universeSizeHint) {
+      this.sparse = new Int32Array(Math.max(universeSizeHint || 64, 1)).fill(TOMBSTONE);
+      this.dense = [];
+      this.denseToEntity = [];
+    }
+    _grow(entityIndex) {
+      if (entityIndex < this.sparse.length) return;
+      let cap = this.sparse.length * 2 || 64;
+      while (cap <= entityIndex) cap *= 2;
+      const bigger = new Int32Array(cap).fill(TOMBSTONE);
+      bigger.set(this.sparse);
+      this.sparse = bigger;
+    }
+    set(entityIndex, value) {
+      this._grow(entityIndex);
+      const denseIndex = this.sparse[entityIndex];
+      if (denseIndex !== TOMBSTONE) { this.dense[denseIndex] = value; return; }
+      this.sparse[entityIndex] = this.dense.length;
+      this.dense.push(value);
+      this.denseToEntity.push(entityIndex);
+    }
+    get(entityIndex) {
+      if (entityIndex >= this.sparse.length) return undefined;
+      const d = this.sparse[entityIndex];
+      return d === TOMBSTONE ? undefined : this.dense[d];
+    }
+    has(entityIndex) { return entityIndex < this.sparse.length && this.sparse[entityIndex] !== TOMBSTONE; }
+    unset(entityIndex) {
+      if (entityIndex >= this.sparse.length) return;
+      const deletedDenseIndex = this.sparse[entityIndex];
+      if (this.dense.length === 0 || deletedDenseIndex === TOMBSTONE) return;
+      const lastIdx = this.dense.length - 1;
+      const lastEntity = this.denseToEntity[lastIdx];
+      this.sparse[lastEntity] = deletedDenseIndex;
+      this.sparse[entityIndex] = TOMBSTONE;
+      const tv = this.dense[lastIdx]; this.dense[lastIdx] = this.dense[deletedDenseIndex]; this.dense[deletedDenseIndex] = tv;
+      const te = this.denseToEntity[lastIdx]; this.denseToEntity[lastIdx] = this.denseToEntity[deletedDenseIndex]; this.denseToEntity[deletedDenseIndex] = te;
+      this.dense.pop();
+      this.denseToEntity.pop();
+    }
+    forEach(fn) { for (let i = 0; i < this.dense.length; i++) fn(this.dense[i], this.denseToEntity[i]); }
+    get size() { return this.dense.length; }
+  }
+
+  class DenseArray {
+    constructor(universeSizeHint) {
+      this.data = new Array(Math.max(universeSizeHint || 64, 1));
+      this.count = 0;
+      this.maxUsed = 0;
+    }
+    _grow(entityIndex) {
+      if (entityIndex < this.data.length) return;
+      let cap = this.data.length * 2 || 64;
+      while (cap <= entityIndex) cap *= 2;
+      const bigger = new Array(cap);
+      for (let i = 0; i < this.maxUsed; i++) bigger[i] = this.data[i];
+      this.data = bigger;
+    }
+    set(entityIndex, value) {
+      this._grow(entityIndex);
+      if (this.data[entityIndex] === undefined) this.count++;
+      this.data[entityIndex] = value;
+      if (entityIndex + 1 > this.maxUsed) this.maxUsed = entityIndex + 1;
+    }
+    get(entityIndex) { return this.data[entityIndex]; }
+    has(entityIndex) { return this.data[entityIndex] !== undefined; }
+    unset(entityIndex) { if (this.data[entityIndex] !== undefined) { this.count--; this.data[entityIndex] = undefined; } }
+    forEach(fn) { for (let i = 0; i < this.maxUsed; i++) if (this.data[i] !== undefined) fn(this.data[i], i); }
+    get size() { return this.count; }
+  }
+
+  class MapSet {
+    constructor() { this.map = new Map(); }
+    set(i, v) { this.map.set(i, v); }
+    get(i) { return this.map.get(i); }
+    has(i) { return this.map.has(i); }
+    unset(i) { this.map.delete(i); }
+    forEach(fn) { for (const [k, v] of this.map) fn(v, k); }
+    get size() { return this.map.size; }
+  }
+
+  class NaiveArraySet {
+    constructor() { this.entities = []; this.values = []; }
+    _indexOf(i) { return this.entities.indexOf(i); }
+    set(i, v) { const idx = this._indexOf(i); if (idx !== -1) { this.values[idx] = v; return; } this.entities.push(i); this.values.push(v); }
+    get(i) { const idx = this._indexOf(i); return idx === -1 ? undefined : this.values[idx]; }
+    has(i) { return this._indexOf(i) !== -1; }
+    unset(i) { const idx = this._indexOf(i); if (idx === -1) return; this.entities.splice(idx, 1); this.values.splice(idx, 1); }
+    forEach(fn) { for (let i = 0; i < this.values.length; i++) fn(this.values[i], this.entities[i]); }
+    get size() { return this.values.length; }
+  }
+
+  // ============================================================
+  // Utilidades
+  // ============================================================
+  const CAP_UNIVERSE = 5_000_000;
+  const nf = new Intl.NumberFormat('es-AR');
+  const nfMs = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function formatMs(v) {
+    if (!isFinite(v)) return '—';
+    if (v < 0.005) return '<0.01 ms';
+    return nfMs.format(v) + ' ms';
+  }
+  function timeOp(fn) { const t0 = performance.now(); fn(); return performance.now() - t0; }
+  function median(arr) {
+    const s = arr.slice().sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  }
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+  function sampleUnique(universeSize, n) {
+    const arr = new Array(universeSize);
+    for (let i = 0; i < universeSize; i++) arr[i] = i;
+    for (let i = 0; i < n; i++) {
+      const j = i + Math.floor(Math.random() * (universeSize - i));
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr.slice(0, n);
+  }
+  function yieldFrame() { return new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); }
+  function clampInt(v, min, max) { v = parseInt(v, 10); if (isNaN(v)) v = min; return Math.min(max, Math.max(min, v)); }
+
+  const STRUCT_DEFS = {
+    sparse: { name: 'Sparse Set', color: 'var(--accent-sparse)', make: (u) => new SparseSet(u) },
+    dense: { name: 'Dense Array', color: 'var(--accent-dense)', make: (u) => new DenseArray(u) },
+    map: { name: 'Map (hash)', color: 'var(--accent-map)', make: () => new MapSet() },
+    naive: { name: 'Array ingenuo', color: 'var(--accent-naive)', make: () => new NaiveArraySet() },
+  };
+
+  // ============================================================
+  // Render: barras agrupadas (compartido por resultados y barrido)
+  // ============================================================
+  function renderGroupedBars(container, groups) {
+    container.innerHTML = '';
+    for (const group of groups) {
+      const finite = group.bars.filter((b) => isFinite(b.value));
+      const maxVal = Math.max(0.0001, ...finite.map((b) => b.value));
+      const minVal = finite.length ? Math.min(...finite.map((b) => b.value)) : null;
+
+      const groupEl = document.createElement('div');
+      groupEl.className = 'bar-group';
+      const labelEl = document.createElement('div');
+      labelEl.className = 'bar-group-label';
+      labelEl.textContent = group.label;
+      groupEl.appendChild(labelEl);
+
+      const rowsEl = document.createElement('div');
+      rowsEl.className = 'bar-rows';
+      for (const bar of group.bars) {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'bar-row' + (minVal !== null && bar.value === minVal ? ' bar-winner' : '');
+        const nameEl = document.createElement('div');
+        nameEl.className = 'bar-name';
+        nameEl.style.color = bar.color;
+        nameEl.textContent = bar.name;
+        const trackEl = document.createElement('div');
+        trackEl.className = 'bar-track';
+        const fillEl = document.createElement('div');
+        fillEl.className = 'bar-fill';
+        fillEl.style.background = bar.color;
+        trackEl.appendChild(fillEl);
+        const valEl = document.createElement('div');
+        valEl.className = 'bar-value';
+        valEl.textContent = formatMs(bar.value);
+        rowEl.appendChild(nameEl); rowEl.appendChild(trackEl); rowEl.appendChild(valEl);
+        rowsEl.appendChild(rowEl);
+        requestAnimationFrame(() => {
+          const pct = isFinite(bar.value) ? Math.max(2, (bar.value / maxVal) * 100) : 0;
+          fillEl.style.width = pct + '%';
+        });
+      }
+      groupEl.appendChild(rowsEl);
+      container.appendChild(groupEl);
+    }
+  }
+
+  function renderLegend(container, structKeys) {
+    container.innerHTML = structKeys.map((k) => {
+      const d = STRUCT_DEFS[k];
+      return `<span class="legend-item"><span class="swatch" style="background:${d.color}"></span>${d.name}</span>`;
+    }).join('');
+  }
+
+  // ============================================================
+  // Benchmark principal
+  // ============================================================
+  const nInput = document.getElementById('nInput');
+  const nValueLabel = document.getElementById('nValueLabel');
+  const densitySlider = document.getElementById('densitySlider');
+  const densityValueLabel = document.getElementById('densityValueLabel');
+  const repsSelect = document.getElementById('repsSelect');
+  const chkMap = document.getElementById('chkMap');
+  const chkNaive = document.getElementById('chkNaive');
+  const runBtn = document.getElementById('runBtn');
+  const statusLine = document.getElementById('statusLine');
+  const verifyLine = document.getElementById('verifyLine');
+  const resultsContainer = document.getElementById('resultsContainer');
+  const resultsLegend = document.getElementById('resultsLegend');
+  const memoryContainer = document.getElementById('memoryContainer');
+
+  function syncNLabel() { nValueLabel.textContent = nf.format(clampInt(nInput.value, 100, 2000000)); }
+  function syncDensityLabel() { densityValueLabel.textContent = densitySlider.value + '%'; }
+  nInput.addEventListener('input', syncNLabel);
+  densitySlider.addEventListener('input', syncDensityLabel);
+  syncNLabel(); syncDensityLabel();
+
+  document.querySelectorAll('[data-n]').forEach((btn) => {
+    btn.addEventListener('click', () => { nInput.value = btn.dataset.n; syncNLabel(); });
+  });
+  document.querySelectorAll('[data-d]').forEach((btn) => {
+    btn.addEventListener('click', () => { densitySlider.value = btn.dataset.d; syncDensityLabel(); });
+  });
+
+  function setStatus(msg, active) {
+    statusLine.textContent = msg;
+    statusLine.classList.toggle('active', !!active);
+  }
+
+  function activeStructureKeys() {
+    const N = clampInt(nInput.value, 100, 2000000);
+    const keys = ['sparse', 'dense'];
+    if (chkMap.checked) keys.push('map');
+    if (chkNaive.checked && N <= 5000) keys.push('naive');
+    return keys;
+  }
+
+  async function runMainBenchmark() {
+    runBtn.disabled = true;
+    verifyLine.innerHTML = '';
+    const N = clampInt(nInput.value, 100, 2000000);
+    const densityPct = parseInt(densitySlider.value, 10);
+    const reps = parseInt(repsSelect.value, 10);
+    const naiveRequested = chkNaive.checked;
+    const naiveSkipped = naiveRequested && N > 5000;
+
+    let universeSize = Math.max(N, Math.round(N / (densityPct / 100)));
+    let effectiveDensityPct = densityPct;
+    let capNote = '';
+    if (universeSize > CAP_UNIVERSE) {
+      universeSize = CAP_UNIVERSE;
+      effectiveDensityPct = (N / universeSize) * 100;
+      capNote = `Se ajustó la densidad efectiva a ${effectiveDensityPct.toFixed(2)}% para mantener el universo en ${nf.format(CAP_UNIVERSE)} posiciones y no colgar la pestaña.`;
+    }
+
+    const keys = activeStructureKeys();
+    const results = {};
+    keys.forEach((k) => { results[k] = { insert: [], get: [], iter: [], remove: [], finalSize: 0 }; });
+
+    setStatus('Preparando datos de prueba…', true);
+    await yieldFrame();
+    const indices = sampleUnique(universeSize, N);
+
+    let sink = 0; // evita que el JIT elimine el trabajo como código muerto
+
+    for (let r = 0; r < reps; r++) {
+      const insertOrder = shuffle(indices.slice());
+      const getOrder = shuffle(indices.slice());
+      const removeOrder = shuffle(indices.slice());
+
+      for (const key of keys) {
+        const def = STRUCT_DEFS[key];
+        setStatus(`Repetición ${r + 1}/${reps} — ${def.name}…`, true);
+        await yieldFrame();
+
+        const inst = def.make(universeSize);
+        const tInsert = timeOp(() => { for (let i = 0; i < insertOrder.length; i++) inst.set(insertOrder[i], insertOrder[i] * 2 + 1); });
+        const tGet = timeOp(() => { for (let i = 0; i < getOrder.length; i++) sink += (inst.get(getOrder[i]) || 0); });
+        let cnt = 0;
+        const tIter = timeOp(() => { inst.forEach((v) => { cnt++; sink += v; }); });
+        const tRemove = timeOp(() => { for (let i = 0; i < removeOrder.length; i++) inst.unset(removeOrder[i]); });
+
+        results[key].insert.push(tInsert);
+        results[key].get.push(tGet);
+        results[key].iter.push(tIter);
+        results[key].remove.push(tRemove);
+        results[key].finalSize = cnt;
+        await yieldFrame();
+      }
+    }
+    window.__benchSink = sink;
+
+    // Chequeo de consistencia: todas las estructuras deberían haber visto N elementos al iterar.
+    const mismatches = keys.filter((k) => results[k].finalSize !== N);
+    if (mismatches.length === 0) {
+      verifyLine.innerHTML = `<div class="verify-line">✓ Verificado: las ${keys.length} estructuras iteraron ${nf.format(N)}/${nf.format(N)} elementos.</div>`;
+    } else {
+      verifyLine.innerHTML = `<div class="verify-line bad">⚠ Inconsistencia en: ${mismatches.join(', ')}. Revisá la consola.</div>`;
+    }
+
+    renderLegend(resultsLegend, keys);
+    const opDefs = [
+      { key: 'insert', label: 'Insertar (add)' },
+      { key: 'get', label: 'Leer (get, orden aleatorio)' },
+      { key: 'iter', label: 'Iterar (for_each)' },
+      { key: 'remove', label: 'Eliminar (remove)' },
+    ];
+    const groups = opDefs.map((op) => ({
+      label: op.label,
+      bars: keys.map((k) => ({
+        name: STRUCT_DEFS[k].name,
+        color: STRUCT_DEFS[k].color,
+        value: median(results[k][op.key]),
+      })),
+    }));
+    renderGroupedBars(resultsContainer, groups);
+
+    renderMemoryEstimate(keys, N, universeSize);
+
+    let statusMsg = `Listo. N=${nf.format(N)}, universo=${nf.format(universeSize)}, densidad efectiva=${effectiveDensityPct.toFixed(2)}%.`;
+    if (naiveSkipped) statusMsg += ' (array ingenuo salteado: N > 5.000)';
+    setStatus(statusMsg, false);
+    if (capNote) {
+      const noteEl = document.createElement('p');
+      noteEl.className = 'panel-note';
+      noteEl.textContent = capNote;
+      resultsContainer.appendChild(noteEl);
+    }
+
+    runBtn.disabled = false;
+  }
+
+  function renderMemoryEstimate(keys, N, universeSize) {
+    const holes = universeSize - N;
+    const cards = keys.map((k) => {
+      if (k === 'sparse') {
+        const idxBytes = universeSize * 4;
+        return { name: STRUCT_DEFS[k].name, big: nf.format(universeSize), caption:
+          `enteros de 32 bits en el índice disperso (~${(idxBytes / 1e6).toFixed(1)} MB) + ${nf.format(N)} valores empaquetados en dense[].` };
+      }
+      if (k === 'dense') {
+        return { name: STRUCT_DEFS[k].name, big: nf.format(universeSize), caption:
+          `casilleros de tamaño-valor reservados, de los cuales ${nf.format(holes)} quedan vacíos con esta densidad.` };
+      }
+      if (k === 'map') {
+        return { name: STRUCT_DEFS[k].name, big: `~${nf.format(N)}`, caption:
+          `entradas en una tabla hash. El overhead exacto por entrada lo maneja el motor de JS internamente.` };
+      }
+      return { name: STRUCT_DEFS[k].name, big: nf.format(N), caption:
+        `entradas empaquetadas sin índice auxiliar — por eso buscar y eliminar cuestan O(n).` };
+    });
+    memoryContainer.innerHTML = `<div class="stat-grid">${cards.map((c) => `
+      <div class="stat-card">
+        <div class="stat-name" style="color:${STRUCT_DEFS[keys[cards.indexOf(c)]] ? '' : ''}">${c.name}</div>
+        <div class="stat-big">${c.big}</div>
+        <div class="stat-caption">${c.caption}</div>
+      </div>`).join('')}</div>`;
+  }
+
+  runBtn.addEventListener('click', () => { runMainBenchmark(); });
+
+  // ============================================================
+  // Barrido de densidad
+  // ============================================================
+  const sweepNInput = document.getElementById('sweepNInput');
+  const sweepNValueLabel = document.getElementById('sweepNValueLabel');
+  const sweepBtn = document.getElementById('sweepBtn');
+  const sweepStatusLine = document.getElementById('sweepStatusLine');
+  const sweepContainer = document.getElementById('sweepContainer');
+  const sweepLegend = document.getElementById('sweepLegend');
+
+  function syncSweepNLabel() { sweepNValueLabel.textContent = nf.format(clampInt(sweepNInput.value, 500, 100000)); }
+  sweepNInput.addEventListener('input', syncSweepNLabel);
+  syncSweepNLabel();
+
+  async function runSweep() {
+    sweepBtn.disabled = true;
+    const N = clampInt(sweepNInput.value, 500, 100000);
+    const densities = [100, 50, 20, 10, 5, 2, 1];
+    const keys = ['sparse', 'dense', 'map'];
+    renderLegend(sweepLegend, keys);
+
+    const groups = [];
+    for (const d of densities) {
+      sweepStatusLine.textContent = `Midiendo iterar a densidad ${d}%…`;
+      sweepStatusLine.classList.add('active');
+      await yieldFrame();
+      let universeSize = Math.max(N, Math.round(N / (d / 100)));
+      if (universeSize > CAP_UNIVERSE) universeSize = CAP_UNIVERSE;
+      const indices = sampleUnique(universeSize, N);
+
+      const bars = [];
+      for (const key of keys) {
+        const def = STRUCT_DEFS[key];
+        const inst = def.make(universeSize);
+        for (let i = 0; i < indices.length; i++) inst.set(indices[i], indices[i]);
+        const times = [];
+        for (let r = 0; r < 3; r++) {
+          let cnt = 0, sink = 0;
+          times.push(timeOp(() => { inst.forEach((v) => { cnt++; sink += v; }); }));
+          window.__sweepSink = sink + cnt;
+        }
+        bars.push({ name: def.name, color: def.color, value: median(times) });
+        await yieldFrame();
+      }
+      groups.push({ label: `densidad ${d}%  (universo ${nf.format(universeSize)})`, bars });
+    }
+
+    renderGroupedBars(sweepContainer, groups);
+    sweepStatusLine.textContent = `Listo — iterar sobre ${nf.format(N)} elementos en universos de distinto tamaño.`;
+    sweepStatusLine.classList.remove('active');
+    sweepBtn.disabled = false;
+  }
+
+  sweepBtn.addEventListener('click', () => { runSweep(); });
+
+  // ============================================================
+  // Diagramas estáticos de la sección "Cómo funciona"
+  // ============================================================
+  (function buildDiagrams(){
+    // 8 índices de entidad; tienen datos las entidades 0, 2, 5 y 7.
+    // Orden de inserción real: 0, 5, 2, 7 -> dense[0..3]
+    const sparseMap = { 0: 0, 5: 1, 2: 2, 7: 3 }; // entidad -> índice denso
+    const sparseRow = document.getElementById('diagram-sparse-row');
+    for (let i = 0; i < 8; i++) {
+      const div = document.createElement('div');
+      const hasIt = i in sparseMap;
+      div.className = 'cell' + (hasIt ? ' on-sparse' : ' hole');
+      div.innerHTML = hasIt ? `${i}<span class="cell-sub">→${sparseMap[i]}</span>` : `${i}<span class="cell-sub">–</span>`;
+      sparseRow.appendChild(div);
+    }
+    const denseOrder = [0, 5, 2, 7];
+    const denseRow = document.getElementById('diagram-dense-of-sparse-row');
+    denseOrder.forEach((entity, denseIdx) => {
+      const div = document.createElement('div');
+      div.className = 'cell on-sparse';
+      div.innerHTML = `d${denseIdx}<span class="cell-sub">e${entity}</span>`;
+      denseRow.appendChild(div);
+    });
+    const directRow = document.getElementById('diagram-direct-row');
+    for (let i = 0; i < 8; i++) {
+      const div = document.createElement('div');
+      const hasIt = [0, 2, 5, 7].includes(i);
+      div.className = 'cell' + (hasIt ? ' on-dense' : ' hole');
+      div.innerHTML = hasIt ? `${i}<span class="cell-sub">dato</span>` : `${i}<span class="cell-sub">–</span>`;
+      directRow.appendChild(div);
+    }
+  })();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Object pool contra new: benchmark de asignación y GC</title>
+<style>
+:root{
+  --paper:#f2f4f5; --sheet:#ffffff; --ink:#18212b; --mute:#5b6874; --rule:#cbd3da; --wash:#e7ecef;
+  --new:#c2334f; --pool:#00758a; --good:#1b7a45; --bad:#b3261e; --warn:#8a5f00;
+  --ph1:#8a67bd; --ph2:#c4a01f; --ph3:#587a99; --ph4:#66964b; --ph5:#b07f8a; --ph6:#9aa5af;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --fs:14px;
+}
+[data-theme="dark"]{
+  --paper:#10151a; --sheet:#171e25; --ink:#e7ecf0; --mute:#92a0ac; --rule:#2b3640; --wash:#202a33;
+  --new:#ff7d95; --pool:#43c6d8; --good:#5fd08a; --bad:#ff8f86; --warn:#e6b84a;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{font-size:var(--fs)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.45;font-variant-numeric:tabular-nums}
+body.proj{--fs:18px}
+button,input,select{font:inherit;color:inherit}
+button{background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:.38em .85em;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--ink)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+:focus-visible{outline:2px solid var(--pool);outline-offset:2px}
+h1,h2,h3{font-family:var(--serif);font-weight:600;margin:0}
+h1{font-size:1.9rem;letter-spacing:-.01em;line-height:1.15}
+h1 em{font-weight:400;color:var(--mute);margin:0 .15em}
+h1 code{font-family:var(--serif);font-style:italic}
+h2{font-size:1.25rem;margin:26px 0 8px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+h2 small,h2 label{font-family:var(--sans);font-weight:400;font-size:.8rem;color:var(--mute)}
+h3{font-size:1.02rem;margin:0 0 6px}
+code,pre{font-family:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;font-size:.92em}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding:20px 26px 12px;flex-wrap:wrap}
+.top .sub{margin:6px 0 0;color:var(--mute);max-width:70ch}
+.tools{display:flex;gap:8px}
+.env{display:flex;gap:8px;flex-wrap:wrap;padding:0 26px 12px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;border:1px solid var(--rule);border-radius:99px;padding:.15em .7em;background:var(--sheet)}
+.badge::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--mute)}
+.badge.ok::before{background:var(--good)} .badge.warn::before{background:var(--warn)} .badge.bad::before{background:var(--bad)}
+.tabs{display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--rule)}
+.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:.6em 1em;font-weight:600;color:var(--mute)}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--ink)}
+.layout{display:grid;grid-template-columns:350px minmax(0,1fr);gap:28px;padding:18px 26px 50px}
+@media(max-width:1050px){.layout{grid-template-columns:1fr}}
+.pane{padding:18px 26px 50px;max-width:1100px}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+.grp{border-top:2px solid var(--ink);padding:8px 0 14px}
+.f{display:grid;grid-template-columns:1fr 112px;gap:6px 10px;align-items:center;margin:6px 0}
+.f label{font-size:.92rem}
+input[type=number],select{width:100%;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:.28em .5em;text-align:right}
+select{text-align:left}
+.check{display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:.92rem}
+.check input{margin-top:.28em}
+.seg{display:flex;border:1px solid var(--rule);border-radius:4px;overflow:hidden;margin:4px 0}
+.seg label{flex:1;cursor:pointer}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg span{display:block;text-align:center;padding:.36em .3em;background:var(--sheet);font-size:.92rem}
+.seg input:checked+span{background:var(--ink);color:var(--paper);font-weight:600}
+.seg input:focus-visible+span{outline:2px solid var(--pool);outline-offset:-2px}
+.hint{color:var(--mute);font-size:.82rem;margin:4px 0}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{font-size:.85rem}
+.est{border-left:3px solid var(--rule);padding:4px 0 4px 10px;margin:4px 0 14px;font-size:.86rem;color:var(--mute)}
+.est b{color:var(--ink);font-weight:600}
+.est .warnline{color:var(--warn)} .est .okline{color:var(--good)}
+.runbar{display:flex;gap:8px;position:sticky;bottom:0;padding:10px 0;background:linear-gradient(var(--paper) 70%,transparent)}
+.runbar button{flex:1;padding:.55em}
+.status{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+#status{font-weight:600}
+.progress{height:5px;background:var(--wash);border-radius:3px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--ink);transition:width .2s}
+.hud{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:10px 0}
+.hud div{padding:8px 12px;border-left:1px solid var(--rule)}
+.hud div:first-child{border-left:0}
+.hud b{display:block;font-size:1.55rem;font-weight:600;line-height:1.2}
+.hud small{color:var(--mute);font-size:.78rem}
+#sim{width:100%;height:auto;display:block;background:#0d1117;border-radius:4px}
+.tbl{width:100%;border-collapse:collapse;font-size:.9rem;background:var(--sheet);border:1px solid var(--rule)}
+.tbl th,.tbl td{padding:.32em .7em;border-bottom:1px solid var(--rule);text-align:left;vertical-align:baseline}
+.tbl th{font-family:var(--serif);font-weight:600;background:var(--wash);position:sticky;top:0}
+.tbl .num{text-align:right;white-space:nowrap}
+.tbl th.c-new,.tbl td.c-new{color:var(--new)} .tbl th.c-pool,.tbl td.c-pool{color:var(--pool)}
+.tbl th small{font-family:var(--sans);font-weight:400;color:var(--mute)}
+.tbl .sec td{background:var(--wash);font-family:var(--serif);font-weight:600;font-size:.92rem}
+.tbl .u,.sd{color:var(--mute);font-size:.8em}
+.tbl td.good{color:var(--good);font-weight:600} .tbl td.bad{color:var(--bad);font-weight:600}
+.scroll{overflow:auto;max-height:420px;border:1px solid var(--rule)}
+.scroll .tbl{border:0}
+.phase{display:grid;grid-template-columns:70px 1fr;gap:4px 10px;align-items:center;margin:8px 0}
+.phase b{font-family:var(--serif)} .phase .c-new{color:var(--new)} .phase .c-pool{color:var(--pool)}
+.pbar{display:flex;height:24px;background:var(--wash);border-radius:3px;overflow:hidden}
+.pbar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.8rem;color:var(--mute);margin:6px 0 0 80px}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:5px;border-radius:2px}
+.chart{width:100%;height:240px;display:block;background:var(--sheet);border:1px solid var(--rule);border-radius:4px}
+.acts{display:flex;gap:8px;margin:6px 0}
+.guide{max-width:82ch}
+.guide h2{margin-top:30px}
+.guide p,.guide li{max-width:80ch}
+.guide pre{background:var(--wash);border:1px solid var(--rule);padding:10px 12px;overflow:auto;border-radius:4px}
+.guide details{border-top:1px solid var(--rule);padding:8px 0}
+.guide summary{cursor:pointer;font-family:var(--serif);font-weight:600;font-size:1.05rem}
+.mbar{display:grid;grid-template-columns:70px 1fr 90px;gap:10px;align-items:center;margin:6px 0}
+.mbar i{display:block;height:20px;border-radius:3px}
+kbd{font-family:inherit;border:1px solid var(--rule);border-bottom-width:2px;border-radius:3px;padding:0 .3em;background:var(--sheet)}
+@media(prefers-reduced-motion:reduce){.progress i{transition:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>Object pool <em>contra</em> <code>new Particle(x, y)</code></h1>
+    <p class="sub">Banco de pruebas para medir asignación de objetos, recolección de basura y frame time. Un solo archivo, sin dependencias: abrilo en Chrome.</p>
+  </div>
+  <div class="tools">
+    <button id="btnTheme" type="button">Tema oscuro</button>
+    <button id="btnProj" type="button">Modo proyector</button>
+  </div>
+</header>
+<div id="env" class="env" aria-label="Estado del entorno de medición"></div>
+
+<nav class="tabs" role="tablist">
+  <button type="button" data-tab="sim" class="on">Simulación (A/B)</button>
+  <button type="button" data-tab="micro">Micro-benchmark</button>
+  <button type="button" data-tab="guia">Guía de DevTools y GC</button>
+</nav>
+
+<!-- =====================  TAB SIMULACIÓN  ===================== -->
+<div id="tab-sim" class="layout">
+  <aside>
+    <fieldset id="cfgSet">
+      <div class="grp">
+        <h3>Qué corrida hacer</h3>
+        <div class="seg">
+          <label><input type="radio" name="strategy" value="ab" checked><span>A/B (ambas)</span></label>
+          <label><input type="radio" name="strategy" value="new"><span>solo new</span></label>
+          <label><input type="radio" name="strategy" value="pool"><span>solo pool</span></label>
+        </div>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="live" checked><span>En vivo (rAF)</span></label>
+          <label><input type="radio" name="mode" value="turbo"><span>Turbo</span></label>
+        </div>
+        <p class="hint">En vivo avanza un tick por frame: se ven el jank y las pausas de GC como en un juego. Turbo encadena ticks sin esperar al vsync y mide el costo de CPU puro.</p>
+      </div>
+
+      <div class="grp">
+        <h3>Carga</h3>
+        <div class="f"><label for="total">Partículas totales a spawnear</label><input type="number" id="total" value="200000" min="1" step="1000"></div>
+        <div class="f"><label for="X">Spawn: X partículas…</label><input type="number" id="X" value="200" min="1" step="10"></div>
+        <div class="f"><label for="Y">…cada Y ms (simulados)</label><input type="number" id="Y" value="16" min="1" step="1"></div>
+        <div class="f"><label for="lifeMin">Vida mínima (ms)</label><input type="number" id="lifeMin" value="600" min="16" step="50"></div>
+        <div class="f"><label for="lifeMax">Vida máxima (ms)</label><input type="number" id="lifeMax" value="1400" min="16" step="50"></div>
+        <div class="f"><label for="maxAlive">Tope de partículas vivas</label><input type="number" id="maxAlive" value="100000" min="10" step="1000"></div>
+        <div class="f"><label for="payload">Payload por partícula</label>
+          <select id="payload"><option value="0">0 números</option><option value="8">8 números</option><option value="16" selected>16 números</option><option value="64">64 números</option><option value="256">256 números</option></select></div>
+        <p class="hint">El payload es un array extra dentro de cada partícula. Un <code>new</code> lo aloca cada vez; el pool lo conserva entre usos.</p>
+      </div>
+
+      <div class="grp">
+        <h3>Pool</h3>
+        <div class="f"><label for="poolSize">Tamaño (pre-alocado)</label><input type="number" id="poolSize" value="16000" min="0" step="500"></div>
+        <div class="f"><label for="poolPolicy">Si se agota</label>
+          <select id="poolPolicy"><option value="drop">Descartar spawn</option><option value="grow">Crecer (new)</option></select></div>
+      </div>
+
+      <div class="grp">
+        <h3>Render</h3>
+        <div class="f"><label for="renderMode">Dibujo</label>
+          <select id="renderMode"><option value="rect">fillRect</option><option value="arc">arc + fill</option><option value="none">Sin render</option></select></div>
+      </div>
+
+      <div class="grp">
+        <h3>Método</h3>
+        <div class="f"><label for="warmup">Warmup (s simulados)</label><input type="number" id="warmup" value="1" min="0" step="0.5"></div>
+        <div class="f"><label for="reps">Repeticiones</label><input type="number" id="reps" value="3" min="1" max="30" step="1"></div>
+        <div class="f"><label for="cooldown">Pausa entre corridas (ms)</label><input type="number" id="cooldown" value="600" min="0" step="100"></div>
+        <div class="f"><label for="seed">Semilla del RNG</label><input type="number" id="seed" value="12345" min="0" step="1"></div>
+        <label class="check"><input type="checkbox" id="chkGc" checked><span>Forzar <code>gc()</code> entre corridas (si Chrome se abrió con <code>--expose-gc</code>)</span></label>
+        <label class="check"><input type="checkbox" id="chkHud" checked><span>Actualizar HUD durante la corrida (agrega algo de basura propia; desactivalo para medir fino)</span></label>
+        <label class="check"><input type="checkbox" id="chkTs" checked><span>Marcas en la pista Timings de DevTools (<code>console.timeStamp</code>)</span></label>
+      </div>
+
+      <div class="grp">
+        <h3>Presets para la clase</h3>
+        <div class="presets" id="presets"></div>
+      </div>
+    </fieldset>
+
+    <div class="est" id="est"></div>
+    <div class="runbar">
+      <button type="button" class="primary" id="btnRun">Ejecutar</button>
+      <button type="button" id="btnStop" disabled>Detener</button>
+    </div>
+  </aside>
+
+  <section>
+    <div class="status"><div id="status">Listo. Elegí un preset y tocá Ejecutar.</div><div class="progress"><i id="prog"></i></div></div>
+    <div class="hud" aria-live="off">
+      <div><b id="hFps">—</b><small id="hFpsL">frames por segundo</small></div>
+      <div><b id="hTick">—</b><small>CPU por tick (últimos 10)</small></div>
+      <div><b id="hAlive">—</b><small>partículas vivas</small></div>
+      <div><b id="hHeap">—</b><small>heap JS usado</small></div>
+      <div><b id="hGc">—</b><small>caídas de heap (GC)</small></div>
+    </div>
+    <canvas id="sim" width="960" height="420" aria-label="Simulación de partículas"></canvas>
+
+    <h2>Comparación <small id="cmpNote"></small></h2>
+    <div id="cmpWrap"></div>
+
+    <h2>Desglose de un tick <small>media por fase, en ms</small></h2>
+    <div id="phases"></div>
+
+    <h2>Tiempo de CPU por tick <label>Y máximo (ms, 0 = automático) <input type="number" id="yMax" value="0" min="0" step="1" style="width:70px"></label></h2>
+    <canvas class="chart" id="chFrame"></canvas>
+    <p class="hint">Con muchos ticks se dibuja el máximo de cada columna de píxeles, así los picos (típicamente GC) no se pierden.</p>
+
+    <h2>Heap JS usado en el tiempo</h2>
+    <canvas class="chart" id="chHeap"></canvas>
+    <p class="hint">El serrucho de <code>new</code> son las asignaciones acumulándose y cada caída es un GC. Con pool la curva sube al pre-alocar y después queda casi plana.</p>
+
+    <h2>Historial de corridas</h2>
+    <div class="acts">
+      <button type="button" id="btnCsv">Exportar CSV</button>
+      <button type="button" id="btnJson">Exportar JSON</button>
+      <button type="button" id="btnClear">Limpiar historial</button>
+    </div>
+    <div id="hist" class="scroll"></div>
+  </section>
+</div>
+
+<!-- =====================  TAB MICRO  ===================== -->
+<div id="tab-micro" class="pane" hidden>
+  <p class="hint" style="max-width:80ch">Mide una sola operación en un bucle cerrado: mantiene K partículas vivas en un anillo y en cada iteración reemplaza la más vieja. Con <code>new</code> la vieja queda como basura; con pool se devuelve con <code>release()</code> y se pide otra con <code>acquire()</code>. Como todo el bucle se cronometra con dos lecturas del reloj, evita el problema de la resolución del timer.</p>
+  <fieldset id="microSet">
+    <div class="grp" style="max-width:520px">
+      <div class="f"><label for="mIters">Iteraciones por corrida</label><input type="number" id="mIters" value="5000000" min="1000" step="500000"></div>
+      <div class="f"><label for="mK">Partículas vivas a la vez (K)</label><input type="number" id="mK" value="4096" min="1" step="256"></div>
+      <div class="f"><label for="mPayload">Payload por partícula</label>
+        <select id="mPayload"><option value="0">0 números</option><option value="8">8 números</option><option value="16" selected>16 números</option><option value="64">64 números</option><option value="256">256 números</option></select></div>
+      <div class="f"><label for="mReps">Repeticiones (alternadas)</label><input type="number" id="mReps" value="7" min="1" max="50"></div>
+      <label class="check"><input type="checkbox" id="mGc" checked><span>Forzar <code>gc()</code> antes de cada corrida (si está expuesto)</span></label>
+      <div class="acts"><button type="button" class="primary" id="mRun">Ejecutar micro-benchmark</button><button type="button" id="mStop" disabled>Detener</button></div>
+    </div>
+  </fieldset>
+  <div id="mStatus" class="hint"></div>
+  <div id="mOut"></div>
+</div>
+
+<!-- =====================  TAB GUÍA  ===================== -->
+<div id="tab-guia" class="pane guide" hidden>
+  <h2>Preparar Chrome para medir bien</h2>
+  <p>Por defecto Chrome redondea <code>performance.memory</code> y no expone <code>gc()</code>. Lanzalo desde la terminal con estos flags (cerrá todas las ventanas de Chrome antes, o usá un perfil aparte como abajo, que además deja afuera las extensiones):</p>
+<pre>macOS
+open -na "Google Chrome" --args --user-data-dir=/tmp/chrome-bench --enable-precise-memory-info --js-flags="--expose-gc"
+
+Windows
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --user-data-dir=%TEMP%\chrome-bench --enable-precise-memory-info --js-flags="--expose-gc"
+
+Linux
+google-chrome --user-data-dir=/tmp/chrome-bench --enable-precise-memory-info --js-flags="--expose-gc"</pre>
+  <p>Opcional: agregá <code>--js-flags="--expose-gc --trace-gc"</code> y Chrome imprime cada GC (tipo, milisegundos, MB liberados) en la terminal desde la que lo lanzaste, algo que suele funcionar en macOS y Linux. Los badges de arriba te dicen qué quedó activo.</p>
+
+  <h2>Mostrar el GC en DevTools</h2>
+  <details open><summary>Panel Performance: el serrucho y los Minor/Major GC</summary>
+    <ol>
+      <li>Abrí DevTools con <kbd>F12</kbd>, andá a <b>Performance</b> y tildá <b>Memory</b> en la barra de opciones.</li>
+      <li>En esta página elegí <b>solo new</b>, modo <b>En vivo</b> y apretá Ejecutar. Cuando arranque la etapa "midiendo", tocá <b>Record</b> en DevTools. Frená la grabación al terminar.</li>
+      <li>Repetí con <b>solo pool</b> y comparen las dos grabaciones.</li>
+      <li>Qué mirar: el gráfico <b>JS Heap</b> (serrucho en <code>new</code>, casi plano en pool), los eventos <b>Minor GC</b> (scavenge de la generación joven) y <b>Major GC</b> (mark-compact) en el hilo Main, y en <b>Timings</b> las barras <code>spawn</code>, <code>update</code>, <code>cull</code> y <code>render</code> de cada tick (con Chrome reciente y la casilla de marcas activada).</li>
+    </ol>
+  </details>
+  <details><summary>Panel Memory: quién asigna los objetos</summary>
+    <ol>
+      <li>En <b>Memory</b> elegí <b>Allocation instrumentation on timeline</b> y tocá Start.</li>
+      <li>Corré una estrategia y frená la grabación. Las barras azules son asignaciones todavía vivas y las grises ya fueron liberadas.</li>
+      <li>Con <code>new</code> vas a ver el constructor de <code>Particle</code> como gran asignador durante toda la corrida. Con pool, casi toda la asignación ocurre al inicio, cuando se pre-aloca.</li>
+    </ol>
+  </details>
+  <details><summary>Ojo: DevTools también cambia lo que medís</summary>
+    <p>Grabar en Performance agrega overhead. Usá DevTools para mostrar y explicar el GC, y cerrá DevTools cuando quieras los números de las tablas de esta página.</p>
+  </details>
+
+  <h2>Cómo leer las métricas</h2>
+  <details open><summary>Tiempos</summary>
+    <ul>
+      <li><b>Tick CPU</b>: tiempo de JavaScript de un tick completo (spawn, update, cull y render). No incluye lo que hace el navegador después, como rasterizar el canvas.</li>
+      <li><b>Intervalo entre frames</b> (solo en vivo): tiempo real entre callbacks de <code>requestAnimationFrame</code>. Es lo que percibe el usuario. Un GC largo aparece como un frame de más del doble de la mediana.</li>
+      <li><b>acquire</b>: obtener el objeto, es decir <code>pool.acquire(x, y)</code> o <code>new Particle(x, y)</code>. <b>init</b>: asignar velocidad, vida y color a lo recién obtenido. <b>spawn</b> es acquire + init + bookkeeping.</li>
+      <li><b>cull</b>: sacar las muertas de la lista activa (swap-remove) y, con pool, devolverlas con <code>release()</code>. Con <code>new</code> simplemente se suelta la referencia y pasan a ser basura.</li>
+      <li><b>Setup</b>: costo de pre-alocar el pool. Es el precio que el pool paga por adelantado.</li>
+    </ul>
+  </details>
+  <details><summary>Memoria y GC</summary>
+    <ul>
+      <li><b>Caídas de heap</b>: se leen de <code>performance.memory.usedJSHeapSize</code> cada ~10 ms y se cuenta como GC toda caída mayor a 64 KB. Es una aproximación: un GC muy chico puede quedar entre dos lecturas y dos seguidos pueden verse como uno.</li>
+      <li><b>Tasa de asignación</b>: suma de los aumentos de heap por segundo. Subestima el total real cuando hubo GC entre lecturas.</li>
+      <li><b>GC forzado</b> (con <code>--expose-gc</code>): al final de cada corrida se llama <code>gc()</code> y se cronometra. Los MB que libera son basura que el GC todavía no había recolectado.</li>
+      <li><b>Long Tasks</b>: tareas de más de 50 ms según <code>PerformanceObserver</code>.</li>
+      <li><b>Hit rate</b>, <b>high-water</b> y <b>reuso</b> describen al pool: qué fracción de pedidos encontró un objeto libre, cuántos objetos hubo en uso a la vez como máximo y cuántas veces se reutilizó en promedio cada objeto.</li>
+    </ul>
+  </details>
+
+  <h2>Buenas prácticas del experimento</h2>
+  <ul>
+    <li>Misma semilla y misma carga para las dos estrategias, así que hacen exactamente el mismo trabajo lógico. Solo cambia cómo se obtienen y se descartan los objetos.</li>
+    <li>El modo A/B alterna el orden (new, pool, pool, new…) para repartir el efecto de orden: JIT, estado del heap, throttling térmico.</li>
+    <li>El warmup corre la misma simulación un rato antes de medir, para que V8 optimice el código caliente.</li>
+    <li>La instrumentación no asigna memoria dentro del bucle: los resultados se guardan en typed arrays pre-alocados. Por eso conviene desactivar el HUD para las mediciones finas: actualizar el DOM sí genera basura.</li>
+    <li>Pestaña visible y en primer plano, notebook enchufada, sin otras pestañas pesadas. Repetí varias veces y mirá el desvío estándar.</li>
+    <li>La resolución de <code>performance.now()</code> en Chrome es de unos 100 µs en páginas sin aislamiento de origen cruzado (el badge "Timer" muestra la medida real). Las fases que cuestan menos que eso por tick salen cuantizadas: fiate del total y de la media, no de los percentiles de una fase. Para operaciones sueltas usá el micro-benchmark.</li>
+    <li>Los resultados dependen de la máquina y de la versión de Chrome. No hay garantía de que el pool gane en todos los escenarios, y ese es justamente el punto de discusión.</li>
+  </ul>
+
+  <h2>Qué probar en clase</h2>
+  <ul>
+    <li><b>Vida corta contra vida larga</b>: los objetos que mueren jóvenes son baratos para el recolector generacional; los que sobreviven a varios scavenges se promueven a la generación vieja y su recolección es más cara.</li>
+    <li><b>Payload</b>: cuanto más pesado el objeto, más gana reutilizarlo. En V8 los campos numéricos no enteros suelen vivir en cajas separadas, así que un solo <code>new Particle</code> puede implicar varias asignaciones internas.</li>
+    <li><b>Ráfagas</b>: X grande cada Y grande produce picos de asignación que castigan el frame time.</li>
+    <li><b>Pool subdimensionado</b>: con "Descartar spawn" mirá el hit rate y cuántas partículas se pierden. Con "Crecer" el pool termina convergiendo al pico.</li>
+    <li><b>Costos ocultos del pool</b>: memoria retenida aunque no se use, setup inicial, y el riesgo de bugs por olvidarse de resetear estado al reutilizar un objeto.</li>
+  </ul>
+</div>
+
+<!-- =====================  CORE (sin DOM)  ===================== -->
+<script id="core">
+'use strict';
+const TAU = Math.PI * 2;
+const MB = 1048576;
+const GC_DROP_MIN = 64 * 1024;   // una caída de heap mayor a esto cuenta como "evento de GC"
+const HEAP_EVERY_MS = 10;        // período mínimo entre lecturas de performance.memory
+const PALETTE = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#4dabf7', '#9775fa', '#f783ac'];
+const now = () => performance.now();
+let PAYLOAD_LEN = 0;             // números extra por partícula (se fija antes de cada corrida)
+
+/* ---------- La partícula: idéntica en las dos estrategias ---------- */
+class Particle {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.life = 0; this.maxLife = 1;
+    this.size = 2; this.c = 0;
+    this.payload = PAYLOAD_LEN > 0 ? new Array(PAYLOAD_LEN).fill(0) : null;
+  }
+  // Lo mismo que hace el constructor, pero sin alocar nada: reutiliza el objeto y su payload.
+  reset(x, y) {
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.life = 0; this.maxLife = 1;
+    this.size = 2; this.c = 0;
+  }
+}
+
+// Fuerza a V8 a generalizar los campos numéricos de Particle a double antes de medir,
+// así todas las instancias (las del pool incluidas) comparten el mismo hidden class.
+function primeParticleShape() {
+  const p = new Particle(0.5, 0.5);
+  p.vx = 0.25; p.vy = 0.25; p.life = 0.5; p.maxLife = 0.5; p.size = 1.5;
+  p.reset(0.5, 0.5);
+  return p;
+}
+
+/* ---------- Object pool: pila de objetos libres ---------- */
+class ParticlePool {
+  constructor(size, policy) {
+    this.items = [];
+    this.top = 0;
+    this.grow = policy === 'grow';
+    this.inUse = 0; this.highWater = 0;
+    this.hits = 0; this.misses = 0; this.created = 0;
+    const t0 = now();
+    for (let i = 0; i < size; i++) this.items.push(new Particle(0, 0));
+    this.top = size;
+    this.created = size;
+    this.initMs = now() - t0;
+  }
+  acquire(x, y) {
+    if (this.top > 0) {
+      const p = this.items[--this.top];
+      p.reset(x, y);
+      this.hits++;
+      if (++this.inUse > this.highWater) this.highWater = this.inUse;
+      return p;
+    }
+    this.misses++;
+    if (this.grow) {
+      this.created++;
+      if (++this.inUse > this.highWater) this.highWater = this.inUse;
+      return new Particle(x, y);
+    }
+    return null;
+  }
+  release(p) {
+    this.items[this.top++] = p;
+    this.inUse--;
+  }
+}
+
+/* ---------- Registro de métricas: todo pre-alocado, cero basura en el bucle ---------- */
+class Recorder {
+  constructor(cap) {
+    this.cap = cap; this.n = 0;
+    this.frame = new Float64Array(cap);
+    this.spawn = new Float64Array(cap);
+    this.acquire = new Float64Array(cap);
+    this.init = new Float64Array(cap);
+    this.update = new Float64Array(cap);
+    this.cull = new Float64Array(cap);
+    this.render = new Float64Array(cap);
+    this.raf = new Float64Array(cap);
+    this.alive = new Uint32Array(cap);
+    this.hT = new Float64Array(cap);
+    this.hU = new Float64Array(cap);
+    this.hn = 0;
+  }
+}
+
+class HeapSampler {
+  constructor(rec) {
+    this.rec = rec;
+    this.ok = typeof performance !== 'undefined' && !!performance.memory;
+    this.prev = NaN; this.first = NaN; this.last = NaN;
+    this.peak = 0; this.drops = 0; this.reclaimed = 0; this.maxDrop = 0; this.alloc = 0;
+  }
+  sample(tRel) {
+    if (!this.ok) return;
+    const u = performance.memory.usedJSHeapSize;
+    if (this.prev === this.prev) {
+      const d = u - this.prev;
+      if (d < -GC_DROP_MIN) { this.drops++; this.reclaimed -= d; if (-d > this.maxDrop) this.maxDrop = -d; }
+      else if (d > 0) this.alloc += d;
+    } else this.first = u;
+    this.prev = u; this.last = u;
+    if (u > this.peak) this.peak = u;
+    const rec = this.rec, k = rec.hn;
+    if (k < rec.cap) { rec.hT[k] = tRel; rec.hU[k] = u; rec.hn = k + 1; }
+  }
+}
+
+/* ---------- La simulación ---------- */
+class Sim {
+  constructor(cfg, strategy, ctx, rec, maxTicks) {
+    this.cfg = cfg; this.strategy = strategy; this.ctx = ctx; this.rec = rec;
+    this.W = ctx ? ctx.canvas.width : 960;
+    this.H = ctx ? ctx.canvas.height : 420;
+    this.mode = ctx ? cfg.renderMode : 'none';
+    this.dt = 1000 / 60;
+    this.rs = new Uint32Array(1); this.rs[0] = cfg.seed >>> 0;
+    const cap = cfg.maxAlive;
+    this.active = [];
+    for (let i = 0; i < cap; i++) this.active.push(null);   // lista activa pre-dimensionada, igual para ambas
+    this.deadIdx = new Int32Array(cap);
+    this.n = 0; this.nd = 0;
+    this.tick = 0; this.simT = 0; this.spawnAcc = cfg.Y;    // el primer spawn ocurre en el tick 0
+    this.requested = 0; this.spawned = 0; this.dropCap = 0; this.dropPool = 0; this.died = 0;
+    this.batchNo = 0; this.acqMs = 0; this.initMs = 0;
+    this.aliveSum = 0; this.alivePeak = 0;
+    this.maxTicks = maxTicks || Infinity;
+    this.truncated = false;
+    this.ts = !!cfg.timestamps && typeof console !== 'undefined' && typeof console.timeStamp === 'function';
+    this.ex = 0; this.ey = 0;
+    this.pool = null; this.setupMs = 0;
+    if (strategy === 'pool') {
+      this.pool = new ParticlePool(cfg.poolSize, cfg.poolPolicy);
+      this.setupMs = this.pool.initMs;
+    }
+  }
+
+  // mulberry32 con el estado en un typed array: no aloca cajas de números
+  rand() {
+    const s = this.rs;
+    s[0] += 0x6D2B79F5;
+    let t = s[0];
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  // Pasada 1 (acquire): obtener los objetos. Pasada 2 (init): darles velocidad, vida y color.
+  spawnBatch(count) {
+    const active = this.active, cfg = this.cfg, cap = cfg.maxAlive;
+    const ex = this.ex, ey = this.ey;
+    const start = this.n;
+    let n = start;
+    const ta = now();
+    if (this.pool !== null) {
+      const pool = this.pool;
+      for (let i = 0; i < count; i++) {
+        if (n >= cap) { this.dropCap += count - i; break; }
+        const p = pool.acquire(ex, ey);
+        if (p === null) { this.dropPool++; continue; }
+        active[n++] = p;
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        if (n >= cap) { this.dropCap += count - i; break; }
+        active[n++] = new Particle(ex, ey);
+      }
+    }
+    const tb = now();
+    this.acqMs += tb - ta;
+    const lmin = cfg.lifeMin, lspan = cfg.lifeMax - cfg.lifeMin;
+    const col = this.batchNo++ & 7;
+    for (let k = start; k < n; k++) {
+      const p = active[k];
+      const a = -1.5708 + (this.rand() - 0.5) * 1.3;
+      const sp = 160 + this.rand() * 300;
+      p.vx = Math.cos(a) * sp;
+      p.vy = Math.sin(a) * sp;
+      const life = lmin + this.rand() * lspan;
+      p.life = life; p.maxLife = life;
+      p.size = 1.2 + this.rand() * 1.8;
+      p.c = col;
+    }
+    this.initMs += now() - tb;
+    this.spawned += n - start;
+    this.n = n;
+  }
+
+  update() {
+    const active = this.active, n = this.n, dt = this.dt, dts = dt / 1000, H = this.H;
+    const dead = this.deadIdx;
+    let nd = 0;
+    for (let i = 0; i < n; i++) {
+      const p = active[i];
+      p.vy += 520 * dts;
+      p.x += p.vx * dts;
+      p.y += p.vy * dts;
+      if (p.y > H) { p.y = H; p.vy *= -0.5; }
+      p.life -= dt;
+      if (p.life <= 0) dead[nd++] = i;
+    }
+    this.nd = nd;
+  }
+
+  // swap-remove en orden descendente: O(muertas), sin splice. Con pool, además, release().
+  cull() {
+    const active = this.active, dead = this.deadIdx, pool = this.pool;
+    let n = this.n;
+    const nd = this.nd;
+    for (let k = nd - 1; k >= 0; k--) {
+      const i = dead[k];
+      const p = active[i];
+      const last = --n;
+      if (i !== last) active[i] = active[last];
+      active[last] = null;              // sin esto la lista retendría basura
+      if (pool !== null) pool.release(p);
+    }
+    this.n = n;
+    this.died += nd;
+  }
+
+  render() {
+    if (this.mode === 'none') return;
+    const ctx = this.ctx, W = this.W, H = this.H, active = this.active, n = this.n;
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, W, H);
+    let last = -1;
+    if (this.mode === 'rect') {
+      for (let i = 0; i < n; i++) {
+        const p = active[i];
+        if (p.c !== last) { last = p.c; ctx.fillStyle = PALETTE[last]; }
+        const s = p.size;
+        ctx.fillRect(p.x - s * 0.5, p.y - s * 0.5, s, s);
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const p = active[i];
+        if (p.c !== last) { last = p.c; ctx.fillStyle = PALETTE[last]; }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, TAU);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Un tick completo. Devuelve true cuando la corrida terminó.
+  step() {
+    const cfg = this.cfg, dt = this.dt, rec = this.rec, i = this.tick;
+    const t0 = now();
+    this.simT += dt;
+    this.ex = this.W * (0.5 + 0.32 * Math.sin(this.simT * 0.0009));
+    this.ey = this.H * (0.30 + 0.12 * Math.sin(this.simT * 0.0017));
+    this.acqMs = 0; this.initMs = 0;
+    this.spawnAcc += dt;
+    while (this.spawnAcc >= cfg.Y && this.requested < cfg.total) {
+      this.spawnAcc -= cfg.Y;
+      let c = cfg.total - this.requested;
+      if (c > cfg.X) c = cfg.X;
+      this.requested += c;
+      this.spawnBatch(c);
+    }
+    if (this.requested >= cfg.total) this.spawnAcc = 0;
+    const t1 = now();
+    this.update();
+    const t2 = now();
+    this.cull();
+    const t3 = now();
+    this.render();
+    const t4 = now();
+    const n = this.n;
+    this.aliveSum += n;
+    if (n > this.alivePeak) this.alivePeak = n;
+    if (rec !== null && i < rec.cap) {
+      rec.frame[i] = t4 - t0;
+      rec.spawn[i] = t1 - t0;
+      rec.acquire[i] = this.acqMs;
+      rec.init[i] = this.initMs;
+      rec.update[i] = t2 - t1;
+      rec.cull[i] = t3 - t2;
+      rec.render[i] = t4 - t3;
+      rec.alive[i] = n;
+      rec.n = i + 1;
+    }
+    if (this.ts) {
+      console.timeStamp('spawn', t0, t1, 'Benchmark', 'Simulación');
+      console.timeStamp('update', t1, t2, 'Benchmark', 'Simulación');
+      console.timeStamp('cull', t2, t3, 'Benchmark', 'Simulación');
+      console.timeStamp('render', t3, t4, 'Benchmark', 'Simulación');
+    }
+    this.tick = i + 1;
+    if (this.requested >= cfg.total && n === 0) return true;
+    if (this.tick >= this.maxTicks) { this.truncated = true; return true; }
+    return false;
+  }
+}
+
+/* ---------- Estadística ---------- */
+function stats(arr, from, to) {
+  const n = to - from;
+  if (n <= 0) return null;
+  const s = arr.slice(from, to);
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += s[i];
+  const mean = sum / n;
+  let v = 0;
+  for (let i = 0; i < n; i++) { const d = s[i] - mean; v += d * d; }
+  s.sort();
+  const q = (p) => s[Math.min(n - 1, Math.floor(p * (n - 1) + 0.5))];
+  return { n, sum, mean, sd: Math.sqrt(v / n), min: s[0], p50: q(0.5), p95: q(0.95), p99: q(0.99), max: s[n - 1] };
+}
+function countOver(arr, from, to, thr) {
+  let c = 0;
+  for (let i = from; i < to; i++) if (arr[i] > thr) c++;
+  return c;
+}
+
+function estimate(cfg) {
+  const dt = 1000 / 60;
+  const batches = Math.ceil(cfg.total / cfg.X);
+  const spawnMs = Math.max(0, batches - 1) * cfg.Y;
+  const lifeAvg = (cfg.lifeMin + cfg.lifeMax) / 2;
+  const steady = Math.min(cfg.total, cfg.X * lifeAvg / cfg.Y);
+  const peakMax = Math.min(cfg.total, cfg.X * (Math.ceil(cfg.lifeMax / cfg.Y) + 1));
+  const ticks = Math.ceil((spawnMs + cfg.lifeMax) / dt) + Math.ceil(cfg.Y / dt) + 8;
+  return { dt, batches, spawnMs, lifeAvg, steady, peakMax, ticks, cap: ticks + 40,
+           suggested: Math.ceil(steady * 1.25), simSeconds: ticks * dt / 1000, rate: cfg.X * 1000 / cfg.Y };
+}
+
+/* ---------- Resumen de una corrida (todas las claves son planas para poder exportar a CSV) ---------- */
+function summarize(cfg, strategy, sim, rec, hs, meta) {
+  const n = rec.n, sm = {};
+  const fr = stats(rec.frame, 0, n);
+  sm.strategy = strategy; sm.mode = cfg.mode;
+  sm.ticks = n; sm.truncated = sim.truncated ? 1 : 0; sm.hidden = meta.hidden ? 1 : 0;
+  sm.simSeconds = n * sim.dt / 1000;
+  sm.wallMs = meta.wallMs;
+  sm.cpuTotalMs = meta.busyMs != null ? meta.busyMs : fr.sum;
+  sm.tps = sm.cpuTotalMs > 0 ? n / (sm.cpuTotalMs / 1000) : null;
+  sm.setupMs = sim.setupMs;
+  sm.footprintMB = meta.footprintMB;
+  sm.cpu_mean = fr.mean; sm.cpu_p50 = fr.p50; sm.cpu_p95 = fr.p95; sm.cpu_p99 = fr.p99; sm.cpu_max = fr.max; sm.cpu_sd = fr.sd;
+  sm.spikes = countOver(rec.frame, 0, n, Math.max(3 * fr.p50, 4 * meta.timerRes));
+  const live = cfg.mode === 'live' && n > 3;
+  const rf = live ? stats(rec.raf, 1, n) : null;
+  sm.fps = rf ? 1000 / rf.mean : null;
+  sm.raf_mean = rf ? rf.mean : null; sm.raf_p50 = rf ? rf.p50 : null; sm.raf_p95 = rf ? rf.p95 : null;
+  sm.raf_p99 = rf ? rf.p99 : null; sm.raf_max = rf ? rf.max : null;
+  sm.hitches = rf ? countOver(rec.raf, 1, n, 1.5 * rf.p50) : null;
+  sm.longFrames = rf ? countOver(rec.raf, 1, n, 50) : null;
+  for (const k of ['spawn', 'acquire', 'init', 'update', 'cull', 'render']) {
+    const s = stats(rec[k], 0, n);
+    sm[k + '_mean'] = s.mean; sm[k + '_total'] = s.sum;
+  }
+  sm.acquire_ns = sim.spawned > 0 ? sm.acquire_total * 1e6 / sim.spawned : null;
+  sm.spawn_us = sim.spawned > 0 ? sm.spawn_total * 1e3 / sim.spawned : null;
+  sm.requested = sim.requested; sm.spawned = sim.spawned; sm.dropPool = sim.dropPool; sm.dropCap = sim.dropCap;
+  sm.died = sim.died; sm.alivePeak = sim.alivePeak; sm.aliveMean = n ? sim.aliveSum / n : 0;
+  const pool = sim.pool;
+  sm.constructed = pool ? pool.created : sim.spawned;
+  sm.reuse = sm.constructed > 0 ? sim.spawned / sm.constructed : null;
+  sm.pool_hitRate = pool && (pool.hits + pool.misses) > 0 ? 100 * pool.hits / (pool.hits + pool.misses) : null;
+  sm.pool_high = pool ? pool.highWater : null;
+  sm.pool_misses = pool ? pool.misses : null;
+  const okMem = hs.ok && hs.last === hs.last;
+  const wallS = meta.wallMs / 1000;
+  sm.heap_startMB = okMem ? hs.first / MB : null;
+  sm.heap_peakMB = okMem ? hs.peak / MB : null;
+  sm.heap_endMB = okMem ? hs.last / MB : null;
+  sm.heap_allocMBps = okMem && wallS > 0 ? hs.alloc / MB / wallS : null;
+  sm.gc_events = okMem ? hs.drops : null;
+  sm.gc_perSec = okMem && wallS > 0 ? hs.drops / wallS : null;
+  sm.gc_reclaimedMB = okMem ? hs.reclaimed / MB : null;
+  sm.gc_maxDropMB = okMem ? hs.maxDrop / MB : null;
+  sm.fgc_ms = meta.fgc ? meta.fgc.ms : null;
+  sm.fgc_garbageMB = meta.fgc ? meta.fgc.garbageMB : null;
+  sm.lt_count = meta.lt ? meta.lt.count : null;
+  sm.lt_total = meta.lt ? meta.lt.total : null;
+  sm.lt_max = meta.lt ? meta.lt.max : null;
+  return sm;
+}
+
+/* ---------- Micro-benchmark: anillo de K partículas vivas ---------- */
+function makeRing(K) {
+  const r = [];
+  for (let i = 0; i < K; i++) r.push(null);
+  return r;
+}
+function microRun(kind, iters, K, payload) {
+  PAYLOAD_LEN = payload;
+  const ring = makeRing(K);
+  let pool = null, setup = 0;
+  if (kind === 'pool') { pool = new ParticlePool(K + 8, 'grow'); setup = pool.initMs; }
+  let j = 0;
+  const t0 = now();
+  if (kind === 'new') {
+    for (let i = 0; i < iters; i++) {
+      ring[j] = new Particle(i * 0.5, i * 0.25);
+      if (++j === K) j = 0;
+    }
+  } else {
+    for (let i = 0; i < iters; i++) {
+      const old = ring[j];
+      if (old !== null) pool.release(old);
+      ring[j] = pool.acquire(i * 0.5, i * 0.25);
+      if (++j === K) j = 0;
+    }
+  }
+  const ms = now() - t0;
+  let sink = 0;                                   // evita que V8 descarte el trabajo
+  for (let i = 0; i < K; i++) { const p = ring[i]; if (p !== null) sink += p.x; }
+  return { ms, setup, sink };
+}
+</script>
+
+<!-- =====================  UI  ===================== -->
+<script id="ui">
+'use strict';
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+const mchan = new MessageChannel();
+let mchanRes = null;
+mchan.port1.onmessage = () => { const r = mchanRes; mchanRes = null; if (r) r(); };
+const yieldMain = () => new Promise((r) => { mchanRes = r; mchan.port2.postMessage(0); });
+
+const HAS_GC = typeof gc === 'function';
+const HAS_MEM = !!(performance && performance.memory);
+let TIMER_RES = 0.1;
+const S = { running: false, abort: false, history: [], exp: { new: [], pool: [] }, last: { new: null, pool: null },
+            seq: 0, hiddenFlag: false, planIdx: 0, planTotal: 1 };
+
+function fmt(v, d = 2) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+  return v.toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+/* ---------- Entorno ---------- */
+function measureTimerRes() {
+  let last = now(), min = Infinity, changes = 0;
+  const t0 = last;
+  while (changes < 40 && last - t0 < 60) {
+    const t = now();
+    if (t > last) { const d = t - last; if (d < min) min = d; last = t; changes++; }
+  }
+  return min === Infinity ? 0.1 : min;
+}
+function probeMemory() {
+  if (!HAS_MEM) return 'none';
+  const a = performance.memory.usedJSHeapSize;
+  let junk = [];
+  for (let i = 0; i < 40000; i++) junk.push({ a: i, b: [i] });
+  const b = performance.memory.usedJSHeapSize;
+  const keep = junk.length;
+  junk = null;
+  return (b - a) > 400000 && keep > 0 ? 'fine' : 'coarse';
+}
+function addBadge(txt, cls, title) {
+  const s = document.createElement('span');
+  s.className = 'badge ' + cls; s.textContent = txt;
+  if (title) s.title = title;
+  $('env').appendChild(s);
+}
+function initEnv() {
+  const m = navigator.userAgent.match(/Chrome\/(\d+)/);
+  addBadge(m ? 'Chrome ' + m[1] : 'No es Chrome', m ? 'ok' : 'warn',
+    'Las marcas de DevTools, performance.memory y Long Tasks son de Chrome.');
+  TIMER_RES = measureTimerRes();
+  const us = Math.round(TIMER_RES * 1000);
+  addBadge('Timer: ' + us + ' µs', us > 20 ? 'warn' : 'ok',
+    'Resolución medida de performance.now(). Chrome la redondea a 100 µs sin aislamiento de origen cruzado (crossOriginIsolated: ' + (window.crossOriginIsolated ? 'sí' : 'no') + ').');
+  const mem = probeMemory();
+  if (mem === 'none') addBadge('performance.memory no disponible', 'bad', 'Sin esto no hay serie de heap ni conteo de GC. Usá Chrome.');
+  else if (mem === 'coarse') addBadge('performance.memory: lectura gruesa', 'warn', 'Lanzá Chrome con --enable-precise-memory-info (ver la guía).');
+  else addBadge('performance.memory: lectura fina', 'ok', 'Alcanza para ver el serrucho del heap.');
+  addBadge(HAS_GC ? 'gc() expuesto' : 'gc() no expuesto', HAS_GC ? 'ok' : 'warn',
+    HAS_GC ? 'Se puede forzar un GC entre corridas y medir cuánta basura quedaba.' : 'Lanzá Chrome con --js-flags="--expose-gc" (ver la guía).');
+  addBadge(navigator.hardwareConcurrency + ' hilos lógicos', 'ok', 'navigator.hardwareConcurrency');
+}
+
+/* ---------- Configuración ---------- */
+function readCfg() {
+  const num = (id, lo, hi, def) => { let v = parseFloat($(id).value); if (!Number.isFinite(v)) v = def; return Math.min(hi, Math.max(lo, v)); };
+  const cfg = {
+    strategy: document.querySelector('input[name=strategy]:checked').value,
+    mode: document.querySelector('input[name=mode]:checked').value,
+    total: Math.round(num('total', 1, 5e7, 200000)),
+    X: Math.round(num('X', 1, 1e6, 200)),
+    Y: num('Y', 1, 60000, 16),
+    lifeMin: num('lifeMin', 16, 60000, 600),
+    lifeMax: num('lifeMax', 16, 60000, 1400),
+    maxAlive: Math.round(num('maxAlive', 10, 3e6, 100000)),
+    poolSize: Math.round(num('poolSize', 0, 5e6, 16000)),
+    poolPolicy: $('poolPolicy').value,
+    payload: parseInt($('payload').value, 10),
+    renderMode: $('renderMode').value,
+    warmup: num('warmup', 0, 30, 1),
+    reps: Math.round(num('reps', 1, 30, 3)),
+    cooldown: num('cooldown', 0, 10000, 600),
+    seed: Math.round(num('seed', 0, 4294967295, 12345)),
+    forceGc: $('chkGc').checked, hud: $('chkHud').checked, timestamps: $('chkTs').checked
+  };
+  if (cfg.lifeMax < cfg.lifeMin) cfg.lifeMax = cfg.lifeMin;
+  return cfg;
+}
+function updateEstimates() {
+  const cfg = readCfg(), e = estimate(cfg);
+  const poolOk = cfg.poolSize >= e.steady * 1.05;
+  let h = `Tasa de spawn: <b>${fmt(e.rate, 0)}</b> partículas por segundo. Duración simulada: <b>${fmt(e.simSeconds, 1)} s</b> (${fmt(e.ticks, 0)} ticks).<br>`;
+  h += `Vivas en régimen: <b>≈ ${fmt(e.steady, 0)}</b>, pico teórico máximo ${fmt(e.peakMax, 0)}.<br>`;
+  if (cfg.strategy !== 'new') {
+    h += poolOk ? `<span class="okline">Pool de ${fmt(cfg.poolSize, 0)}: alcanza para el régimen.</span>`
+                : `<span class="warnline">Pool de ${fmt(cfg.poolSize, 0)}: no alcanza para el régimen.</span> <button type="button" id="btnSuggest">Usar ${fmt(e.suggested, 0)}</button>`;
+  }
+  if (e.steady > cfg.maxAlive) h += `<br><span class="warnline">El tope de vivas (${fmt(cfg.maxAlive, 0)}) va a descartar spawns.</span>`;
+  $('est').innerHTML = h;
+  const b = $('btnSuggest');
+  if (b) b.onclick = () => { $('poolSize').value = e.suggested; updateEstimates(); };
+}
+const PRESETS = [
+  { name: 'Base', d: { mode: 'live', total: 200000, X: 200, Y: 16, lifeMin: 600, lifeMax: 1400, maxAlive: 100000, poolSize: 16000, poolPolicy: 'drop', payload: 16, renderMode: 'rect' } },
+  { name: 'Vida larga', d: { mode: 'live', total: 300000, X: 100, Y: 16, lifeMin: 3000, lifeMax: 6000, maxAlive: 100000, poolSize: 36000, poolPolicy: 'drop', payload: 16, renderMode: 'rect' } },
+  { name: 'Payload pesado', d: { mode: 'live', total: 200000, X: 200, Y: 16, lifeMin: 600, lifeMax: 1400, maxAlive: 100000, poolSize: 16000, poolPolicy: 'drop', payload: 256, renderMode: 'rect' } },
+  { name: 'Ráfagas', d: { mode: 'live', total: 240000, X: 8000, Y: 500, lifeMin: 300, lifeMax: 700, maxAlive: 100000, poolSize: 20000, poolPolicy: 'drop', payload: 16, renderMode: 'rect' } },
+  { name: 'Pool chico', d: { mode: 'live', total: 200000, X: 200, Y: 16, lifeMin: 600, lifeMax: 1400, maxAlive: 100000, poolSize: 4000, poolPolicy: 'drop', payload: 16, renderMode: 'rect' } },
+  { name: 'Turbo: CPU puro', d: { mode: 'turbo', total: 2000000, X: 1000, Y: 16, lifeMin: 500, lifeMax: 1000, maxAlive: 200000, poolSize: 60000, poolPolicy: 'drop', payload: 16, renderMode: 'none' } }
+];
+function applyPreset(p) {
+  for (const [k, v] of Object.entries(p.d)) {
+    if (k === 'mode') { document.querySelector(`input[name=mode][value=${v}]`).checked = true; continue; }
+    $(k).value = v;
+  }
+  updateEstimates();
+}
+
+/* ---------- Long Tasks ---------- */
+const LT = { count: 0, total: 0, max: 0, t0: 0, active: false, obs: null };
+function ltAdd(e) {
+  if (LT.active && e.startTime >= LT.t0) { LT.count++; LT.total += e.duration; if (e.duration > LT.max) LT.max = e.duration; }
+}
+function ltInit() {
+  try {
+    LT.obs = new PerformanceObserver((list) => { for (const e of list.getEntries()) ltAdd(e); });
+    LT.obs.observe({ type: 'longtask' });
+  } catch (err) { LT.obs = null; }
+}
+function ltStart(t0) { LT.count = 0; LT.total = 0; LT.max = 0; LT.t0 = t0; LT.active = true; }
+function ltStop() {
+  if (LT.obs) { for (const e of LT.obs.takeRecords()) ltAdd(e); }
+  LT.active = false;
+  return LT.obs ? { count: LT.count, total: LT.total, max: LT.max } : null;
+}
+
+/* ---------- HUD y bucles de ejecución ---------- */
+function setStatus(t) { $('status').textContent = t; }
+function updateHud(run, t) {
+  const sim = run.sim, rec = run.rec, hs = run.hs;
+  const i = sim.tick - 1;
+  if (i < 0) return;
+  let s = 0, c = 0;
+  for (let k = i; k >= 0 && c < 10; k--, c++) s += rec.frame[k];
+  $('hTick').textContent = fmt(s / c, 2) + ' ms';
+  $('hAlive').textContent = fmt(sim.n, 0);
+  if (sim.cfg.mode === 'live') {
+    let r = 0, m = 0;
+    for (let k = i; k >= 1 && m < 20; k--, m++) r += rec.raf[k];
+    $('hFps').textContent = m ? fmt(1000 / (r / m), 0) : '—';
+    $('hFpsL').textContent = 'frames por segundo';
+  } else {
+    const dtT = (t - run.hudT) / 1000;
+    $('hFps').textContent = dtT > 0 ? fmt((sim.tick - run.hudTicks) / dtT, 0) : '—';
+    $('hFpsL').textContent = 'ticks por segundo';
+    run.hudT = t; run.hudTicks = sim.tick;
+  }
+  $('hHeap').textContent = hs.ok && hs.last === hs.last ? fmt(hs.last / MB, 1) + ' MB' : '—';
+  $('hGc').textContent = hs.ok ? fmt(hs.drops, 0) : '—';
+  const f = Math.min(1, sim.tick / run.est.ticks);
+  $('prog').style.width = ((S.planIdx + f) / S.planTotal * 100).toFixed(1) + '%';
+}
+function heapTick(run) {
+  const t = now();
+  if (t - run.lastHeap >= HEAP_EVERY_MS) { run.lastHeap = t; run.hs.sample(t - run.t0); }
+}
+function pumpLive(sim, run) {
+  return new Promise((resolve) => {
+    let last = 0;
+    const rec = sim.rec;
+    const frame = (ts) => {
+      if (S.abort) { resolve(false); return; }
+      if (rec !== null && last !== 0 && sim.tick < rec.cap) rec.raf[sim.tick] = ts - last;
+      last = ts;
+      const done = sim.step();
+      if (run) {
+        heapTick(run);
+        if (run.hud) { const t = now(); if (t - run.lastHud >= 250) { run.lastHud = t; updateHud(run, t); } }
+      }
+      if (done) { resolve(true); return; }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+async function pumpTurbo(sim, run) {
+  let lastPaint = now();
+  for (;;) {
+    const tc = now();
+    let done = false;
+    do {
+      done = sim.step();
+      if (run) heapTick(run);
+    } while (!done && now() - tc < 12);
+    if (run) run.busyMs += now() - tc;        // tiempo de CPU real, sin contar las cesiones al navegador
+    if (run && run.hud) { const t = now(); if (t - run.lastHud >= 250) { run.lastHud = t; updateHud(run, t); } }
+    if (done) return true;
+    if (S.abort) return false;
+    if (run && run.hud && now() - lastPaint > 150) { await nextFrame(); lastPaint = now(); }
+    else await yieldMain();
+  }
+}
+function heapMB() { return HAS_MEM ? performance.memory.usedJSHeapSize : NaN; }
+
+async function execRun(cfg, strategy, tag, idx, total) {
+  const ctx = $('sim').getContext('2d');
+  S.planIdx = idx; S.planTotal = total;
+  PAYLOAD_LEN = cfg.payload;
+  primeParticleShape();
+  const est = estimate(cfg);
+  if (cfg.warmup > 0) {
+    setStatus(tag + ': warmup');
+    const wsim = new Sim(cfg, strategy, ctx, null, Math.max(30, Math.round(cfg.warmup * 60)));
+    if (!(await pumpTurbo(wsim, null))) return null;
+  }
+  if (cfg.forceGc && HAS_GC) gc();
+  await sleep(cfg.cooldown);
+  if (S.abort) return null;
+  setStatus(tag + ': midiendo');
+  if (cfg.renderMode === 'none') { ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); }
+  const rec = new Recorder(est.cap);
+  const hs = new HeapSampler(rec);
+  const u0 = heapMB();
+  const sim = new Sim(cfg, strategy, ctx, rec, rec.cap);
+  const u1 = heapMB();
+  const run = { rec, hs, sim, est, hud: cfg.hud, t0: now(), lastHeap: -1e9, lastHud: 0, hudT: now(), hudTicks: 0, busyMs: 0 };
+  S.hiddenFlag = false;
+  ltStart(run.t0);
+  hs.sample(0);
+  const ok = cfg.mode === 'live' ? await pumpLive(sim, run) : await pumpTurbo(sim, run);
+  const t1 = now();
+  const lt = ltStop();
+  if (!ok) return null;
+  hs.sample(t1 - run.t0);
+  let fgc = null;
+  if (HAS_GC && HAS_MEM) {
+    const ub = heapMB(), g0 = now();
+    gc();
+    const g1 = now();
+    fgc = { ms: g1 - g0, garbageMB: (ub - heapMB()) / MB };
+  }
+  const sm = summarize(cfg, strategy, sim, rec, hs, {
+    wallMs: t1 - run.t0, busyMs: cfg.mode === 'turbo' ? run.busyMs : null, timerRes: TIMER_RES,
+    lt, fgc, hidden: S.hiddenFlag, footprintMB: Number.isFinite(u1 - u0) ? (u1 - u0) / MB : null
+  });
+  sim.active = null; run.sim = null;
+  return { sm, rec };
+}
+
+async function runExperiment() {
+  if (S.running) return;
+  const cfg = readCfg();
+  S.running = true; S.abort = false; setRunUI(true);
+  S.exp = { new: [], pool: [] }; S.last = { new: null, pool: null };
+  const plan = [];
+  for (let r = 0; r < cfg.reps; r++) {
+    const order = cfg.strategy === 'ab' ? (r % 2 === 0 ? ['new', 'pool'] : ['pool', 'new']) : [cfg.strategy];
+    for (const s of order) plan.push({ s, r });
+  }
+  try {
+    for (let i = 0; i < plan.length; i++) {
+      if (S.abort) break;
+      const { s, r } = plan[i];
+      const tag = `Corrida ${i + 1} de ${plan.length}, ${s}, repetición ${r + 1} de ${cfg.reps}`;
+      const res = await execRun(cfg, s, tag, i, plan.length);
+      if (!res) break;
+      S.exp[s].push(res.sm);
+      S.last[s] = { rec: res.rec };
+      S.history.push({ id: ++S.seq, when: new Date().toISOString(), cfg: { ...cfg }, sm: res.sm });
+      renderAll();
+      if (i < plan.length - 1) await sleep(cfg.cooldown);
+    }
+    setStatus(S.abort ? 'Detenido.' : 'Listo. Corridas completadas: ' + plan.length + '.');
+    if (!S.abort) $('prog').style.width = '100%';
+  } catch (err) {
+    console.error(err);
+    setStatus('Error: ' + err.message);
+  } finally {
+    S.running = false; setRunUI(false);
+  }
+}
+function setRunUI(running) {
+  $('cfgSet').disabled = running;
+  $('btnRun').disabled = running;
+  $('btnStop').disabled = !running;
+}
+
+/* ---------- Tabla comparativa ---------- */
+const ROWS = [
+  ['Tiempo total'],
+  ['cpuTotalMs', 'CPU total de la corrida', 'ms', 0, 'low', 'Suma del tiempo de todos los ticks (en turbo se mide por bloques y es exacto).'],
+  ['setupMs', 'Setup: pre-alocar el pool', 'ms', 1, 'low', 'El pool paga esto por adelantado; new no tiene setup.'],
+  ['tps', 'Throughput', 'ticks/s de CPU', 0, 'high', 'Ticks que entrarían por segundo si la CPU fuera el único límite.'],
+  ['Tick de CPU (spawn + update + cull + render)'],
+  ['cpu_mean', 'Media', 'ms', 3, 'low'],
+  ['cpu_p50', 'Mediana (p50)', 'ms', 3, 'low'],
+  ['cpu_p95', 'p95', 'ms', 3, 'low'],
+  ['cpu_p99', 'p99', 'ms', 3, 'low'],
+  ['cpu_max', 'Máximo', 'ms', 3, 'low', 'Los picos suelen ser pausas de GC.'],
+  ['cpu_sd', 'Desvío estándar', 'ms', 3, 'low'],
+  ['spikes', 'Ticks pico (más de 3 veces la mediana)', 'ticks', 0, 'low'],
+  ['Intervalo entre frames (solo en vivo)'],
+  ['fps', 'FPS efectivos', 'fps', 1, 'high'],
+  ['raf_mean', 'Media', 'ms', 2, 'low'],
+  ['raf_p95', 'p95', 'ms', 2, 'low'],
+  ['raf_p99', 'p99', 'ms', 2, 'low'],
+  ['raf_max', 'Máximo', 'ms', 2, 'low'],
+  ['hitches', 'Frames de más de 1,5 veces la mediana', 'frames', 0, 'low'],
+  ['longFrames', 'Frames de más de 50 ms', 'frames', 0, 'low'],
+  ['Fases (media por tick)'],
+  ['spawn_mean', 'spawn (acquire + init + resto)', 'ms', 4, 'low'],
+  ['acquire_mean', 'acquire', 'ms', 4, 'low', 'pool.acquire(x, y) o new Particle(x, y). Con un timer grueso este valor es ruidoso.'],
+  ['init_mean', 'init', 'ms', 4, 'low'],
+  ['update_mean', 'update', 'ms', 4, 'low'],
+  ['cull_mean', 'cull (más release con pool)', 'ms', 4, 'low'],
+  ['render_mean', 'render', 'ms', 4, 'low', 'Solo el tiempo de JavaScript; rasterizar el canvas ocurre después.'],
+  ['Costos unitarios'],
+  ['acquire_ns', 'Costo de acquire', 'ns por partícula', 0, 'low', 'Incluye las pausas de GC que caen dentro de la asignación.'],
+  ['spawn_us', 'Costo de spawn completo', 'µs por partícula', 3, 'low'],
+  ['Población'],
+  ['requested', 'Spawns pedidos', '', 0],
+  ['spawned', 'Spawns concretados', '', 0],
+  ['dropPool', 'Descartados por pool agotado', '', 0, 'low'],
+  ['dropCap', 'Descartados por tope de vivas', '', 0],
+  ['alivePeak', 'Pico de partículas vivas', '', 0],
+  ['aliveMean', 'Vivas en promedio', '', 0],
+  ['Objetos'],
+  ['constructed', 'Instancias de Particle construidas', '', 0, 'low'],
+  ['reuse', 'Usos por instancia', 'x', 1, 'high'],
+  ['pool_hitRate', 'Hit rate del pool', '%', 2, 'high'],
+  ['pool_high', 'High-water del pool', 'objetos', 0],
+  ['pool_misses', 'Pedidos sin objeto libre', '', 0, 'low'],
+  ['Memoria y GC (performance.memory)'],
+  ['footprintMB', 'Huella al crear la simulación', 'MB', 2],
+  ['heap_startMB', 'Heap al empezar', 'MB', 1],
+  ['heap_peakMB', 'Heap máximo', 'MB', 1, 'low'],
+  ['heap_endMB', 'Heap al terminar', 'MB', 1],
+  ['heap_allocMBps', 'Tasa de asignación aprox.', 'MB/s', 2, 'low'],
+  ['gc_events', 'Caídas de heap (GC aprox.)', 'eventos', 0, 'low'],
+  ['gc_perSec', 'GC por segundo', '1/s', 2, 'low'],
+  ['gc_reclaimedMB', 'Memoria liberada por esas caídas', 'MB', 1],
+  ['gc_maxDropMB', 'Mayor caída individual', 'MB', 2],
+  ['GC forzado al final (requiere --expose-gc)'],
+  ['fgc_ms', 'Duración de gc()', 'ms', 1, 'low'],
+  ['fgc_garbageMB', 'Basura pendiente liberada', 'MB', 2, 'low'],
+  ['Long Tasks (más de 50 ms)'],
+  ['lt_count', 'Cantidad', '', 0, 'low'],
+  ['lt_total', 'Tiempo total', 'ms', 0, 'low'],
+  ['lt_max', 'La más larga', 'ms', 0, 'low']
+];
+function agg(list) {
+  if (!list.length) return null;
+  const out = {};
+  for (const k of Object.keys(list[0])) {
+    const vals = list.map((s) => s[k]).filter((v) => typeof v === 'number' && Number.isFinite(v));
+    if (!vals.length) { out[k] = null; continue; }
+    const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sd = vals.length > 1 ? Math.sqrt(vals.reduce((a, b) => a + (b - m) * (b - m), 0) / (vals.length - 1)) : null;
+    out[k] = { m, sd };
+  }
+  return out;
+}
+function renderCmp() {
+  const A = agg(S.exp.new), B = agg(S.exp.pool), el = $('cmpWrap');
+  if (!A && !B) { el.innerHTML = '<p class="hint">Todavía no hay corridas en esta tanda.</p>'; $('cmpNote').textContent = ''; return; }
+  $('cmpNote').textContent = 'media de las repeticiones ± desvío; verde = mejor, rojo = peor (diferencias menores al 3 % quedan neutras)';
+  let h = '<table class="tbl"><thead><tr><th>Métrica</th>';
+  if (A) h += `<th class="num c-new">new <small>${S.exp.new.length} rep.</small></th>`;
+  if (B) h += `<th class="num c-pool">pool <small>${S.exp.pool.length} rep.</small></th>`;
+  if (A && B) h += '<th class="num">Diferencia (pool contra new)</th>';
+  h += '</tr></thead><tbody>';
+  let sec = null;
+  const cols = 1 + (A ? 1 : 0) + (B ? 1 : 0) + (A && B ? 1 : 0);
+  const cell = (o, d) => (o && o.m != null) ? fmt(o.m, d) + (o.sd != null ? ` <span class="sd">±${fmt(o.sd, d)}</span>` : '') : '—';
+  for (const r of ROWS) {
+    if (r.length === 1) { sec = r[0]; continue; }
+    const [k, label, unit, d, better, tip] = r;
+    const a = A ? A[k] : null, b = B ? B[k] : null;
+    if ((!a || a.m == null) && (!b || b.m == null)) continue;
+    if (sec) { h += `<tr class="sec"><td colspan="${cols}">${sec}</td></tr>`; sec = null; }
+    h += `<tr><td${tip ? ` title="${tip}"` : ''}>${label} <span class="u">${unit}</span></td>`;
+    if (A) h += `<td class="num c-new">${cell(a, d)}</td>`;
+    if (B) h += `<td class="num c-pool">${cell(b, d)}</td>`;
+    if (A && B) {
+      let dl = '—', cls = '';
+      if (a && b && a.m != null && b.m != null && a.m !== 0) {
+        const pc = (b.m - a.m) / Math.abs(a.m) * 100;
+        dl = (pc > 0 ? '+' : '') + fmt(pc, 1) + ' %';
+        if (better && Math.abs(pc) >= 3) cls = ((better === 'low') === (pc < 0)) ? 'good' : 'bad';
+      }
+      h += `<td class="num ${cls}">${dl}</td>`;
+    }
+    h += '</tr>';
+  }
+  const flags = [...S.exp.new, ...S.exp.pool];
+  if (flags.some((s) => s.hidden)) h += `<tr><td colspan="${cols}" class="warnline" style="color:var(--warn)">Atención: la pestaña estuvo oculta en alguna corrida y esos frames no son representativos.</td></tr>`;
+  if (flags.some((s) => s.truncated)) h += `<tr><td colspan="${cols}" style="color:var(--warn)">Atención: alguna corrida se truncó por exceder los ticks estimados.</td></tr>`;
+  el.innerHTML = h + '</tbody></table>';
+}
+
+/* ---------- Desglose por fase ---------- */
+const PH = [
+  ['acquire', 'acquire', 'var(--ph1)'], ['initx', 'init y resto del spawn', 'var(--ph2)'], ['update', 'update', 'var(--ph3)'],
+  ['cull', 'cull y release', 'var(--ph4)'], ['render', 'render', 'var(--ph5)'], ['other', 'otros', 'var(--ph6)']
+];
+function renderPhases() {
+  const el = $('phases');
+  const rows = [];
+  for (const s of ['new', 'pool']) {
+    const A = agg(S.exp[s]);
+    if (!A) continue;
+    const g = (k) => (A[k] ? A[k].m : 0);
+    const v = { acquire: g('acquire_mean'), initx: Math.max(0, g('spawn_mean') - g('acquire_mean')), update: g('update_mean'), cull: g('cull_mean'), render: g('render_mean') };
+    v.other = Math.max(0, g('cpu_mean') - g('spawn_mean') - v.update - v.cull - v.render);
+    rows.push({ s, v, total: g('cpu_mean') });
+  }
+  if (!rows.length) { el.innerHTML = '<p class="hint">Sin datos todavía.</p>'; return; }
+  const mx = Math.max(...rows.map((r) => r.total)) || 1;
+  let h = '';
+  for (const r of rows) {
+    h += `<div class="phase"><b class="c-${r.s}">${r.s}</b><div><div class="pbar" style="width:${(r.total / mx * 100).toFixed(1)}%">`;
+    for (const [k, name, col] of PH) h += `<i style="flex:${r.v[k]};background:${col}" title="${name}: ${fmt(r.v[k], 4)} ms"></i>`;
+    h += `</div><small class="hint">${PH.map(([k, name]) => name + ' ' + fmt(r.v[k], 3)).join(', ')}. Total ${fmt(r.total, 3)} ms</small></div></div>`;
+  }
+  h += '<div class="legend">' + PH.map(([, name, col]) => `<span><i style="background:${col}"></i>${name}</span>`).join('') + '</div>';
+  el.innerHTML = h;
+}
+
+/* ---------- Gráficos de series (canvas, sin librerías) ---------- */
+function niceStep(range, ticks) {
+  const raw = range / ticks, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+}
+function drawChart(cv, o) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(320, cv.clientWidth), h = cv.clientHeight || 240;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const css = getComputedStyle(document.documentElement);
+  const col = (n) => css.getPropertyValue(n).trim();
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = '12px ' + css.getPropertyValue('--sans');
+  const L = 52, R = 14, T = 26, B = 24, pw = w - L - R, ph = h - T - B;
+  const series = o.series.filter((s) => s.n > 0);
+  if (!series.length) {
+    ctx.fillStyle = col('--mute'); ctx.textAlign = 'center';
+    ctx.fillText(o.empty || 'Sin datos todavía', w / 2, h / 2); return;
+  }
+  let xmax = 0, ymax = 0;
+  for (const s of series) {
+    xmax = Math.max(xmax, (s.xs ? s.xs[s.n - 1] : s.n - 1) * o.xk);
+    for (let i = 0; i < s.n; i++) { const v = s.ys[i] * o.yk; if (v > ymax) ymax = v; }
+  }
+  if (o.yFixed > 0) ymax = o.yFixed;
+  if (!(ymax > 0)) ymax = 1;
+  const ys = niceStep(ymax, 4);
+  ymax = Math.ceil(ymax / ys) * ys;
+  if (!(xmax > 0)) xmax = 1;
+  const X = (v) => L + v / xmax * pw, Y = (v) => T + ph - Math.min(v, ymax) / ymax * ph;
+  ctx.strokeStyle = col('--rule'); ctx.fillStyle = col('--mute'); ctx.lineWidth = 1;
+  ctx.textAlign = 'right';
+  for (let v = 0; v <= ymax + 1e-9; v += ys) {
+    const y = Math.round(Y(v)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(w - R, y); ctx.stroke();
+    ctx.fillText(fmt(v, ys < 1 ? 1 : 0), L - 6, y + 4);
+  }
+  ctx.textAlign = 'center';
+  const xs = niceStep(xmax, 6);
+  for (let v = 0; v <= xmax + 1e-9; v += xs) ctx.fillText(fmt(v, xs < 1 ? 1 : 0), X(v), h - 8);
+  ctx.textAlign = 'left';
+  ctx.fillText(o.xLabel, L, 14 + 0);
+  ctx.textAlign = 'right';
+  ctx.fillText(o.yLabel, w - R, 14);
+  ctx.setLineDash([4, 4]);
+  for (const hl of (o.hlines || [])) {
+    if (hl.v >= ymax) continue;
+    ctx.strokeStyle = col('--mute'); ctx.beginPath(); ctx.moveTo(L, Y(hl.v)); ctx.lineTo(w - R, Y(hl.v)); ctx.stroke();
+    ctx.textAlign = 'left'; ctx.fillText(hl.label, L + 4, Y(hl.v) - 3);
+  }
+  ctx.setLineDash([]);
+  let lx = L + 150;
+  for (const s of series) {
+    ctx.strokeStyle = s.color; ctx.lineWidth = 1.4; ctx.beginPath();
+    const cols = Math.floor(pw);
+    if (s.n <= cols * 2) {
+      for (let i = 0; i < s.n; i++) {
+        const x = X((s.xs ? s.xs[i] : i) * o.xk), y = Y(s.ys[i] * o.yk);
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+    } else {
+      const mn = new Float64Array(cols).fill(Infinity), mx = new Float64Array(cols).fill(-Infinity);
+      for (let i = 0; i < s.n; i++) {
+        const c = Math.min(cols - 1, Math.floor((s.xs ? s.xs[i] : i) * o.xk / xmax * cols));
+        const v = s.ys[i] * o.yk;
+        if (v < mn[c]) mn[c] = v;
+        if (v > mx[c]) mx[c] = v;
+      }
+      let started = false;
+      for (let c = 0; c < cols; c++) {
+        if (mn[c] === Infinity) continue;
+        const x = L + c + 0.5;
+        if (started) ctx.lineTo(x, Y(mx[c])); else { ctx.moveTo(x, Y(mx[c])); started = true; }
+        ctx.lineTo(x, Y(mn[c]));
+      }
+    }
+    ctx.stroke();
+    ctx.fillStyle = s.color; ctx.fillRect(lx, 8, 10, 10);
+    ctx.fillStyle = col('--ink'); ctx.textAlign = 'left'; ctx.fillText(s.name, lx + 15, 17);
+    lx += 70;
+  }
+}
+function renderCharts() {
+  const css = getComputedStyle(document.documentElement);
+  const cN = css.getPropertyValue('--new').trim(), cP = css.getPropertyValue('--pool').trim();
+  const mk = (s, color, f) => { const l = S.last[s]; return l ? f(l.rec, s, color) : { name: s, color, n: 0 }; };
+  drawChart($('chFrame'), {
+    xLabel: 'tick (1 tick = 16,67 ms simulados)', yLabel: 'ms de CPU por tick', xk: 1, yk: 1, yFixed: parseFloat($('yMax').value) || 0,
+    hlines: [{ v: 16.67, label: 'presupuesto de 60 fps' }],
+    series: [mk('new', cN, (r, s, c) => ({ name: s, color: c, n: r.n, ys: r.frame })), mk('pool', cP, (r, s, c) => ({ name: s, color: c, n: r.n, ys: r.frame }))]
+  });
+  drawChart($('chHeap'), {
+    xLabel: 'segundos desde el inicio de la corrida', yLabel: 'MB de heap usado', xk: 0.001, yk: 1 / MB, yFixed: 0,
+    empty: HAS_MEM ? 'Sin datos todavía' : 'performance.memory no está disponible en este navegador',
+    series: [mk('new', cN, (r, s, c) => ({ name: s, color: c, n: r.hn, xs: r.hT, ys: r.hU })), mk('pool', cP, (r, s, c) => ({ name: s, color: c, n: r.hn, xs: r.hT, ys: r.hU }))]
+  });
+}
+
+/* ---------- Historial y exportación ---------- */
+function renderHist() {
+  const el = $('hist');
+  if (!S.history.length) { el.innerHTML = '<p class="hint" style="padding:8px 12px">Acá se acumulan todas las corridas de la sesión, con su configuración.</p>'; return; }
+  let h = '<table class="tbl"><thead><tr><th>#</th><th>Estrategia</th><th>Modo</th><th>Configuración</th><th class="num">CPU total (ms)</th><th class="num">Tick p50</th><th class="num">p95</th><th class="num">p99</th><th class="num">Máx</th><th class="num">spawn ms/tick</th><th class="num">acquire ns</th><th class="num">render ms/tick</th><th class="num">GC aprox.</th><th class="num">Liberado MB</th><th class="num">Asignación MB/s</th><th class="num">Hit rate %</th></tr></thead><tbody>';
+  for (const r of S.history.slice().reverse().slice(0, 300)) {
+    const c = r.cfg, m = r.sm;
+    h += `<tr><td>${r.id}</td><td class="c-${m.strategy}">${m.strategy}</td><td>${c.mode === 'live' ? 'en vivo' : 'turbo'}</td>` +
+      `<td>${fmt(c.total, 0)} en total, ${fmt(c.X, 0)} cada ${fmt(c.Y, 0)} ms, vida ${fmt(c.lifeMin, 0)} a ${fmt(c.lifeMax, 0)} ms, pool ${fmt(c.poolSize, 0)} (${c.poolPolicy === 'drop' ? 'descarta' : 'crece'}), payload ${c.payload}, render ${c.renderMode}, semilla ${c.seed}</td>` +
+      `<td class="num">${fmt(m.cpuTotalMs, 0)}</td><td class="num">${fmt(m.cpu_p50, 3)}</td><td class="num">${fmt(m.cpu_p95, 3)}</td><td class="num">${fmt(m.cpu_p99, 3)}</td><td class="num">${fmt(m.cpu_max, 2)}</td>` +
+      `<td class="num">${fmt(m.spawn_mean, 4)}</td><td class="num">${fmt(m.acquire_ns, 0)}</td><td class="num">${fmt(m.render_mean, 4)}</td>` +
+      `<td class="num">${fmt(m.gc_events, 0)}</td><td class="num">${fmt(m.gc_reclaimedMB, 1)}</td><td class="num">${fmt(m.heap_allocMBps, 2)}</td><td class="num">${fmt(m.pool_hitRate, 1)}</td></tr>`;
+  }
+  el.innerHTML = h + '</tbody></table>';
+}
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function exportCsv() {
+  if (!S.history.length) return;
+  const cfgKeys = ['mode', 'total', 'X', 'Y', 'lifeMin', 'lifeMax', 'maxAlive', 'poolSize', 'poolPolicy', 'payload', 'renderMode', 'warmup', 'seed'];
+  const smKeys = Object.keys(S.history[0].sm).filter((k) => k !== 'mode');
+  const esc = (v) => (v === null || v === undefined) ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+  const lines = [['id', 'fecha', ...cfgKeys.map((k) => 'cfg_' + k), ...smKeys].join(',')];
+  for (const r of S.history) lines.push([r.id, r.when, ...cfgKeys.map((k) => esc(r.cfg[k])), ...smKeys.map((k) => esc(r.sm[k]))].join(','));
+  download('benchmark-object-pool.csv', lines.join('\n'), 'text/csv');
+}
+function exportJson() {
+  const env = { userAgent: navigator.userAgent, timerResMs: TIMER_RES, gcExposed: HAS_GC, performanceMemory: HAS_MEM, cores: navigator.hardwareConcurrency };
+  download('benchmark-object-pool.json', JSON.stringify({ env, runs: S.history }, null, 1), 'application/json');
+}
+function renderAll() { renderCmp(); renderPhases(); renderCharts(); renderHist(); }
+
+/* ---------- Micro-benchmark ---------- */
+const M = { abort: false, running: false };
+const median = (a) => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
+async function runMicro() {
+  if (M.running) return;
+  const iters = Math.max(1000, parseInt($('mIters').value, 10) || 5000000);
+  const K = Math.max(1, parseInt($('mK').value, 10) || 4096);
+  const payload = parseInt($('mPayload').value, 10);
+  const reps = Math.min(50, Math.max(1, parseInt($('mReps').value, 10) || 7));
+  M.running = true; M.abort = false;
+  $('microSet').disabled = true; $('mStop').disabled = false;
+  const res = { new: [], pool: [] };
+  try {
+    primeParticleShape();
+    $('mStatus').textContent = 'Warmup…';
+    await sleep(20);
+    const wi = Math.min(1000000, Math.max(1000, Math.floor(iters / 5)));
+    microRun('new', wi, K, payload); microRun('pool', wi, K, payload);
+    for (let r = 0; r < reps && !M.abort; r++) {
+      for (const k of (r % 2 === 0 ? ['new', 'pool'] : ['pool', 'new'])) {
+        if (M.abort) break;
+        $('mStatus').textContent = `Repetición ${r + 1} de ${reps}: ${k}…`;
+        await sleep(30);
+        if (HAS_GC && $('mGc').checked) gc();
+        const h0 = heapMB();
+        const out = microRun(k, iters, K, payload);
+        const h1 = heapMB();
+        res[k].push({ ms: out.ms, setup: out.setup, dHeap: (h1 - h0) / MB });
+      }
+      renderMicro(res, iters);
+    }
+    $('mStatus').textContent = M.abort ? 'Detenido.' : 'Listo.';
+  } finally {
+    M.running = false; $('microSet').disabled = false; $('mStop').disabled = true;
+  }
+}
+function renderMicro(res, iters) {
+  const row = (k) => {
+    const L = res[k]; if (!L.length) return null;
+    const ms = L.map((x) => x.ms), med = median(ms), mean = ms.reduce((a, b) => a + b, 0) / ms.length;
+    const sd = ms.length > 1 ? Math.sqrt(ms.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (ms.length - 1)) : null;
+    return { k, n: L.length, med, min: Math.min(...ms), sd, ns: med * 1e6 / iters, mops: iters / med / 1000, setup: median(L.map((x) => x.setup)), dHeap: median(L.map((x) => x.dHeap)) };
+  };
+  const a = row('new'), b = row('pool');
+  const rows = [a, b].filter(Boolean);
+  if (!rows.length) return;
+  const mx = Math.max(...rows.map((r) => r.ns));
+  let h = '<table class="tbl" style="max-width:900px"><thead><tr><th>Estrategia</th><th class="num">Mediana (ms)</th><th class="num">Mínimo (ms)</th><th class="num">Desvío (ms)</th><th class="num">ns por operación</th><th class="num">Mop/s</th><th class="num">Setup (ms)</th><th class="num">Variación de heap (MB)</th></tr></thead><tbody>';
+  for (const r of rows) h += `<tr><td class="c-${r.k}"><b>${r.k}</b> <span class="u">${r.n} rep.</span></td><td class="num">${fmt(r.med, 1)}</td><td class="num">${fmt(r.min, 1)}</td><td class="num">${fmt(r.sd, 1)}</td><td class="num">${fmt(r.ns, 1)}</td><td class="num">${fmt(r.mops, 1)}</td><td class="num">${r.k === 'pool' ? fmt(r.setup, 2) : '—'}</td><td class="num">${HAS_MEM ? fmt(r.dHeap, 2) : '—'}</td></tr>`;
+  h += '</tbody></table><div style="max-width:900px;margin-top:12px">';
+  for (const r of rows) h += `<div class="mbar"><b class="c-${r.k}" style="color:var(--${r.k})">${r.k}</b><div><i style="width:${(r.ns / mx * 100).toFixed(1)}%;background:var(--${r.k})"></i></div><span>${fmt(r.ns, 1)} ns</span></div>`;
+  h += '</div>';
+  if (a && b) {
+    const ratio = a.med / b.med;
+    h += `<p>${ratio >= 1 ? 'El pool es' : 'El pool es'} <b>${fmt(ratio >= 1 ? ratio : 1 / ratio, 2)} veces ${ratio >= 1 ? 'más rápido' : 'más lento'}</b> que <code>new</code> en este escenario.`;
+    const save = a.ns - b.ns;
+    if (save > 0) h += ` Su setup de ${fmt(b.setup, 2)} ms se amortiza tras ≈ ${fmt(b.setup * 1e6 / save, 0)} operaciones.`;
+    h += '</p><p class="hint">La variación de heap es una lectura de <code>performance.memory</code> antes y después de la corrida: con new incluye la basura que el GC todavía no recolectó.</p>';
+  }
+  $('mOut').innerHTML = h;
+}
+
+/* ---------- Arranque ---------- */
+function initUi() {
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    for (const t of ['sim', 'micro', 'guia']) $('tab-' + t).hidden = (t !== b.dataset.tab);
+    if (b.dataset.tab === 'sim') renderCharts();
+  }));
+  $('btnTheme').addEventListener('click', () => {
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    $('btnTheme').textContent = dark ? 'Tema claro' : 'Tema oscuro';
+    renderCharts();
+  });
+  $('btnProj').addEventListener('click', () => { document.body.classList.toggle('proj'); renderCharts(); });
+  PRESETS.forEach((p) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = p.name;
+    b.addEventListener('click', () => applyPreset(p));
+    $('presets').appendChild(b);
+  });
+  $('cfgSet').addEventListener('input', updateEstimates);
+  $('cfgSet').addEventListener('change', updateEstimates);
+  $('yMax').addEventListener('input', renderCharts);
+  $('btnRun').addEventListener('click', runExperiment);
+  $('btnStop').addEventListener('click', () => { S.abort = true; setStatus('Deteniendo…'); });
+  $('btnCsv').addEventListener('click', exportCsv);
+  $('btnJson').addEventListener('click', exportJson);
+  $('btnClear').addEventListener('click', () => { S.history = []; S.exp = { new: [], pool: [] }; S.last = { new: null, pool: null }; renderAll(); });
+  $('mRun').addEventListener('click', runMicro);
+  $('mStop').addEventListener('click', () => { M.abort = true; });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && S.running) S.hiddenFlag = true; });
+  let rz = null;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderCharts, 150); });
+  initEnv();
+  ltInit();
+  updateEstimates();
+  renderAll();
+}
+initUi();
+</script>
+</body>
+</html>

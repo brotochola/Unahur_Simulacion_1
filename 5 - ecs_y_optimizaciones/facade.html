@@ -1,0 +1,117 @@
+<script>
+
+    class Fish {
+        // =====================================================================
+        // DATA — un Float32Array por propiedad, indexados por Fish.index
+        // toda la data de todos los peces vive aqui, contigua en memoria
+        // =====================================================================
+        static x = new Float32Array(1000)
+        static y = new Float32Array(1000)
+        static vx = new Float32Array(1000)
+        static vy = new Float32Array(1000)
+
+        // =====================================================================
+        // FREE LIST — stack de índices disponibles para asignar
+        // arranca lleno: [0, 1, 2, ..., 999]
+        // _freeHead apunta al tope del stack
+        // create() hace pop, destroy() hace push
+        // =====================================================================
+        static _freeList = new Uint16Array(1000).map((_, i) => i)
+        static _freeHead = 1000
+
+        // =====================================================================
+        // ACTIVE LIST — array de índices de peces vivos
+        // solo los primeros _activeCount elementos son válidos
+        // el orden no importa, se mantiene compacto con swap-and-pop
+        // =====================================================================
+        static _active = new Uint16Array(1000)
+        static _activeCount = 0
+
+        // =====================================================================
+        // POSICION INVERSA — _pos[index] = posición de ese index en _active
+        // permite encontrar cualquier pez en _active en O(1)
+        // sin esto destroy() necesitaria un indexOf que es O(n)
+        // =====================================================================
+        static _pos = new Uint16Array(1000)
+
+        // =====================================================================
+        // INSTANCIAS PRE-CONSTRUIDAS — un objeto Fish por slot, creados al inicio
+        // create() devuelve uno de estos en lugar de hacer "new Fish()" cada vez
+        // esto evita presión sobre el garbage collector en runtime
+        // =====================================================================
+        static instances = Array.from({ length: 1000 }, (_, i) => {
+            const f = new Fish()
+            f.index = i  // cada instancia conoce su slot para siempre
+            return f
+        })
+
+        // =====================================================================
+        // CREATE — activa un pez del pool
+        // 1. saca un index libre del stack (pop)
+        // 2. lo registra en _active y guarda su posicion en _pos
+        // 3. devuelve la instancia facade pre-construida
+        // O(1), sin allocations, sin GC
+        // =====================================================================
+        static create() {
+            const index = this._freeList[--this._freeHead]   // pop del free list
+            this._pos[index] = this._activeCount             // recordamos donde va a quedar en _active
+            this._active[this._activeCount++] = index        // lo agregamos al final de los activos
+            return this.instances[index]                     // devolvemos la facade pre-construida
+        }
+
+        // =====================================================================
+        // DESTROY — desactiva este pez y libera su slot
+        // usa swap-and-pop para mantener _active compacto sin mover nada más:
+        //   1. el último activo ocupa el lugar del que muere en _active
+        //   2. se actualiza _pos para el que fue movido
+        //   3. el index liberado vuelve al free list (push)
+        // el index de este pez no cambia — solo sale de la lista de activos
+        // O(1), sin búsqueda, sin shifts
+        // =====================================================================
+        destroy() {
+            const dying = this.index                          // index del pez que muere
+            const pos = Fish._pos[dying]                   // su posicion en _active
+            const last = Fish._active[--Fish._activeCount]  // el último activo (lo vamos a mover)
+
+            Fish._active[pos] = last   // el último toma el lugar del que muere
+            Fish._pos[last] = pos    // actualizamos la posicion inversa del que se movió
+
+            Fish._freeList[Fish._freeHead++] = dying  // push: devolvemos el index al free list
+        }
+
+        // =====================================================================
+        // TICKALL — sistema de update, se llama una vez por frame
+        // destructuramos los arrays antes del loop para que el JIT tenga
+        // referencias directas y no tenga que resolver "this" en cada iteracion
+        // iteramos solo los _activeCount peces vivos, saltando los inactivos
+        // =====================================================================
+        static tickAll() {
+            const { x, y, vx, vy, _active, _activeCount } = this
+
+            for (let i = 0; i < _activeCount; i++) {
+                const idx = _active[i]  // indice real en los data arrays
+                x[idx] += vx[idx]
+                y[idx] += vy[idx]
+            }
+        }
+
+        // =====================================================================
+        // GETTERS / SETTERS — la fachada OOP
+        // el dev escribe fish.x = 10 y por debajo toca Fish.x[this.index]
+        // la instancia no guarda ninguna data propia, solo el index
+        // =====================================================================
+        get x() { return Fish.x[this.index] }
+        set x(v) { Fish.x[this.index] = v }
+
+        get y() { return Fish.y[this.index] }
+        set y(v) { Fish.y[this.index] = v }
+
+        get vx() { return Fish.vx[this.index] }
+        set vx(v) { Fish.vx[this.index] = v }
+
+        get vy() { return Fish.vy[this.index] }
+        set vy(v) { Fish.vy[this.index] = v }
+    }
+
+
+</script>

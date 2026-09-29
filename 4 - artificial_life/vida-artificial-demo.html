@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>De la vida discreta a la vida continua</title>
+<style>
+  :root{
+    --bg: #0a0c11;
+    --panel: #12151c;
+    --panel-2: #161a22;
+    --line: #262b36;
+    --ink: #e8ecf1;
+    --ink-dim: #8b93a3;
+    --ink-faint: #565f70;
+    --accent: #6ee7c8;
+    --accent-dim: #2f5c50;
+    --warm: #f2b155;
+    --warm-dim: #6b4a24;
+    --crimson: #d94f7a;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", ui-sans-serif, Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); font-size:14px; line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{ display:flex; flex-direction:column; height:100vh; min-height:560px; }
+
+  /* ---------- header ---------- */
+  header{
+    padding:14px 20px 0 20px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0d0f15,#0a0c11);
+  }
+  .title-row{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:12px; }
+  h1{ font-size:19px; font-weight:600; margin:0; letter-spacing:0.01em; }
+  .subtitle{ color:var(--ink-dim); font-size:13px; }
+  nav.tabs{ display:flex; gap:2px; margin-top:2px; }
+  nav.tabs button{
+    appearance:none; border:none; background:transparent; color:var(--ink-dim);
+    font-family:var(--sans); font-size:13.5px; font-weight:500; cursor:pointer;
+    padding:9px 16px; border-bottom:2px solid transparent; transition:color .15s;
+  }
+  nav.tabs button:hover{ color:var(--ink); }
+  nav.tabs button.active{ color:var(--ink); border-bottom-color:var(--accent); }
+  .caption{
+    color:var(--ink-dim); font-size:12.5px; padding:10px 0 12px 0; max-width:900px;
+  }
+  .caption b{ color:var(--ink); font-weight:600; }
+
+  /* ---------- main layout ---------- */
+  main{ flex:1; display:flex; min-height:0; }
+  .viewport{
+    flex:1; display:flex; flex-direction:column; padding:16px 16px 16px 20px; min-width:0;
+  }
+  .canvas-wrap{
+    flex:1; display:flex; align-items:center; justify-content:center; min-height:0;
+    background:radial-gradient(ellipse at 50% 40%, #0d1018 0%, #08090d 100%);
+    border:1px solid var(--line); border-radius:10px; position:relative; overflow:hidden;
+  }
+  .canvas-inner{ position:relative; aspect-ratio:1/1; height:100%; max-width:100%; }
+  canvas#sim{
+    width:100%; height:100%; display:block;
+    image-rendering:pixelated; image-rendering:crisp-edges;
+    cursor:crosshair; border-radius:2px;
+  }
+  .hint{
+    position:absolute; left:10px; bottom:8px; font-size:11px; color:var(--ink-faint);
+    pointer-events:none; background:rgba(8,9,13,.55); padding:3px 7px; border-radius:5px;
+  }
+  .legend{
+    position:absolute; right:10px; bottom:10px; display:flex; align-items:center; gap:6px;
+    background:rgba(8,9,13,.55); padding:4px 8px; border-radius:6px;
+  }
+  .legend .bar{ width:70px; height:8px; border-radius:3px; }
+  .legend span{ font-size:10.5px; color:var(--ink-faint); font-family:var(--mono); }
+
+  /* ---------- transport bar ---------- */
+  .transport{
+    margin-top:12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px;
+  }
+  .transport .grow{ flex:1 1 140px; display:flex; align-items:center; gap:8px; min-width:120px; }
+  .btn{
+    appearance:none; border:1px solid var(--line); background:var(--panel-2); color:var(--ink);
+    font-family:var(--sans); font-size:12.5px; font-weight:500; padding:7px 12px;
+    border-radius:7px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+    transition:border-color .15s, background .15s;
+  }
+  .btn:hover{ border-color:#3a4152; background:#1a1f29; }
+  .btn.primary{ background:var(--accent); color:#08110d; border-color:var(--accent); font-weight:600; }
+  .btn.primary:hover{ filter:brightness(1.08); }
+  label.mini{ font-size:11.5px; color:var(--ink-dim); white-space:nowrap; }
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; width:100%; height:3px; background:var(--line);
+    border-radius:3px; outline:none; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--accent); border:2px solid #08110d; cursor:pointer; margin-top:-5px;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:11px; height:11px; border-radius:50%; background:var(--accent); border:2px solid #08110d; cursor:pointer;
+  }
+  select{
+    background:var(--panel-2); color:var(--ink); border:1px solid var(--line); border-radius:6px;
+    font-family:var(--sans); font-size:12px; padding:5px 7px; cursor:pointer;
+  }
+  .readout{ font-family:var(--mono); font-size:11.5px; color:var(--accent); min-width:2.4em; text-align:right; }
+
+  /* ---------- side panel ---------- */
+  aside.panel{
+    width:308px; flex:none; border-left:1px solid var(--line); background:var(--panel);
+    padding:16px 16px 20px 16px; overflow-y:auto;
+  }
+  .panel h2{
+    font-size:11.5px; font-weight:600; color:var(--ink-dim); text-transform:none;
+    letter-spacing:.02em; margin:18px 0 8px 0; padding-top:12px; border-top:1px solid var(--line);
+  }
+  .panel h2:first-child{ margin-top:0; padding-top:0; border-top:none; }
+  .field{ margin-bottom:11px; }
+  .field-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .field-row label{ font-size:12.5px; color:var(--ink); }
+  .field .desc{ font-size:11px; color:var(--ink-faint); margin-top:2px; }
+  .field select{ width:100%; }
+
+  .previewbox{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:8px;
+    margin-bottom:10px;
+  }
+  .previewbox .lbl{ font-size:10.5px; color:var(--ink-faint); margin-bottom:6px; }
+  canvas.pv{ width:100%; display:block; border-radius:4px; background:#0a0c11; }
+
+  .toggle-grid{ display:grid; grid-template-columns:repeat(9,1fr); gap:3px; }
+  .toggle-grid button{
+    appearance:none; border:1px solid var(--line); background:var(--panel-2); color:var(--ink-dim);
+    font-family:var(--mono); font-size:11px; padding:6px 0; border-radius:5px; cursor:pointer;
+  }
+  .toggle-grid button.on-birth{ background:var(--warm-dim); border-color:var(--warm); color:var(--warm); }
+  .toggle-grid button.on-survive{ background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
+  .rulecode{ font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--panel-2);
+    border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-top:8px; }
+
+  .nh-block{ border:1px solid var(--line); border-radius:8px; padding:9px 10px; margin-bottom:9px; background:var(--panel-2); }
+  .nh-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .nh-head .tag{ font-size:11.5px; font-weight:600; }
+  .nh-head .tag.alive{ color:var(--accent); }
+  .nh-head .tag.dead{ color:var(--crimson); }
+  .nh-head select{ font-size:11px; padding:3px 5px; }
+  .chk{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-dim); }
+
+  /* ---------- tooltips ---------- */
+  [data-tip]{ cursor:help; }
+  .field-row label[data-tip], .nh-head .tag[data-tip], .chk[data-tip]{
+    border-bottom:1px dotted var(--ink-faint);
+  }
+  .info-icon{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:14px; height:14px; border-radius:50%; margin-left:5px;
+    background:var(--panel-2); border:1px solid var(--ink-faint); color:var(--ink-dim);
+    font-size:10px; font-style:italic; font-family:Georgia,serif; line-height:1; cursor:help;
+    flex:none;
+  }
+  .info-icon:hover{ border-color:var(--accent); color:var(--accent); }
+  .tooltip{
+    display:none; position:fixed; z-index:500; max-width:230px;
+    background:#1b202b; color:var(--ink); border:1px solid #333c4d; border-radius:7px;
+    padding:8px 10px; font-size:11.5px; line-height:1.4; font-family:var(--sans);
+    box-shadow:0 8px 24px rgba(0,0,0,.45); pointer-events:none;
+  }
+
+  /* ---------- header info button ---------- */
+  .btn-help{
+    margin-left:auto; appearance:none; border:1px solid var(--accent-dim); background:transparent;
+    color:var(--accent); font-family:var(--sans); font-size:12px; font-weight:600;
+    padding:6px 12px; border-radius:7px; cursor:pointer; white-space:nowrap;
+  }
+  .btn-help:hover{ background:var(--accent-dim); }
+
+  /* ---------- compare modal ---------- */
+  .modal-overlay{
+    display:none; position:fixed; inset:0; z-index:900; background:rgba(5,6,9,.72);
+    align-items:center; justify-content:center; padding:24px;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    max-width:760px; width:100%; max-height:86vh; overflow-y:auto; padding:22px 24px 24px 24px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .modal-card h2{ font-size:17px; margin:0 0 4px 0; color:var(--ink); border:none; padding:0; text-transform:none; }
+  .modal-card .modal-sub{ color:var(--ink-dim); font-size:12.5px; margin-bottom:14px; }
+  .modal-card p{ font-size:13px; color:var(--ink-dim); line-height:1.55; margin:0 0 12px 0; }
+  .modal-card p b{ color:var(--ink); }
+  .modal-close{
+    float:right; appearance:none; border:1px solid var(--line); background:var(--panel-2); color:var(--ink-dim);
+    font-size:16px; line-height:1; width:28px; height:28px; border-radius:7px; cursor:pointer;
+  }
+  .modal-close:hover{ color:var(--ink); border-color:#3a4152; }
+  table.cmp{ width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  table.cmp th, table.cmp td{ text-align:left; padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.cmp th{ color:var(--ink-dim); font-weight:600; font-size:11px; text-transform:none; white-space:nowrap; }
+  table.cmp td{ color:var(--ink); line-height:1.45; }
+  table.cmp tr:last-child td{ border-bottom:none; }
+  table.cmp td.hl-conway{ border-left:2px solid #7d8494; }
+  table.cmp td.hl-lenia{ border-left:2px solid var(--accent); }
+  table.cmp td.hl-smoothlife{ border-left:2px solid var(--warm); }
+  table.cmp td.hl-mnca{ border-left:2px solid var(--crimson); }
+
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:#2a3040; border-radius:6px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+
+  @media (max-width:860px){
+    main{ flex-direction:column; }
+    aside.panel{ width:auto; border-left:none; border-top:1px solid var(--line); max-height:46vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="title-row">
+      <h1>De la vida discreta a la vida continua</h1>
+      <span class="subtitle">cuatro autómatas celulares, un mismo panel de control</span>
+      <button class="btn-help" id="btnCompare">⓵⓶⓷⓸ ¿en qué se diferencian?</button>
+    </div>
+    <nav class="tabs">
+      <button data-mode="conway" class="active" data-tip="Vecindad de Moore fija (8 vecinos), estado binario (vivo/muerto) y una regla por conteo entero de vecinos vivos. El punto de partida: el Juego de la Vida de Conway (1970).">Conway</button>
+      <button data-mode="lenia" data-tip="El vecindario se vuelve un kernel continuo (con anillos de peso β) y el estado pasa a ser un número entre 0 y 1. La regla de nacer/morir se reemplaza por una función de crecimiento suave. De Bert Chan (2018).">Lenia</button>
+      <button data-mode="smoothlife" data-tip="La generalización más directa de Conway: mismo esquema de 'disco interior + anillo exterior', pero con bordes difusos y una transición suave en vez de umbrales enteros. De Stephan Rafler (2011).">SmoothLife</button>
+      <button data-mode="mnca" data-tip="Varias vecindades distintas (cada una con su propio radio y rango) se evalúan en el mismo paso, cada una encargada de una función distinta: nacer, sobrevivir o morir.">MNCA</button>
+    </nav>
+    <div class="caption" id="caption"></div>
+  </header>
+
+  <main>
+    <div class="viewport">
+      <div class="canvas-wrap" data-tip="La grilla es toroidal: el borde derecho se conecta con el izquierdo y el de abajo con el de arriba, así ningún patrón 'choca' contra un límite.">
+        <div class="canvas-inner">
+          <canvas id="sim" width="110" height="110"></canvas>
+          <div class="hint">arrastrá para dibujar · shift+arrastrar para borrar · espacio: reproducir</div>
+          <div class="legend" id="legend" style="display:none" data-tip="Escala de color del estado de cada célula: 0 = vacío/muerto, 1 = máximo. En Conway el estado es binario; en Lenia, SmoothLife y MNCA es continuo, por eso se ve un degradé.">
+            <span>0</span><div class="bar" id="legendBar"></div><span>1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="transport">
+        <button class="btn primary" id="btnPlay" data-tip="Reproduce la simulación paso a paso de forma automática, a la velocidad indicada. Atajo: barra espaciadora.">▶ Reproducir</button>
+        <button class="btn" id="btnStep" data-tip="Calcula un único paso (una generación) y se detiene ahí, esté o no en reproducción. Útil para observar un cambio a la vez.">Paso</button>
+        <button class="btn" id="btnRandom" data-tip="Vuelve a sembrar el tablero con ruido aleatorio adecuado para el algoritmo activo (no es el mismo tipo de siembra para los cuatro modos).">Aleatorizar</button>
+        <button class="btn" id="btnClear" data-tip="Borra el tablero entero: todas las células quedan en 0 (vacías / muertas).">Limpiar</button>
+
+        <div class="grow" style="max-width:160px">
+          <label class="mini" data-tip="Cantidad de pasos de simulación calculados por segundo durante la reproducción.">velocidad</label>
+          <input type="range" id="speed" min="1" max="60" value="20">
+          <span class="readout" id="speedVal">20</span>
+        </div>
+        <div class="grow" style="max-width:150px">
+          <label class="mini" data-tip="Radio del pincel: cuántas celdas alrededor del cursor se pintan al hacer clic o arrastrar sobre el tablero.">pincel</label>
+          <input type="range" id="brush" min="0" max="8" value="2">
+          <span class="readout" id="brushVal">2</span>
+        </div>
+        <label class="mini" data-tip="Cantidad de celdas por lado de la grilla. Más resolución = más detalle, pero cada paso tarda más en calcularse.">resolución</label>
+        <select id="resSel">
+          <option value="80">baja</option>
+          <option value="110" selected>media</option>
+          <option value="140">alta</option>
+        </select>
+        <span class="mini" data-tip="Generación actual: cuántos pasos de simulación pasaron desde el último 'Limpiar' o 'Aleatorizar'.">gen <span class="readout" id="genVal">0</span></span>
+      </div>
+    </div>
+
+    <aside class="panel" id="panel"></aside>
+  </main>
+</div>
+
+<div class="modal-overlay" id="compareModal">
+  <div class="modal-card">
+    <button class="modal-close" id="compareClose" aria-label="cerrar">×</button>
+    <h2>Cuatro formas de "estar vivo"</h2>
+    <div class="modal-sub">de la vida discreta a la vida continua, paso a paso</div>
+    <p>Los cuatro modos de esta página son variaciones sobre <b>la misma pregunta</b>: ¿qué pasa con una célula si miro el estado de sus vecinos? Lo único que cambia entre uno y otro es <b>qué es un vecino</b>, <b>qué es el estado</b> de una célula, y <b>qué forma tiene la regla</b> que convierte "lo que veo alrededor" en "lo que hago a continuación".</p>
+    <p><b>Conway</b> es el caso más simple posible: vecindad fija de 8 celdas, estado binario, regla por conteo entero (una tabla de "sí/no" para cada cantidad de vecinos vivos). <b>Lenia</b> vuelve continuo todo lo discreto de Conway a la vez: el vecindario pasa a ser un kernel circular con pesos que decaen suavemente, el estado pasa a ser un número entre 0 y 1, y la tabla de sí/no se reemplaza por una curva de crecimiento (una campana centrada en μ). <b>SmoothLife</b> es una generalización más conservadora: mantiene la idea de "disco interior + anillo exterior" de Conway (yo mismo vs. mis vecinos) pero difumina los bordes y cambia los umbrales enteros por una transición sigmoide suave — es, en ese sentido, el punto medio entre Conway y Lenia. <b>MNCA</b> toma otro camino: en vez de una sola vecindad más compleja, usa <b>varias vecindades simples</b> en simultáneo, cada una responsable de una única función (nacer, sobrevivir o morir), aplicadas en cadena.</p>
+    <table class="cmp">
+      <tr><th></th><th>Conway</th><th>Lenia</th><th>SmoothLife</th><th>MNCA</th></tr>
+      <tr>
+        <td>vecindad</td>
+        <td class="hl-conway">Moore fija: los 8 vecinos inmediatos</td>
+        <td class="hl-lenia">kernel circular de radio R, con 1-3 anillos de peso β</td>
+        <td class="hl-smoothlife">disco interior + anillo exterior (una versión continua de Moore)</td>
+        <td class="hl-mnca">2-3 vecindades simples (anillos), cada una con su propio radio</td>
+      </tr>
+      <tr>
+        <td>estado de una célula</td>
+        <td class="hl-conway">binario: 0 ó 1</td>
+        <td class="hl-lenia">continuo: cualquier valor entre 0 y 1</td>
+        <td class="hl-smoothlife">continuo: cualquier valor entre 0 y 1</td>
+        <td class="hl-mnca">binario: 0 ó 1 (pero el promedio del vecindario es continuo)</td>
+      </tr>
+      <tr>
+        <td>regla</td>
+        <td class="hl-conway">tabla B/S: nace o sobrevive según el conteo exacto de vecinos vivos</td>
+        <td class="hl-lenia">función de crecimiento continua (campana centrada en μ, ancho σ)</td>
+        <td class="hl-smoothlife">doble sigmoide: umbrales de nacimiento/supervivencia con bordes suaves</td>
+        <td class="hl-mnca">cada vecindad activa una acción (nacer/morir) cuando su promedio cae en un rango</td>
+      </tr>
+      <tr>
+        <td>avance en el tiempo</td>
+        <td class="hl-conway">un paso discreto reemplaza todo el estado</td>
+        <td class="hl-lenia">integración: el estado se mueve un Δt=1/T hacia lo que indica la regla</td>
+        <td class="hl-smoothlife">integración: el estado se mueve un Δt hacia un valor objetivo</td>
+        <td class="hl-mnca">un paso discreto; las vecindades se aplican en orden, una puede pisar a otra</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ===================================================================
+   ENGINE  (pure simulation logic — no DOM access below this block
+   except through the small "N" parameter, so it can be unit-tested
+   headlessly)
+   =================================================================== */
+
+const WRAP_PAD = 26;
+
+function buildWrapTable(N, pad){
+  const size = N + 2*pad;
+  const t = new Int32Array(size);
+  for (let i=0;i<size;i++){
+    const v = i - pad;
+    t[i] = ((v % N) + N) % N;
+  }
+  return t;
+}
+
+// Build a normalized radial kernel (sum of weights = 1) as flat typed arrays.
+function buildRadialKernel(rFn, R){
+  const Ri = Math.ceil(R);
+  const dx=[], dy=[], w=[];
+  let sum=0;
+  for (let j=-Ri;j<=Ri;j++){
+    for (let i=-Ri;i<=Ri;i++){
+      const r = Math.sqrt(i*i+j*j)/R;
+      if (r>1) continue;
+      const wt = rFn(r);
+      if (wt<=0) continue;
+      dx.push(i); dy.push(j); w.push(wt); sum+=wt;
+    }
+  }
+  const n=dx.length;
+  const DX=new Int16Array(n), DY=new Int16Array(n), W=new Float32Array(n);
+  for (let k=0;k<n;k++){ DX[k]=dx[k]; DY[k]=dy[k]; W[k]= sum>0 ? w[k]/sum : 0; }
+  return {DX,DY,W,n};
+}
+
+// out[y*N+x] = weighted average of state over the kernel, toroidal wrap.
+function convolve(state, N, kernel, wrap, out){
+  const {DX,DY,W,n} = kernel;
+  for (let y=0;y<N;y++){
+    const rowBase=y*N;
+    for (let x=0;x<N;x++){
+      let sum=0;
+      for (let k=0;k<n;k++){
+        const nx = wrap[x+DX[k]+WRAP_PAD];
+        const ny = wrap[y+DY[k]+WRAP_PAD];
+        sum += W[k]*state[ny*N+nx];
+      }
+      out[rowBase+x]=sum;
+    }
+  }
+  return out;
+}
+
+function sigmoid(x,a,alpha){ return 1/(1+Math.exp(-4*(x-a)/Math.max(alpha,1e-4))); }
+function sigmoidInterval(x,a,b,alpha){ return sigmoid(x,a,alpha)*(1-sigmoid(x,b,alpha)); }
+function mix(a,b,t){ return a*(1-t)+b*t; }
+function clamp01(v){ return v<0?0:(v>1?1:v); }
+
+// scattered soft noise patches — the standard "soup" seeding used to find
+// self-organising patterns in continuous cellular automata.
+function patchySeed(N, patches, patchR, density){
+  const state = new Float32Array(N*N);
+  for (let p=0;p<patches;p++){
+    const cx=Math.random()*N, cy=Math.random()*N;
+    const R = patchR;
+    for (let j=-R;j<=R;j++){
+      for (let i=-R;i<=R;i++){
+        if (Math.sqrt(i*i+j*j)>R) continue;
+        if (Math.random()>density) continue;
+        const x=((Math.round(cx+i)%N)+N)%N;
+        const y=((Math.round(cy+j)%N)+N)%N;
+        state[y*N+x]=Math.random();
+      }
+    }
+  }
+  return state;
+}
+
+function uniformSeed(N, density){
+  const state = new Float32Array(N*N);
+  for (let i=0;i<state.length;i++) state[i] = Math.random()<density ? 1 : 0;
+  return state;
+}
+
+/* ---------- Lenia kernel core (Chan 2019), with 1-3 concentric rings ---------- */
+function leniaKernelFn(betas){
+  const Br = betas.length;
+  return function(r){
+    if (r<=0 || r>=1) return 0;
+    let idx = Math.floor(r*Br);
+    if (idx>=Br) idx=Br-1;
+    const beta = betas[idx];
+    if (beta<=0) return 0;
+    const rr = (r*Br) % 1;
+    if (rr<=0 || rr>=1) return 0;
+    return beta*Math.exp(4 - 1/(rr*(1-rr)));
+  };
+}
+function leniaGrowth(u, mu, sigma){
+  return 2*Math.exp(-((u-mu)*(u-mu))/(2*sigma*sigma)) - 1;
+}
+
+/* ===================================================================
+   MODES
+   =================================================================== */
+
+const Modes = {};
+
+/* ---------------- Conway ---------------- */
+Modes.conway = {
+  key:'conway', label:'Conway',
+  caption:'Vecindad de Moore fija (los 8 vecinos), estado binario y una regla por <b>conteo entero</b>: cada célula mira cuántos de sus 8 vecinos están vivos y consulta dos listas fijas — "nace si tiene tantos vecinos" / "sobrevive si tiene tantos". Todo lo que sigue es, en el fondo, una forma de volver continua alguna de estas tres piezas.',
+  params:{ birth:[false,false,false,true,false,false,false,false,false],
+           survive:[false,false,true,true,false,false,false,false,false] },
+  state:null, N:0,
+  init(N){ this.N=N; this.state = uniformSeed(N,0.3); },
+  resize(N){ this.N=N; this.state = uniformSeed(N,0.3); },
+  randomize(){ this.state = uniformSeed(this.N,0.3); },
+  clear(){ this.state.fill(0); },
+  rebuildKernel(){ /* fixed Moore neighbourhood, nothing to rebuild */ },
+  step(){
+    const N=this.N, s=this.state, out=new Float32Array(N*N);
+    const {birth,survive}=this.params;
+    for (let y=0;y<N;y++){
+      const yu=(y-1+N)%N, yd=(y+1)%N;
+      for (let x=0;x<N;x++){
+        const xl=(x-1+N)%N, xr=(x+1)%N;
+        const cnt = s[yu*N+xl]+s[yu*N+x]+s[yu*N+xr]+
+                    s[y*N+xl]+ s[y*N+xr]+
+                    s[yd*N+xl]+s[yd*N+x]+s[yd*N+xr];
+        const c = Math.round(cnt);
+        const alive = s[y*N+x] > 0.5;
+        out[y*N+x] = alive ? (survive[c]?1:0) : (birth[c]?1:0);
+      }
+    }
+    this.state = out;
+  },
+  colorFor(v){ return v>0.5 ? [110,231,200] : [10,12,17]; }
+};
+
+/* ---------------- Lenia ---------------- */
+Modes.lenia = {
+  key:'lenia', label:'Lenia',
+  caption:'Las tres piezas de Conway se vuelven continuas a la vez: el vecindario pasa a ser un <b>kernel</b> circular (radio R, con anillos de peso β) que da un promedio ponderado en vez de un conteo; el estado es un valor entre 0 y 1 en vez de vivo/muerto; y la tabla B/S se reemplaza por una <b>función de crecimiento</b> suave (una campana centrada en μ, de ancho σ) que se integra en el tiempo en pasos de Δt=1/T.',
+  params:{ R:13, T:10, mu:0.15, sigma:0.015, numRings:1, beta1:1, beta2:0.7, beta3:0.4 },
+  state:null, buf:null, N:0, kernel:null, wrap:null,
+  init(N){ this.N=N; this.wrap=buildWrapTable(N,WRAP_PAD); this.rebuildKernel();
+    this.state=patchySeed(N,40,Math.round(this.params.R),0.5); this.buf=new Float32Array(N*N); },
+  resize(N){ this.N=N; this.wrap=buildWrapTable(N,WRAP_PAD); this.rebuildKernel();
+    this.state=patchySeed(N,40,Math.round(this.params.R),0.5); this.buf=new Float32Array(N*N); },
+  randomize(){ this.state=patchySeed(this.N,40,Math.round(this.params.R),0.5); },
+  clear(){ this.state.fill(0); },
+  rebuildKernel(){
+    const p=this.params;
+    const betas=[p.beta1,p.beta2,p.beta3].slice(0,p.numRings);
+    this.kernel = buildRadialKernel(leniaKernelFn(betas), p.R);
+  },
+  step(){
+    const N=this.N, p=this.params;
+    const K = convolve(this.state, N, this.kernel, this.wrap, this.buf);
+    const s=this.state, dt=1/p.T;
+    const out=new Float32Array(N*N);
+    for (let i=0;i<s.length;i++){
+      out[i]=clamp01(s[i]+dt*leniaGrowth(K[i],p.mu,p.sigma));
+    }
+    this.state=out;
+  },
+  colorFor(v){ return valueToRGB(v); },
+  drawKernel(ctx,w,h){
+    const p=this.params; const betas=[p.beta1,p.beta2,p.beta3].slice(0,p.numRings);
+    const fn = leniaKernelFn(betas);
+    const img = ctx.createImageData(w,h);
+    const cx=w/2, cy=h/2, rad=Math.min(w,h)/2-2;
+    for (let y=0;y<h;y++){
+      for (let x=0;x<w;x++){
+        const dx=(x-cx)/rad, dy=(y-cy)/rad;
+        const r=Math.sqrt(dx*dx+dy*dy);
+        const val = r<=1 ? fn(r) : 0;
+        const [rr,gg,bb]= val>0 ? valueToRGB(Math.min(1,val*1.4)) : [10,12,17];
+        const idx=(y*w+x)*4;
+        img.data[idx]=rr; img.data[idx+1]=gg; img.data[idx+2]=bb; img.data[idx+3]=255;
+      }
+    }
+    ctx.putImageData(img,0,0);
+  },
+  drawGrowth(ctx,w,h){
+    const p=this.params;
+    ctx.clearRect(0,0,w,h);
+    const midY=h*0.55;
+    ctx.strokeStyle='#232838'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,midY); ctx.lineTo(w,midY); ctx.stroke();
+    ctx.beginPath();
+    for (let x=0;x<w;x++){
+      const u=x/w; const g=leniaGrowth(u,p.mu,p.sigma);
+      const y = midY - g*(h*0.42);
+      if (x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle='#6ee7c8'; ctx.lineWidth=1.6; ctx.stroke();
+    const mx = p.mu*w;
+    ctx.strokeStyle='#3a4152'; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(mx,0); ctx.lineTo(mx,h); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+};
+
+/* ---------------- SmoothLife ---------------- */
+Modes.smoothlife = {
+  key:'smoothlife', label:'SmoothLife',
+  caption:'La generalización más "conservadora" de Conway: en vez de un kernel único como Lenia, mantiene separados un disco interior (\u201cyo\u201d) y un anillo exterior (\u201cmis vecinos\u201d), tal como el propio centro y los 8 vecinos de Conway. Lo único continuo es el borde de esas formas y la transición: umbrales de nacimiento/supervivencia con bordes difusos (sigmoides) en vez de un conteo entero.',
+  params:{ outerR:15, innerRatio:0.30, edge:0.15, b1:0.26, b2:0.38, s1:0.27, s2:0.47, alphaN:0.08, alphaM:0.15, dt:1.0 },
+  state:null, bufM:null, bufN:null, N:0, kInner:null, kOuter:null, wrap:null,
+  init(N){ this.N=N; this.wrap=buildWrapTable(N,WRAP_PAD); this.rebuildKernel();
+    this.state=patchySeed(N,40,Math.round(this.params.outerR),0.5);
+    this.bufM=new Float32Array(N*N); this.bufN=new Float32Array(N*N); },
+  resize(N){ this.init(N); },
+  randomize(){ this.state=patchySeed(this.N,40,Math.round(this.params.outerR),0.5); },
+  clear(){ this.state.fill(0); },
+  rebuildKernel(){
+    const p=this.params;
+    const innerR = Math.max(1, p.outerR*p.innerRatio);
+    this.kInner = buildRadialKernel((r)=> 1-sigmoid(r,1,p.edge), innerR);
+    this.kOuter = buildRadialKernel((r)=> sigmoid(r,p.innerRatio,p.edge)*(1-sigmoid(r,1,p.edge)), p.outerR);
+  },
+  step(){
+    const N=this.N, p=this.params, s=this.state;
+    const m = convolve(s,N,this.kInner,this.wrap,this.bufM);
+    const n = convolve(s,N,this.kOuter,this.wrap,this.bufN);
+    const out=new Float32Array(N*N);
+    for (let i=0;i<s.length;i++){
+      const mm=m[i];
+      const thLow = mix(p.b1,p.s1, sigmoid(mm,0.5,p.alphaM));
+      const thHigh= mix(p.b2,p.s2, sigmoid(mm,0.5,p.alphaM));
+      const target = sigmoidInterval(n[i],thLow,thHigh,p.alphaN);
+      out[i]=clamp01(s[i]+p.dt*(target-s[i]));
+    }
+    this.state=out;
+  },
+  colorFor(v){ return valueToRGB(v); },
+  drawKernel(ctx,w,h){
+    const p=this.params;
+    const img = ctx.createImageData(w,h);
+    const cx=w/2, cy=h/2, rad=Math.min(w,h)/2-2;
+    for (let y=0;y<h;y++){
+      for (let x=0;x<w;x++){
+        const dx=(x-cx)/rad, dy=(y-cy)/rad;
+        const r=Math.sqrt(dx*dx+dy*dy);
+        let rr=10,gg=12,bb=17;
+        if (r<=1){
+          const inner = 1-sigmoid(r,1,p.edge*(1/p.innerRatio));
+          const outer = sigmoid(r,p.innerRatio,p.edge)*(1-sigmoid(r,1,p.edge));
+          if (inner>0.05){ rr=110;gg=231;bb=200; const a=Math.min(1,inner); rr=10+(rr-10)*a; gg=12+(gg-12)*a; bb=17+(bb-17)*a; }
+          else if (outer>0.05){ const a=Math.min(1,outer); rr=10+(242-10)*a; gg=12+(121-12)*a; bb=17+(59-17)*a; }
+        }
+        const idx=(y*w+x)*4;
+        img.data[idx]=rr; img.data[idx+1]=gg; img.data[idx+2]=bb; img.data[idx+3]=255;
+      }
+    }
+    ctx.putImageData(img,0,0);
+  },
+  drawGrowth(ctx,w,h){
+    const p=this.params;
+    ctx.clearRect(0,0,w,h);
+    // birth band (m=0) and survive band (s=1) on x-axis
+    ctx.fillStyle='rgba(242,177,85,.35)';
+    ctx.fillRect(p.b1*w, h-6, (p.b2-p.b1)*w, 5);
+    ctx.fillStyle='rgba(110,231,200,.35)';
+    ctx.fillRect(p.s1*w, h-13, (p.s2-p.s1)*w, 5);
+    ctx.beginPath();
+    for (let x=0;x<w;x++){
+      const n=x/w; const y=sigmoidInterval(n,p.b1,p.b2,p.alphaN);
+      const py=h-16 - y*(h-22);
+      if (x===0) ctx.moveTo(x,py); else ctx.lineTo(x,py);
+    }
+    ctx.strokeStyle='#f2b155'; ctx.lineWidth=1.6; ctx.stroke();
+    ctx.beginPath();
+    for (let x=0;x<w;x++){
+      const n=x/w; const y=sigmoidInterval(n,p.s1,p.s2,p.alphaN);
+      const py=h-16 - y*(h-22);
+      if (x===0) ctx.moveTo(x,py); else ctx.lineTo(x,py);
+    }
+    ctx.strokeStyle='#6ee7c8'; ctx.lineWidth=1.6; ctx.stroke();
+  }
+};
+
+/* ---------------- MNCA ---------------- */
+Modes.mnca = {
+  key:'mnca', label:'MNCA',
+  caption:'En vez de complejizar una sola vecindad, usa <b>varias vecindades simples</b> a la vez (cada una un anillo con su propio radio), y cada una tiene una única responsabilidad: una decide quién nace, otra quién muere por aislamiento, otra quién muere por saturación. Se aplican en orden, una puede pisar el resultado de la anterior — así, varias escalas espaciales conviven en la misma célula.',
+  params:{
+    nh:[
+      {label:'vecindad 1 · núcleo',        rInner:0, rOuter:5,  lo:0.30, hi:0.45, alive:true,  on:true},
+      {label:'vecindad 2 · aislamiento',   rInner:0, rOuter:5,  lo:0.00, hi:0.12, alive:false, on:true},
+      {label:'vecindad 3 · saturación',    rInner:5, rOuter:11, lo:0.35, hi:1.00, alive:false, on:true},
+    ]
+  },
+  state:null, N:0, kernels:null, wrap:null,
+  init(N){ this.N=N; this.wrap=buildWrapTable(N,WRAP_PAD); this.rebuildKernel();
+    const maxR = Math.max(...this.params.nh.map(n=>n.rOuter));
+    this.state=patchySeed(N,40,Math.round(maxR),0.5);
+    for (let i=0;i<this.state.length;i++) this.state[i]= this.state[i]>0.5?1:0; },
+  resize(N){ this.init(N); },
+  randomize(){
+    const maxR = Math.max(...this.params.nh.map(n=>n.rOuter));
+    this.state=patchySeed(this.N,40,Math.round(maxR),0.5);
+    for (let i=0;i<this.state.length;i++) this.state[i]= this.state[i]>0.5?1:0;
+  },
+  clear(){ this.state.fill(0); },
+  rebuildKernel(){
+    this.kernels = this.params.nh.map(nh=>{
+      const rO = Math.max(nh.rInner+1, nh.rOuter);
+      const rel = nh.rInner/rO;
+      return buildRadialKernel((r)=> (r>=rel?1:0), rO);
+    });
+  },
+  step(){
+    const N=this.N, s=this.state, nhs=this.params.nh, kers=this.kernels;
+    const finalPop = new Float32Array(N*N);
+    for (let i=0;i<s.length;i++) finalPop[i]= s[i]>0.5?1:0;
+    const tmp = new Float32Array(N*N);
+    for (let idx=0; idx<nhs.length; idx++){
+      const nh=nhs[idx]; if (!nh.on) continue;
+      const avg = convolve(s,N,kers[idx],this.wrap,tmp);
+      const lo=Math.min(nh.lo,nh.hi), hi=Math.max(nh.lo,nh.hi);
+      for (let i=0;i<s.length;i++){
+        const inRange = avg[i]>=lo && avg[i]<=hi;
+        if (inRange) finalPop[i] = nh.alive ? 1 : 0;
+      }
+    }
+    this.state = finalPop;
+  },
+  colorFor(v){ return v>0.5 ? [217,79,122] : [10,12,17]; }
+};
+
+/* value -> RGB, warm "magma-like" colormap used for continuous states */
+const CMAP=[[0,10,12,17],[0.25,59,19,96],[0.5,179,34,109],[0.75,242,121,59],[1,255,243,196]];
+function valueToRGB(v){
+  v = v<0?0:(v>1?1:v);
+  for (let i=0;i<CMAP.length-1;i++){
+    const a=CMAP[i], b=CMAP[i+1];
+    if (v>=a[0] && v<=b[0]){
+      const f=(v-a[0])/(b[0]-a[0]);
+      return [a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f, a[3]+(b[3]-a[3])*f];
+    }
+  }
+  return [255,243,196];
+}
+
+/* expose engine for optional headless testing */
+if (typeof module !== 'undefined') {
+  module.exports = { Modes, buildWrapTable, buildRadialKernel, convolve, valueToRGB };
+}
+
+/* ===================================================================
+   UI  (DOM wiring)
+   =================================================================== */
+if (typeof document !== 'undefined'){
+
+const els = {
+  canvas: document.getElementById('sim'),
+  panel: document.getElementById('panel'),
+  caption: document.getElementById('caption'),
+  tabs: document.querySelectorAll('nav.tabs button'),
+  btnPlay: document.getElementById('btnPlay'),
+  btnStep: document.getElementById('btnStep'),
+  btnRandom: document.getElementById('btnRandom'),
+  btnClear: document.getElementById('btnClear'),
+  speed: document.getElementById('speed'),
+  speedVal: document.getElementById('speedVal'),
+  brush: document.getElementById('brush'),
+  brushVal: document.getElementById('brushVal'),
+  resSel: document.getElementById('resSel'),
+  genVal: document.getElementById('genVal'),
+  legend: document.getElementById('legend'),
+  legendBar: document.getElementById('legendBar'),
+};
+els.legendBar.style.background = 'linear-gradient(90deg,#0a0c11,#3b1360,#b3226d,#f2793b,#fff3c4)';
+
+/* ---------------- tooltips ---------------- */
+// Tooltip único, reutilizado para toda la app. Se posiciona con position:fixed
+// para no quedar recortado por los contenedores con overflow (el panel lateral).
+const tipEl = document.createElement('div');
+tipEl.className = 'tooltip';
+document.body.appendChild(tipEl);
+
+function showTip(el){
+  const text = el.dataset.tip;
+  if (!text) return;
+  tipEl.textContent = text;
+  tipEl.style.display = 'block';
+  const r = el.getBoundingClientRect();
+  const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+  let left = r.left + r.width/2 - tw/2;
+  left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+  let top = r.top - th - 9;
+  if (top < 8) top = r.bottom + 9;
+  tipEl.style.left = left + 'px';
+  tipEl.style.top = top + 'px';
+}
+function hideTip(){ tipEl.style.display = 'none'; }
+
+// wireTip(el, texto?) — conecta el hover/foco de un elemento al tooltip.
+// Si se pasa texto, lo guarda en data-tip (para elementos creados por JS);
+// si no, usa el data-tip que ya tenga el elemento en el HTML estático.
+function wireTip(el, text){
+  if (text != null) el.dataset.tip = text;
+  if (el.dataset.tipWired) return; // evita enganchar el mismo listener dos veces
+  el.dataset.tipWired = '1';
+  el.addEventListener('mouseenter', ()=> showTip(el));
+  el.addEventListener('mouseleave', hideTip);
+  el.addEventListener('focus', ()=> showTip(el));
+  el.addEventListener('blur', hideTip);
+}
+// helper para agregar un ícono "?" chiquito al lado de una etiqueta, con su propio tooltip
+function infoIcon(text){
+  const i = document.createElement('span');
+  i.className = 'info-icon';
+  i.textContent = 'i';
+  i.tabIndex = 0;
+  wireTip(i, text);
+  return i;
+}
+document.querySelectorAll('[data-tip]').forEach(el => wireTip(el));
+
+/* ---------------- modal "¿en qué se diferencian?" ---------------- */
+const compareModal = document.getElementById('compareModal');
+function openCompare(){ compareModal.classList.add('open'); }
+function closeCompare(){ compareModal.classList.remove('open'); }
+document.getElementById('btnCompare').addEventListener('click', openCompare);
+document.getElementById('compareClose').addEventListener('click', closeCompare);
+compareModal.addEventListener('click', (e)=>{ if (e.target === compareModal) closeCompare(); });
+window.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeCompare(); });
+
+const ctx = els.canvas.getContext('2d');
+let N = 110;
+let curMode = 'conway';
+let playing = false;
+let brushR = 2;
+let generation = {conway:0, lenia:0, smoothlife:0, mnca:0};
+let imgData = ctx.createImageData(N,N);
+
+function currentMode(){ return Modes[curMode]; }
+
+function setResolution(newN){
+  N = newN;
+  els.canvas.width = N; els.canvas.height = N;
+  imgData = ctx.createImageData(N,N);
+  Object.keys(Modes).forEach(k=>{ Modes[k].init(N); generation[k]=0; });
+  render();
+}
+
+function renderStateToCanvas(){
+  const m = currentMode();
+  const s = m.state, data = imgData.data;
+  for (let i=0;i<s.length;i++){
+    const [r,g,b] = m.colorFor(s[i]);
+    const j=i*4;
+    data[j]=r; data[j+1]=g; data[j+2]=b; data[j+3]=255;
+  }
+  ctx.putImageData(imgData,0,0);
+}
+function render(){ renderStateToCanvas(); els.genVal.textContent = generation[curMode]; }
+
+/* ---------------- transport ---------------- */
+let lastStepTime = 0;
+function loop(t){
+  if (playing){
+    const interval = 1000/parseInt(els.speed.value,10);
+    if (t - lastStepTime >= interval){
+      lastStepTime = t;
+      currentMode().step();
+      generation[curMode]++;
+      render();
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function setPlaying(p){
+  playing = p;
+  els.btnPlay.textContent = playing ? '⏸ Pausa' : '▶ Reproducir';
+}
+els.btnPlay.addEventListener('click', ()=> setPlaying(!playing));
+els.btnStep.addEventListener('click', ()=>{ currentMode().step(); generation[curMode]++; render(); });
+els.btnRandom.addEventListener('click', ()=>{ currentMode().randomize(); generation[curMode]=0; render(); });
+els.btnClear.addEventListener('click', ()=>{ currentMode().clear(); generation[curMode]=0; render(); });
+els.speed.addEventListener('input', ()=>{ els.speedVal.textContent = els.speed.value; });
+els.brush.addEventListener('input', ()=>{ brushR = parseInt(els.brush.value,10); els.brushVal.textContent = brushR; });
+els.resSel.addEventListener('change', ()=> setResolution(parseInt(els.resSel.value,10)));
+window.addEventListener('keydown', (e)=>{
+  if (e.code==='Space'){ e.preventDefault(); setPlaying(!playing); }
+});
+
+/* ---------------- painting ---------------- */
+let painting=false, erasing=false;
+function cellFromEvent(e){
+  const rect = els.canvas.getBoundingClientRect();
+  const cx=(e.clientX-rect.left)/rect.width, cy=(e.clientY-rect.top)/rect.height;
+  return [Math.floor(cx*N), Math.floor(cy*N)];
+}
+function paintAt(gx,gy,val){
+  const m = currentMode();
+  for (let j=-brushR;j<=brushR;j++){
+    for (let i=-brushR;i<=brushR;i++){
+      if (Math.sqrt(i*i+j*j)>brushR) continue;
+      const x=((gx+i)%N+N)%N, y=((gy+j)%N+N)%N;
+      m.state[y*N+x]=val;
+    }
+  }
+}
+els.canvas.addEventListener('pointerdown', (e)=>{
+  painting=true; erasing = e.shiftKey || e.button===2;
+  const [gx,gy]=cellFromEvent(e); paintAt(gx,gy, erasing?0:1); render();
+});
+window.addEventListener('pointermove', (e)=>{
+  if (!painting) return;
+  const [gx,gy]=cellFromEvent(e); paintAt(gx,gy, erasing?0:1); render();
+});
+window.addEventListener('pointerup', ()=> painting=false);
+els.canvas.addEventListener('contextmenu', (e)=> e.preventDefault());
+
+/* ---------------- mode switching ---------------- */
+els.tabs.forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    els.tabs.forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    curMode = btn.dataset.mode;
+    els.caption.innerHTML = '<b>'+Modes[curMode].label+'.</b> '+Modes[curMode].caption;
+    els.legend.style.display = (curMode==='conway'||curMode==='mnca') ? 'none':'flex';
+    buildPanel();
+    render();
+  });
+});
+
+/* ---------------- side panel builders ---------------- */
+function fieldSlider(container, label, get, set, min, max, step, fmt, tip){
+  const wrap = document.createElement('div'); wrap.className='field';
+  const row = document.createElement('div'); row.className='field-row';
+  const labWrap = document.createElement('span'); labWrap.style.display='flex'; labWrap.style.alignItems='center';
+  const lab = document.createElement('label'); lab.textContent = label;
+  labWrap.appendChild(lab);
+  if (tip){ wireTip(lab, tip); labWrap.appendChild(infoIcon(tip)); }
+  const val = document.createElement('span'); val.className='readout';
+  val.textContent = fmt ? fmt(get()) : get();
+  row.appendChild(labWrap); row.appendChild(val);
+  const input = document.createElement('input');
+  input.type='range'; input.min=min; input.max=max; input.step=step; input.value=get();
+  input.addEventListener('input', ()=>{
+    set(parseFloat(input.value));
+    val.textContent = fmt ? fmt(get()) : get();
+    currentMode().rebuildKernel();
+    refreshPreviews();
+  });
+  wrap.appendChild(row); wrap.appendChild(input);
+  container.appendChild(wrap);
+  return input;
+}
+
+function previewBoxes(container, mode){
+  if (!mode.drawKernel) return {};
+  const kb = document.createElement('div'); kb.className='previewbox';
+  kb.innerHTML = '<div class="lbl">forma del kernel</div>';
+  wireTip(kb, 'Cómo se reparte el peso de los vecinos según la distancia al centro. El color/brillo indica cuánto pesa cada punto del vecindario en el promedio.');
+  const kc = document.createElement('canvas'); kc.className='pv'; kc.width=140; kc.height=140;
+  kb.appendChild(kc);
+  const gb = document.createElement('div'); gb.className='previewbox';
+  const gLbl = mode.key==='lenia' ? 'función de crecimiento' : 'función de transición';
+  gb.innerHTML = '<div class="lbl">'+gLbl+'</div>';
+  wireTip(gb, mode.key==='lenia'
+    ? 'Eje X: promedio ponderado del vecindario (kernel). Eje Y: cuánto crece (+) o decrece (−) el estado de la célula en ese punto. El pico está en μ; la línea punteada marca ese centro.'
+    : 'Muestra en qué rango del anillo exterior (eje X) se activa el nacimiento (naranja) y la supervivencia (verde), con la transición suave en vez de un corte abrupto.');
+  const gc = document.createElement('canvas'); gc.className='pv'; gc.width=260; gc.height=110;
+  gb.appendChild(gc);
+  container.appendChild(kb); container.appendChild(gb);
+  return { kernelCanvas:kc, growthCanvas:gc };
+}
+
+let previewEls = {};
+function refreshPreviews(){
+  const m = currentMode();
+  if (previewEls.kernelCanvas && m.drawKernel) m.drawKernel(previewEls.kernelCanvas.getContext('2d'), previewEls.kernelCanvas.width, previewEls.kernelCanvas.height);
+  if (previewEls.growthCanvas && m.drawGrowth) m.drawGrowth(previewEls.growthCanvas.getContext('2d'), previewEls.growthCanvas.width, previewEls.growthCanvas.height);
+  if (curMode==='mnca') drawMncaPreview();
+}
+
+function buildPanel(){
+  const p = els.panel; p.innerHTML=''; previewEls={};
+  const m = currentMode();
+
+  if (m.key==='conway'){
+    const h = document.createElement('h2'); h.textContent='preset'; p.appendChild(h);
+    const presetDesc = document.createElement('div'); presetDesc.className='desc';
+    presetDesc.textContent = 'todas usan la misma vecindad de Moore (8 vecinos); solo cambia la tabla de nacimiento/supervivencia';
+    p.appendChild(presetDesc);
+    const sel = document.createElement('select');
+    const presets = {
+      'Conway  B3/S23':[[3],[2,3]],
+      'HighLife  B36/S23':[[3,6],[2,3]],
+      'Seeds  B2/S':[[2],[]],
+      'Day & Night  B3678/S34678':[[3,6,7,8],[3,4,6,7,8]],
+      'Maze  B3/S12345':[[3],[1,2,3,4,5]],
+      'Replicator  B1357/S1357':[[1,3,5,7],[1,3,5,7]],
+    };
+    Object.keys(presets).forEach(name=>{ const o=document.createElement('option'); o.textContent=name; sel.appendChild(o); });
+    sel.addEventListener('change', ()=>{
+      const [b,s]=presets[sel.value];
+      m.params.birth.fill(false); m.params.survive.fill(false);
+      b.forEach(n=>m.params.birth[n]=true); s.forEach(n=>m.params.survive[n]=true);
+      buildConwayToggles();
+    });
+    wireTip(sel, 'Reglas clásicas de la familia "Life": mismo esquema que Conway, con distinto criterio de B(irth)/S(urvive). Probá "Seeds" o "Maze" para ver patrones muy distintos con la misma vecindad.');
+    p.appendChild(sel);
+
+    const h2 = document.createElement('h2'); h2.textContent='regla (por cantidad de vecinos vivos)'; p.appendChild(h2);
+    const descB = document.createElement('div'); descB.className='desc'; descB.textContent='nace si una célula muerta tiene esta cantidad de vecinos vivos'; p.appendChild(descB);
+    const rowB = document.createElement('div'); rowB.className='toggle-grid'; rowB.id='rowBirth';
+    wireTip(rowB, 'Tocá un número para activarlo/desactivarlo. Naranja = "si una célula muerta tiene exactamente esta cantidad de vecinos vivos, nace". Esta tabla es la regla completa: no hay nada más continuo debajo.');
+    p.appendChild(rowB);
+    const descS = document.createElement('div'); descS.className='desc'; descS.style.marginTop='8px'; descS.textContent='sobrevive si una célula viva tiene esta cantidad de vecinos vivos'; p.appendChild(descS);
+    const rowS = document.createElement('div'); rowS.className='toggle-grid'; rowS.id='rowSurvive';
+    wireTip(rowS, 'Verde = "si una célula viva tiene exactamente esta cantidad de vecinos vivos, sigue viva". Si un conteo no está resaltado en ninguna de las dos filas, la célula muere o sigue muerta.');
+    p.appendChild(rowS);
+    const code = document.createElement('div'); code.className='rulecode'; code.id='ruleCode';
+    wireTip(code, 'Notación estándar B/S ("Birth/Survive") para reglas tipo Life: B seguido de los conteos que hacen nacer, S seguido de los que hacen sobrevivir. Es la forma compacta de escribir las dos filas de arriba.');
+    p.appendChild(code);
+    buildConwayToggles();
+    return;
+  }
+
+  if (m.key==='lenia'){
+    const h = document.createElement('h2'); h.textContent='preset'; p.appendChild(h);
+    const presetDesc = document.createElement('div'); presetDesc.className='desc';
+    presetDesc.textContent = 'combinaciones ya afinadas de kernel + función de crecimiento; "Orbium" es la criatura móvil más conocida de Lenia';
+    p.appendChild(presetDesc);
+    const sel = document.createElement('select');
+    const presets = {
+      'Orbium (clásico)':{R:13,T:10,mu:0.15,sigma:0.015,numRings:1,beta1:1,beta2:0.7,beta3:0.4},
+      'Voraz y denso':{R:8,T:10,mu:0.25,sigma:0.05,numRings:1,beta1:1,beta2:0.7,beta3:0.4},
+      'Fino y lento':{R:10,T:15,mu:0.2,sigma:0.03,numRings:1,beta1:1,beta2:0.7,beta3:0.4},
+      'Kernel de 3 anillos':{R:18,T:10,mu:0.18,sigma:0.022,numRings:3,beta1:1,beta2:0.65,beta3:0.35},
+    };
+    Object.keys(presets).forEach(name=>{ const o=document.createElement('option'); o.textContent=name; sel.appendChild(o); });
+    sel.addEventListener('change', ()=>{ Object.assign(m.params, presets[sel.value]); m.rebuildKernel(); buildPanel(); refreshPreviews(); });
+    wireTip(sel, 'Cada preset fija R, T, μ, σ y los pesos β a valores que ya se sabe que producen un comportamiento estable o interesante.');
+    p.appendChild(sel);
+
+    const h2 = document.createElement('h2'); h2.textContent='kernel'; p.appendChild(h2);
+    const kDesc = document.createElement('div'); kDesc.className='desc';
+    kDesc.textContent = 'define qué vecinos importan y cuánto pesa cada uno — el equivalente continuo de "mirar los 8 vecinos" de Conway';
+    p.appendChild(kDesc);
+    fieldSlider(p,'radio R', ()=>m.params.R, v=>m.params.R=v, 4,20,1, null,
+      'Hasta qué distancia llegan los vecinos que se tienen en cuenta. Es el radio del vecindario, como el "1 casillero" de Conway pero ajustable y con decaimiento suave hacia el borde.');
+    const h3 = document.createElement('h2'); h3.textContent='anillos del kernel'; p.appendChild(h3);
+    const nsel = document.createElement('select');
+    wireTip(nsel, 'Cantidad de anillos concéntricos que forman el kernel. Con más de un anillo, el peso de los vecinos ya no decae de forma uniforme: cada anillo puede tener su propia intensidad (β).');
+    [1,2,3].forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n+(n===1?' anillo':' anillos'); if(n===m.params.numRings)o.selected=true; nsel.appendChild(o); });
+    nsel.addEventListener('change', ()=>{ m.params.numRings=parseInt(nsel.value,10); m.rebuildKernel(); refreshPreviews(); buildPanel(); });
+    p.appendChild(nsel);
+    const betaWrap = document.createElement('div'); betaWrap.style.marginTop='8px'; p.appendChild(betaWrap);
+    const ringTip = ' pondera cuánto cuenta ese anillo del kernel en el promedio; 0 lo apaga por completo, 1 le da el peso máximo.';
+    fieldSlider(betaWrap,'peso β1', ()=>m.params.beta1, v=>m.params.beta1=v, 0,1,0.05, null, 'El anillo más interno (más cercano al centro)'+ringTip);
+    if (m.params.numRings>=2) fieldSlider(betaWrap,'peso β2', ()=>m.params.beta2, v=>m.params.beta2=v, 0,1,0.05, null, 'El segundo anillo (más alejado del centro que β1)'+ringTip);
+    if (m.params.numRings>=3) fieldSlider(betaWrap,'peso β3', ()=>m.params.beta3, v=>m.params.beta3=v, 0,1,0.05, null, 'El anillo más externo del kernel'+ringTip);
+
+    const h4 = document.createElement('h2'); h4.textContent='función de crecimiento'; p.appendChild(h4);
+    const gDesc = document.createElement('div'); gDesc.className='desc';
+    gDesc.textContent = 'reemplaza la tabla B/S de Conway: convierte el promedio del vecindario en cuánto crece o decrece el estado';
+    p.appendChild(gDesc);
+    fieldSlider(p,'centro μ', ()=>m.params.mu, v=>m.params.mu=v, 0.02,0.4,0.005, v=>v.toFixed(3),
+      'El valor de vecindario "ideal": cuando el promedio ponderado de los vecinos es igual a μ, la célula crece lo más rápido posible. Es el equivalente continuo de "el conteo exacto que hace nacer/sobrevivir" en Conway.');
+    fieldSlider(p,'ancho σ', ()=>m.params.sigma, v=>m.params.sigma=v, 0.005,0.12,0.001, v=>v.toFixed(3),
+      'Qué tan tolerante es la regla a alejarse de μ. Un σ chico da una campana angosta (regla estricta, patrones más frágiles); un σ grande la hace más permisiva.');
+    fieldSlider(p,'resolución temporal T (Δt = 1/T)', ()=>m.params.T, v=>m.params.T=v, 2,30,1, null,
+      'En cuántos pasos se divide "una generación": cada frame el estado se mueve solo Δt=1/T hacia lo que indica la función de crecimiento. T alto = cambios más chicos y suaves por paso (más parecido a un flujo continuo); T bajo = saltos más grandes, más parecido a un paso discreto de Conway.');
+
+    const h5 = document.createElement('h2'); h5.textContent='vista previa'; p.appendChild(h5);
+    previewEls = previewBoxes(p, m);
+    refreshPreviews();
+    return;
+  }
+
+  if (m.key==='smoothlife'){
+    const h = document.createElement('h2'); h.textContent='preset'; p.appendChild(h);
+    const sel = document.createElement('select');
+    const presets = {
+      'Clásico':{outerR:15, innerRatio:0.30, edge:0.15, b1:0.26,b2:0.38,s1:0.27,s2:0.47, alphaN:0.08, alphaM:0.15, dt:1.0},
+      'Suave y lento':{outerR:10, innerRatio:0.33, edge:0.20, b1:0.25,b2:0.35,s1:0.26,s2:0.46, alphaN:0.10, alphaM:0.20, dt:0.5},
+      'A gran escala':{outerR:20, innerRatio:0.30, edge:0.12, b1:0.27,b2:0.36,s1:0.27,s2:0.45, alphaN:0.06, alphaM:0.12, dt:1.0},
+    };
+    Object.keys(presets).forEach(name=>{ const o=document.createElement('option'); o.textContent=name; sel.appendChild(o); });
+    sel.addEventListener('change', ()=>{ Object.assign(m.params, presets[sel.value]); m.rebuildKernel(); refreshPreviews(); buildPanel(); });
+    wireTip(sel, 'Combinaciones ya balanceadas de tamaño de vecindario y umbrales de transición. Compará "Clásico" con "A gran escala" para ver cómo cambia el tamaño típico de los patrones.');
+    p.appendChild(sel);
+
+    const h2=document.createElement('h2'); h2.textContent='kernel (disco interior + anillo exterior)'; p.appendChild(h2);
+    const klDesc = document.createElement('div'); klDesc.className='desc';
+    klDesc.textContent = 'el disco interior es "yo mismo" (como la célula central de Conway) y el anillo exterior son "mis vecinos"';
+    p.appendChild(klDesc);
+    fieldSlider(p,'radio exterior', ()=>m.params.outerR, v=>m.params.outerR=v, 6,22,1, null,
+      'Radio total del vecindario (disco + anillo). Controla la escala de los patrones: radios grandes producen estructuras más grandes y lentas.');
+    fieldSlider(p,'proporción del disco interior', ()=>m.params.innerRatio, v=>m.params.innerRatio=v, 0.15,0.45,0.01, v=>v.toFixed(2),
+      'Qué fracción del radio total ocupa el disco interior ("yo") frente al anillo exterior ("vecinos"). En Conway esta proporción está fija e implícita: 1 celda propia contra 8 vecinas.');
+    fieldSlider(p,'suavizado del borde', ()=>m.params.edge, v=>m.params.edge=v, 0.02,0.35,0.01, v=>v.toFixed(2),
+      'Qué tan difuso es el límite entre disco interior, anillo exterior y el vacío. En 0 sería un borde duro como en Conway (una celda es vecina o no lo es); valores altos difuminan mucho esa frontera.');
+
+    const h3=document.createElement('h2'); h3.textContent='transición (nacimiento / supervivencia)'; p.appendChild(h3);
+    const trDesc = document.createElement('div'); trDesc.className='desc';
+    trDesc.textContent = 'el equivalente continuo de "B3/S23": en vez de conteos exactos, rangos con bordes difusos';
+    p.appendChild(trDesc);
+    fieldSlider(p,'nacimiento — mínimo', ()=>m.params.b1, v=>m.params.b1=v, 0,1,0.01, v=>v.toFixed(2),
+      'Límite inferior del rango del anillo exterior que permite que una célula vacía nazca (equivalente continuo del "3" en B3 de Conway).');
+    fieldSlider(p,'nacimiento — máximo', ()=>m.params.b2, v=>m.params.b2=v, 0,1,0.01, v=>v.toFixed(2),
+      'Límite superior de ese mismo rango de nacimiento.');
+    fieldSlider(p,'supervivencia — mínimo', ()=>m.params.s1, v=>m.params.s1=v, 0,1,0.01, v=>v.toFixed(2),
+      'Límite inferior del rango del anillo exterior que permite que una célula ya viva sobreviva (equivalente continuo del "2" en S23 de Conway).');
+    fieldSlider(p,'supervivencia — máximo', ()=>m.params.s2, v=>m.params.s2=v, 0,1,0.01, v=>v.toFixed(2),
+      'Límite superior de ese mismo rango de supervivencia (equivalente continuo del "3" en S23).');
+    fieldSlider(p,'suavizado de la transición', ()=>m.params.alphaN, v=>m.params.alphaN=v, 0.01,0.25,0.01, v=>v.toFixed(2),
+      'Qué tan gradual es el escalón entre "no se activa" y "se activa" al cruzar los umbrales de arriba. Cerca de 0 se parece a un corte abrupto (como en Conway); valores altos dan una rampa muy suave.');
+    fieldSlider(p,'mezcla nacim./superviv.', ()=>m.params.alphaM, v=>m.params.alphaM=v, 0.02,0.40,0.01, v=>v.toFixed(2),
+      'Qué tan abrupto es el cambio entre usar el criterio de nacimiento o el de supervivencia, según el valor del disco interior (si "estoy vivo" o no).');
+    fieldSlider(p,'velocidad de la transición (Δt)', ()=>m.params.dt, v=>m.params.dt=v, 0.1,1,0.05, v=>v.toFixed(2),
+      'En cada paso, el estado se mueve solo esta fracción de la distancia hacia el valor objetivo de la regla, en vez de saltar directo (como sí hace Conway en cada generación).');
+
+    const h4 = document.createElement('h2'); h4.textContent='vista previa'; p.appendChild(h4);
+    previewEls = previewBoxes(p, m);
+    refreshPreviews();
+    return;
+  }
+
+  if (m.key==='mnca'){
+    const h = document.createElement('h2'); h.textContent='vecindades (se aplican en orden, de 1 a 3)'; p.appendChild(h);
+    const nhDesc = document.createElement('div'); nhDesc.className='desc';
+    nhDesc.textContent = 'cada vecindad es un anillo (radio interior a exterior) que mira la densidad de vecinos vivos en esa banda, y decide una única cosa: nacer/sobrevivir o morir, cuando esa densidad cae en su rango';
+    p.appendChild(nhDesc);
+    m.params.nh.forEach((nh, idx)=>{
+      const b = document.createElement('div'); b.className='nh-block';
+      const head = document.createElement('div'); head.className='nh-head';
+      const tag = document.createElement('span'); tag.className='tag '+(nh.alive?'alive':'dead');
+      tag.textContent = nh.label;
+      wireTip(tag, 'Nombre de esta vecindad (solo para identificarla en el panel); lo que realmente hace lo define el selector de al lado y los rangos de abajo.');
+      const sel = document.createElement('select');
+      ['nace / sobrevive','muere'].forEach((t,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=t; if((i===0)===nh.alive) o.selected=true; sel.appendChild(o); });
+      sel.addEventListener('change', ()=>{ nh.alive = sel.value==='0'; tag.className='tag '+(nh.alive?'alive':'dead'); refreshPreviews(); });
+      wireTip(sel, '"Nace/sobrevive": si la densidad de este anillo cae en su rango, la célula queda (o pasa a estar) viva. "Muere": si cae en el rango, la célula queda muerta — sin importar lo que hayan decidido las vecindades anteriores.');
+      head.appendChild(tag); head.appendChild(sel);
+      b.appendChild(head);
+
+      const chkWrap = document.createElement('label'); chkWrap.className='chk';
+      const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=nh.on;
+      chk.addEventListener('change', ()=>{ nh.on=chk.checked; refreshPreviews(); });
+      chkWrap.appendChild(chk); chkWrap.appendChild(document.createTextNode(' activa'));
+      wireTip(chkWrap, 'Si se desactiva, esta vecindad se salta por completo en cada paso, como si no existiera — útil para ver qué aporta cada una por separado.');
+      b.appendChild(chkWrap);
+
+      fieldSlider(b,'radio interior', ()=>nh.rInner, v=>nh.rInner=v, 0,20,1, null,
+        'Distancia mínima a la que empieza este anillo. En 0, el anillo incluye el centro (es un disco completo, no un aro).');
+      fieldSlider(b,'radio exterior', ()=>nh.rOuter, v=>nh.rOuter=v, 1,22,1, null,
+        'Distancia máxima de este anillo. Junto con el radio interior define la banda de vecinos que esta vecindad observa.');
+      fieldSlider(b,'rango — mínimo', ()=>nh.lo, v=>nh.lo=v, 0,1,0.01, v=>v.toFixed(2),
+        'Densidad mínima de células vivas dentro del anillo (0 a 1) para que se dispare la acción de esta vecindad.');
+      fieldSlider(b,'rango — máximo', ()=>nh.hi, v=>nh.hi=v, 0,1,0.01, v=>v.toFixed(2),
+        'Densidad máxima de células vivas dentro del anillo para que se dispare la acción de esta vecindad.');
+      p.appendChild(b);
+    });
+
+    const h2 = document.createElement('h2'); h2.textContent='vista previa combinada'; p.appendChild(h2);
+    const kb = document.createElement('div'); kb.className='previewbox';
+    kb.innerHTML='<div class="lbl">vecindades superpuestas</div>';
+    wireTip(kb, 'Los anillos de las tres vecindades, dibujados a la misma escala y con su color correspondiente, para ver de un vistazo qué tan cerca o lejos mira cada una.');
+    const kc = document.createElement('canvas'); kc.className='pv'; kc.width=140; kc.height=140; kb.appendChild(kc);
+    p.appendChild(kb);
+    const gb = document.createElement('div'); gb.className='previewbox';
+    gb.innerHTML='<div class="lbl">rango activo por vecindad</div>';
+    wireTip(gb, 'Cada franja horizontal es una vecindad; la barra de color marca el tramo de densidad (0 a 1) en el que esa vecindad se activa. Vecindades desactivadas se ven en gris.');
+    const gc = document.createElement('canvas'); gc.className='pv'; gc.width=260; gc.height=90; gb.appendChild(gc);
+    p.appendChild(gb);
+    previewEls = { mncaKernel:kc, mncaBands:gc };
+    refreshPreviews();
+    return;
+  }
+}
+
+function buildConwayToggles(){
+  const m = Modes.conway;
+  ['rowBirth','rowSurvive'].forEach((id, which)=>{
+    const row = document.getElementById(id); row.innerHTML='';
+    for (let n=0;n<9;n++){
+      const btn = document.createElement('button'); btn.textContent=n;
+      const arr = which===0 ? m.params.birth : m.params.survive;
+      if (arr[n]) btn.className = which===0 ? 'on-birth' : 'on-survive';
+      btn.addEventListener('click', ()=>{ arr[n]=!arr[n]; buildConwayToggles(); });
+      row.appendChild(btn);
+    }
+  });
+  const bList = m.params.birth.map((v,i)=>v?i:null).filter(v=>v!==null).join('');
+  const sList = m.params.survive.map((v,i)=>v?i:null).filter(v=>v!==null).join('');
+  const code = document.getElementById('ruleCode');
+  if (code) code.textContent = 'B'+bList+' / S'+sList;
+}
+
+function drawMncaPreview(){
+  const m = Modes.mnca;
+  if (previewEls.mncaKernel){
+    const c = previewEls.mncaKernel, ctx2 = c.getContext('2d');
+    ctx2.fillStyle='#0a0c11'; ctx2.fillRect(0,0,c.width,c.height);
+    const maxR = Math.max(...m.params.nh.map(n=>n.rOuter));
+    const cx=c.width/2, cy=c.height/2, scale=(Math.min(c.width,c.height)/2-4)/maxR;
+    const colors=['110,231,200','217,79,122','242,177,85'];
+    m.params.nh.forEach((nh,idx)=>{
+      if (!nh.on) return;
+      ctx2.fillStyle = 'rgba('+colors[idx%3]+',0.30)';
+      ctx2.strokeStyle = 'rgba('+colors[idx%3]+',0.9)';
+      ctx2.beginPath();
+      ctx2.arc(cx,cy, nh.rOuter*scale, 0, Math.PI*2);
+      ctx2.arc(cx,cy, nh.rInner*scale, 0, Math.PI*2, true);
+      ctx2.fill('evenodd'); ctx2.lineWidth=1; ctx2.stroke();
+    });
+  }
+  if (previewEls.mncaBands){
+    const c = previewEls.mncaBands, ctx2 = c.getContext('2d');
+    ctx2.clearRect(0,0,c.width,c.height);
+    const colors=['110,231,200','217,79,122','242,177,85'];
+    m.params.nh.forEach((nh,idx)=>{
+      const y = 14 + idx*26;
+      ctx2.strokeStyle='#232838'; ctx2.beginPath(); ctx2.moveTo(4,y); ctx2.lineTo(c.width-4,y); ctx2.stroke();
+      const lo=Math.min(nh.lo,nh.hi), hi=Math.max(nh.lo,nh.hi);
+      ctx2.fillStyle = nh.on ? 'rgba('+colors[idx%3]+',0.85)' : 'rgba(120,120,120,.4)';
+      ctx2.fillRect(4+lo*(c.width-8), y-4, Math.max(2,(hi-lo)*(c.width-8)), 8);
+    });
+  }
+}
+
+/* ---------------- boot ---------------- */
+Object.keys(Modes).forEach(k=> Modes[k].init(N));
+els.caption.innerHTML = '<b>'+Modes[curMode].label+'.</b> '+Modes[curMode].caption;
+buildPanel();
+render();
+
+} // end DOM guard
+})();
+</script>
+</body>
+</html>

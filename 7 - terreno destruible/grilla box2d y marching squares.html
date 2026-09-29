@@ -246,7 +246,8 @@
     <div id="app">
         <aside id="sidebar">
             <h1>Grilla → MS → Box2D</h1>
-            <p class="hint">WASD jetpack · click izq según modo (Dibujar / Disparar / Borrar) · rueda zoom.</p>
+            <p class="hint">A/D cohetes · click izq según modo (Dibujar / Disparar / Arpón / Borrar) · H/K soga · rueda
+                zoom.</p>
             <div id="stats">extracted: 0 | static: 0 | dynamic: 0</div>
 
             <div class="section">
@@ -254,6 +255,7 @@
                 <div class="row">
                     <button id="btn-draw" class="mode-btn active">Dibujar</button>
                     <button id="btn-shoot" class="mode-btn">Disparar</button>
+                    <button id="btn-harpoon" class="mode-btn">Arpón</button>
                     <button id="btn-erase" class="mode-btn">Borrar</button>
                 </div>
                 <button id="btn-clear">Limpiar Todo</button>
@@ -391,22 +393,23 @@
             <details class="doc">
                 <summary>Cámara / zoom / pincel</summary>
                 <ul>
-                    <li>Cámara centrada en el player, clamp al mundo.</li>
+                    <li>Cámara centrada en la nave, clamp al mundo.</li>
                     <li>Zoom: slider o rueda del mouse sobre el canvas.</li>
                     <li>Pincel: click izq en modo Dibujar/Borrar. Radio + hardness.</li>
-                    <li>Disparo: modo Disparar + click izq (mira al cursor).</li>
+                    <li>Láser: modo Disparar + click izq (mira al cursor).</li>
+                    <li>Arpón: modo Arpón + click izq (mira al cursor). H/K recogen o estiran.</li>
                 </ul>
             </details>
 
             <details class="doc">
-                <summary>Player</summary>
+                <summary>Nave</summary>
                 <ul>
-                    <li><code>A/D</code>: mover horizontal.</li>
-                    <li><code>W</code>/↑/Espacio: jetpack continuo (empuje débil arriba). <code>S</code>/↓: empuje
-                        abajo.</li>
-                    <li>Modo UI <b>Disparar</b> + click izq: ray DDA sobre grilla (primera celda density &gt; 0) →
-                        kernel daño.</li>
-                    <li>Body dynamic, <code>fixedRotation</code>, rect sin girar. Caer fuera → respawn.</li>
+                    <li><code>A</code> / <code>D</code>: cohete izquierdo / derecho (thrust diferencial, la nave gira).
+                    </li>
+                    <li>Modo <b>Disparar</b> + click izq: ray DDA sobre grilla → kernel daño.</li>
+                    <li>Modo <b>Arpón</b> + click izq: dispara punta hacia el cursor. Primer body (static o dynamic)
+                        recibe weld. Click otra vez suelta. <code>H</code> recoge, <code>K</code> estira la soga.</li>
+                    <li>Body dynamic, rotación libre, damping angular. Caer fuera → respawn.</li>
                 </ul>
             </details>
 
@@ -433,6 +436,9 @@
         import {
             CreateWorld,
             CreateBoxPolygon,
+            CreateCircle,
+            CreateWeldJoint,
+            CreateDistanceJoint,
             WorldStep,
             b2Vec2,
             b2BodyType,
@@ -442,18 +448,32 @@
             b2CreateBody,
             b2DestroyBody,
             b2DestroyWorld,
+            b2DestroyJoint,
             b2ComputeHull,
             b2MakePolygon,
             b2CreatePolygonShape,
             b2Body_GetPosition,
+            b2Body_GetRotation,
+            b2Rot_GetAngle,
             b2Body_GetShapes,
             b2Body_GetShapeCount,
             b2Body_ComputeAABB,
             b2Body_GetWorldPoint,
-            b2Body_GetLinearVelocity,
-            b2Body_SetLinearVelocity,
+            b2Body_GetWorldVector,
+            b2Body_GetLocalPoint,
             b2Body_SetAwake,
-            b2Shape_GetPolygon
+            b2Body_SetBullet,
+            b2Body_ApplyForce,
+            b2Body_ApplyLinearImpulseToCenter,
+            b2Body_GetMass,
+            b2Body_IsValid,
+            b2Joint_IsValid,
+            b2Shape_GetPolygon,
+            b2Shape_GetBody,
+            b2Shape_EnableContactEvents,
+            b2World_GetContactEvents,
+            b2DistanceJoint_SetLength,
+            b2DistanceJoint_SetLengthRange
         } from 'https://cdn.jsdelivr.net/npm/phaser-box2d@1.1.0/dist/PhaserBox2D.min.js';
         import simplify from 'https://cdn.jsdelivr.net/npm/simplify-js@1.2.4/+esm';
         import earcut from 'https://cdn.jsdelivr.net/npm/earcut@2.2.4/+esm';
@@ -465,8 +485,8 @@
         const VIEW_H = 540;
 
         let CELL_SIZE = 8;
-        let COLS = 160;
-        let ROWS = 100;
+        let COLS = 760;
+        let ROWS = 500;
         let MS_COLS = COLS - 1;
         let MS_ROWS = ROWS - 1;
         let worldW = COLS * CELL_SIZE;
@@ -476,16 +496,23 @@
         const BRUSH_STRENGTH = 0.35;
         const FIXED_DT = 1 / 60;
         const GRAVITY = 400;
-        const PLAYER_SPEED = 220;
-        const JETPACK_ACCEL = 900;
-        const JETPACK_MAX_UP = 180;
-        const PLAYER_HALF_W = 8;
-        const PLAYER_HALF_H = 12;
+        const SHIP_HALF_W = 10;
+        const SHIP_HALF_H = 12;
+        const THRUST_FORCE = 200000;
         const SHOT_COOLDOWN = 0.12;
+        const CAT_SHIP = 0x0002;
+        const CAT_HOOK = 0x0004;
+        const MASK_SHIP = (~CAT_HOOK) >>> 0;
+        const MASK_HOOK = (~CAT_SHIP) >>> 0;
+        const HOOK_TIP_R = 4;
+        const HOOK_MAX = 320;
+        const HOOK_MIN = 14;
+        const HOOK_REEL = 220;
+        const HOOK_SPEED = 720;
 
         let grid = new Float32Array(COLS * ROWS);
         let areaThreshold = 80;
-        /** @type {'draw'|'erase'|'shoot'} */
+        /** @type {'draw'|'erase'|'shoot'|'harpoon'} */
         let toolMode = 'draw';
         let isBrushing = false;
         let isFiring = false;
@@ -518,6 +545,8 @@
         let wallBodies = [];
         let playerBodyId = null;
         const keys = Object.create(null);
+        /** @type {null|{ tipBodyId: any, ropeJointId: any, weldJointId: any, attachedBodyId: any, maxLen: number }} */
+        let hook = null;
 
         /** @type {{ bodyId: any, dynamic: boolean, area: number, contour: {x:number,y:number}[], color: string }[]} */
         let terrainBodies = [];
@@ -940,8 +969,36 @@
             list.length = 0;
         }
 
+        function sameBody(a, b) {
+            return !!(a && b && a.index1 === b.index1 && a.revision === b.revision);
+        }
+
+        function destroyHook() {
+            if (!hook) return;
+            const h = hook;
+            hook = null;
+            if (h.weldJointId && b2Joint_IsValid(h.weldJointId)) {
+                try { b2DestroyJoint(h.weldJointId); } catch (_) { /* */ }
+            }
+            if (h.ropeJointId && b2Joint_IsValid(h.ropeJointId)) {
+                try { b2DestroyJoint(h.ropeJointId); } catch (_) { /* */ }
+            }
+            if (h.tipBodyId && b2Body_IsValid(h.tipBodyId)) {
+                try { b2DestroyBody(h.tipBodyId); } catch (_) { /* */ }
+            }
+        }
+
+        function setRopeLength(next) {
+            if (!hook || !hook.ropeJointId || !b2Joint_IsValid(hook.ropeJointId)) return;
+            next = clamp(next, HOOK_MIN, HOOK_MAX);
+            hook.maxLen = next;
+            b2DistanceJoint_SetLengthRange(hook.ropeJointId, HOOK_MIN, next);
+            b2DistanceJoint_SetLength(hook.ropeJointId, next);
+        }
+
         function createPhysicsWorld() {
             if (worldId) {
+                destroyHook();
                 destroyBodyList(terrainBodies);
                 destroyBodyList(dynamicBodies);
                 destroyBodyList(wallBodies.map(id => ({ bodyId: id })));
@@ -981,17 +1038,22 @@
         }
 
         function spawnPlayer() {
+            destroyHook();
             const x = worldW * 0.5;
-            const y = Math.max(PLAYER_HALF_H + 4, (ROWS - 10) * CELL_SIZE);
+            const y = Math.max(SHIP_HALF_H + 4, (ROWS - 10) * CELL_SIZE);
             const result = CreateBoxPolygon({
                 worldId,
                 type: b2BodyType.b2_dynamicBody,
                 position: new b2Vec2(x, y),
-                size: new b2Vec2(PLAYER_HALF_W, PLAYER_HALF_H),
+                size: new b2Vec2(SHIP_HALF_W, SHIP_HALF_H),
                 density: 1.2,
-                friction: 0.3,
-                restitution: 0,
-                fixedRotation: true
+                friction: 0.4,
+                restitution: 0.05,
+                fixedRotation: false,
+                linearDamping: 0.35,
+                angularDamping: 5,
+                categoryBits: CAT_SHIP,
+                maskBits: MASK_SHIP
             });
             playerBodyId = result.bodyId;
             b2Body_SetAwake(playerBodyId, true);
@@ -1001,31 +1063,33 @@
             return !!keys[code];
         }
 
+        function fireEngine(localX, localY) {
+            const pt = b2Body_GetWorldPoint(playerBodyId, new b2Vec2(localX, localY));
+            const dir = b2Body_GetWorldVector(playerBodyId, new b2Vec2(0, -1));
+            b2Body_ApplyForce(
+                playerBodyId,
+                new b2Vec2(dir.x * THRUST_FORCE, dir.y * THRUST_FORCE),
+                pt,
+                true
+            );
+        }
+
         function updatePlayer(dt) {
             if (!playerBodyId) return;
 
-            const vel = b2Body_GetLinearVelocity(playerBodyId);
-            let vx = 0;
-            if (keyDown('KeyA') || keyDown('ArrowLeft')) vx -= PLAYER_SPEED;
-            if (keyDown('KeyD') || keyDown('ArrowRight')) vx += PLAYER_SPEED;
+            const left = keyDown('KeyA') || keyDown('ArrowLeft');
+            const right = keyDown('KeyD') || keyDown('ArrowRight');
+            if (left) fireEngine(-SHIP_HALF_W * 0.7, SHIP_HALF_H * 0.85);
+            if (right) fireEngine(SHIP_HALF_W * 0.7, SHIP_HALF_H * 0.85);
 
-            let vy = vel.y;
-            const thrustUp = keyDown('KeyW') || keyDown('ArrowUp') || keyDown('Space');
-            const thrustDown = keyDown('KeyS') || keyDown('ArrowDown');
-            if (thrustUp) {
-                vy -= JETPACK_ACCEL * dt;
-                if (vy < -JETPACK_MAX_UP) vy = -JETPACK_MAX_UP;
+            if (hook) {
+                if (keyDown('KeyH')) setRopeLength(hook.maxLen - HOOK_REEL * dt);
+                if (keyDown('KeyK')) setRopeLength(hook.maxLen + HOOK_REEL * dt);
             }
-            if (thrustDown) {
-                vy += JETPACK_ACCEL * dt;
-                if (vy > JETPACK_MAX_UP) vy = JETPACK_MAX_UP;
-            }
-
-            b2Body_SetLinearVelocity(playerBodyId, new b2Vec2(vx, vy));
-            b2Body_SetAwake(playerBodyId, true);
 
             const pos = b2Body_GetPosition(playerBodyId);
             if (pos.y > worldH + 100) {
+                destroyHook();
                 try { b2DestroyBody(playerBodyId); } catch (_) { /* */ }
                 playerBodyId = null;
                 spawnPlayer();
@@ -1035,18 +1099,185 @@
         function drawPlayer() {
             if (!playerBodyId) return;
             const pos = b2Body_GetPosition(playerBodyId);
-            const thrusting = keyDown('KeyW') || keyDown('ArrowUp') || keyDown('Space');
-            if (thrusting) {
-                ctx.fillStyle = 'rgba(255, 180, 60, 0.85)';
-                ctx.fillRect(pos.x - 4, pos.y + PLAYER_HALF_H, 8, 6 + Math.random() * 4);
-            }
+            const angle = b2Rot_GetAngle(b2Body_GetRotation(playerBodyId));
+            const left = keyDown('KeyA') || keyDown('ArrowLeft');
+            const right = keyDown('KeyD') || keyDown('ArrowRight');
+
+            ctx.save();
+            ctx.translate(pos.x, pos.y);
+            ctx.rotate(angle);
+
+            const flame = (lx) => {
+                const h = 7 + Math.random() * 6;
+                ctx.fillStyle = 'rgba(255, 180, 60, 0.9)';
+                ctx.beginPath();
+                ctx.moveTo(lx - 4, SHIP_HALF_H);
+                ctx.lineTo(lx + 4, SHIP_HALF_H);
+                ctx.lineTo(lx, SHIP_HALF_H + h);
+                ctx.closePath();
+                ctx.fill();
+            };
+            if (left) flame(-SHIP_HALF_W * 0.55);
+            if (right) flame(SHIP_HALF_W * 0.55);
+
             ctx.fillStyle = '#48bb78';
             ctx.strokeStyle = '#9ae6b4';
             ctx.lineWidth = 2;
-            ctx.fillRect(pos.x - PLAYER_HALF_W, pos.y - PLAYER_HALF_H, PLAYER_HALF_W * 2, PLAYER_HALF_H * 2);
-            ctx.strokeRect(pos.x - PLAYER_HALF_W, pos.y - PLAYER_HALF_H, PLAYER_HALF_W * 2, PLAYER_HALF_H * 2);
+            ctx.beginPath();
+            ctx.moveTo(0, -SHIP_HALF_H);
+            ctx.lineTo(SHIP_HALF_W, SHIP_HALF_H);
+            ctx.lineTo(-SHIP_HALF_W, SHIP_HALF_H);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
             ctx.fillStyle = '#1a202c';
-            ctx.fillRect(pos.x + 2, pos.y - 6, 3, 3);
+            ctx.fillRect(-3, -5, 6, 5);
+            ctx.restore();
+        }
+
+        function tryFireHarpoon() {
+            if (!playerBodyId) return;
+            if (hook) {
+                destroyHook();
+                return;
+            }
+            const pos = b2Body_GetPosition(playerBodyId);
+            const mouse = screenToWorld(mouseClientX, mouseClientY);
+            let dx = mouse.x - pos.x;
+            let dy = mouse.y - pos.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 1e-6) return;
+            const ux = dx / dist;
+            const uy = dy / dist;
+            const spawnDist = Math.hypot(SHIP_HALF_W, SHIP_HALF_H) + HOOK_TIP_R + 2;
+            const sx = pos.x + ux * spawnDist;
+            const sy = pos.y + uy * spawnDist;
+
+            const tip = CreateCircle({
+                worldId,
+                type: b2BodyType.b2_dynamicBody,
+                position: new b2Vec2(sx, sy),
+                radius: HOOK_TIP_R,
+                density: 2.5,
+                friction: 0.8,
+                restitution: 0.05,
+                categoryBits: CAT_HOOK,
+                maskBits: MASK_HOOK
+            });
+            b2Body_SetBullet(tip.bodyId, true);
+            b2Shape_EnableContactEvents(tip.shapeId, true);
+            const mass = Math.max(0.1, b2Body_GetMass(tip.bodyId));
+            b2Body_ApplyLinearImpulseToCenter(
+                tip.bodyId,
+                new b2Vec2(ux * HOOK_SPEED * mass, uy * HOOK_SPEED * mass),
+                true
+            );
+
+            const rope = CreateDistanceJoint({
+                worldId,
+                bodyIdA: playerBodyId,
+                bodyIdB: tip.bodyId,
+                anchorA: new b2Vec2(0, SHIP_HALF_H * 0.4),
+                anchorB: new b2Vec2(0, 0),
+                length: spawnDist,
+                minLength: HOOK_MIN,
+                maxLength: HOOK_MAX,
+                enableLimit: true,
+                enableSpring: false,
+                collideConnected: false
+            });
+
+            hook = {
+                tipBodyId: tip.bodyId,
+                ropeJointId: rope.jointId,
+                weldJointId: null,
+                attachedBodyId: null,
+                maxLen: HOOK_MAX
+            };
+        }
+
+        function latchHook(otherBodyId) {
+            if (!hook || hook.weldJointId) return;
+            if (!playerBodyId || sameBody(otherBodyId, playerBodyId)) return;
+            if (!b2Body_IsValid(hook.tipBodyId) || !b2Body_IsValid(otherBodyId)) return;
+
+            const p = b2Body_GetPosition(hook.tipBodyId);
+            const hit = new b2Vec2(p.x, p.y);
+            const weld = CreateWeldJoint({
+                worldId,
+                bodyIdA: hook.tipBodyId,
+                bodyIdB: otherBodyId,
+                anchorA: b2Body_GetLocalPoint(hook.tipBodyId, hit),
+                anchorB: b2Body_GetLocalPoint(otherBodyId, hit),
+                hertz: 0,
+                dampingRatio: 0,
+                collideConnected: false
+            });
+            hook.weldJointId = weld.jointId;
+            hook.attachedBodyId = otherBodyId;
+            const ship = b2Body_GetPosition(playerBodyId);
+            setRopeLength(clamp(Math.hypot(hit.x - ship.x, hit.y - ship.y), HOOK_MIN, HOOK_MAX));
+        }
+
+        function processHookContacts() {
+            if (!hook || hook.weldJointId) return;
+            if (!b2Body_IsValid(hook.tipBodyId)) {
+                destroyHook();
+                return;
+            }
+            const events = b2World_GetContactEvents(worldId);
+            const n = events.beginCount || 0;
+            const arr = events.beginEvents;
+            if (!arr || n === 0) return;
+            for (let i = 0; i < n; i++) {
+                const ev = arr[i];
+                if (!ev || !ev.shapeIdA || !ev.shapeIdB) continue;
+                const bodyA = b2Shape_GetBody(ev.shapeIdA);
+                const bodyB = b2Shape_GetBody(ev.shapeIdB);
+                let other = null;
+                if (sameBody(bodyA, hook.tipBodyId)) other = bodyB;
+                else if (sameBody(bodyB, hook.tipBodyId)) other = bodyA;
+                else continue;
+                if (sameBody(other, playerBodyId)) continue;
+                latchHook(other);
+                return;
+            }
+        }
+
+        function validateHook() {
+            if (!hook) return;
+            if (!b2Body_IsValid(hook.tipBodyId)) {
+                destroyHook();
+                return;
+            }
+            if (hook.attachedBodyId && !b2Body_IsValid(hook.attachedBodyId)) {
+                destroyHook();
+                return;
+            }
+            const tipPos = b2Body_GetPosition(hook.tipBodyId);
+            if (tipPos.y > worldH + 80 || tipPos.x < -80 || tipPos.x > worldW + 80) {
+                destroyHook();
+            }
+        }
+
+        function drawHook() {
+            if (!hook || !playerBodyId || !b2Body_IsValid(hook.tipBodyId)) return;
+            const ship = b2Body_GetWorldPoint(playerBodyId, new b2Vec2(0, SHIP_HALF_H * 0.4));
+            const tip = b2Body_GetPosition(hook.tipBodyId);
+            ctx.strokeStyle = hook.weldJointId ? 'rgba(255, 210, 80, 0.95)' : 'rgba(200, 210, 220, 0.75)';
+            ctx.lineWidth = Math.max(1.5, 2.5 / zoom);
+            ctx.beginPath();
+            ctx.moveTo(ship.x, ship.y);
+            ctx.lineTo(tip.x, tip.y);
+            ctx.stroke();
+            ctx.fillStyle = hook.weldJointId ? '#ffd166' : '#e2e8f0';
+            ctx.beginPath();
+            ctx.arc(tip.x, tip.y, HOOK_TIP_R, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#4a5568';
+            ctx.lineWidth = 1;
+            ctx.stroke();
         }
 
         function damageKernelAtCell(cx, cy) {
@@ -1142,8 +1373,8 @@
             if (dist < 1e-6) return;
             const ux = dx / dist, uy = dy / dist;
             const rayLen = Math.max(worldW, worldH) * 1.5;
-            const ox = pos.x + ux * (Math.max(PLAYER_HALF_W, PLAYER_HALF_H) + 1);
-            const oy = pos.y + uy * (Math.max(PLAYER_HALF_W, PLAYER_HALF_H) + 1);
+            const ox = pos.x + ux * (Math.max(SHIP_HALF_W, SHIP_HALF_H) + 1);
+            const oy = pos.y + uy * (Math.max(SHIP_HALF_W, SHIP_HALF_H) + 1);
             const cast = castRayGrid(ox, oy, ux, uy, rayLen);
             lastShotFx = {
                 ox, oy,
@@ -1184,6 +1415,7 @@
             toolMode = mode;
             document.getElementById('btn-draw').classList.toggle('active', mode === 'draw');
             document.getElementById('btn-shoot').classList.toggle('active', mode === 'shoot');
+            document.getElementById('btn-harpoon').classList.toggle('active', mode === 'harpoon');
             document.getElementById('btn-erase').classList.toggle('active', mode === 'erase');
             const brush = mode === 'draw' || mode === 'erase';
             document.getElementById('brush-size-field').classList.toggle('disabled', !brush);
@@ -1657,6 +1889,7 @@
         let lastExtractCount = 0;
 
         function rebuildPhysics() {
+            destroyHook();
             destroyBodyList(terrainBodies);
             lastMeshStats = { rects: 0, edge: 0, fixtures: 0, verts: 0, simp: 0, holes: 0 };
 
@@ -1715,6 +1948,7 @@
         }
 
         function rebuildFromModeChange() {
+            destroyHook();
             destroyBodyList(dynamicBodies);
             rebuildPhysics();
         }
@@ -1908,6 +2142,7 @@
                 const b = dynamicBodies[i];
                 const pos = b2Body_GetPosition(b.bodyId);
                 if (pos.y > worldH + 80) {
+                    if (hook && sameBody(hook.attachedBodyId, b.bodyId)) destroyHook();
                     try { b2DestroyBody(b.bodyId); } catch (_) { /* */ }
                     dynamicBodies.splice(i, 1);
                 }
@@ -1924,7 +2159,9 @@
             const dtPhys = performance.now() - tPhys0;
             avgPhysicsMs = avgPhysicsMs * 0.9 + dtPhys * 0.1;
 
+            processHookContacts();
             cullFallenDynamics();
+            validateHook();
             updateCamera();
 
             const tRen0 = performance.now();
@@ -1942,6 +2179,7 @@
 
             drawDynamicBodiesVisual();
             drawPlayer();
+            drawHook();
             drawShotFx();
 
             if (debug.fixtures) {
@@ -2007,6 +2245,10 @@
                 tryShoot();
                 return;
             }
+            if (toolMode === 'harpoon') {
+                tryFireHarpoon();
+                return;
+            }
             isBrushing = true;
             modifyGrid(e);
         });
@@ -2026,9 +2268,11 @@
 
         document.getElementById('btn-draw').addEventListener('click', () => setToolMode('draw'));
         document.getElementById('btn-shoot').addEventListener('click', () => setToolMode('shoot'));
+        document.getElementById('btn-harpoon').addEventListener('click', () => setToolMode('harpoon'));
         document.getElementById('btn-erase').addEventListener('click', () => setToolMode('erase'));
         document.getElementById('btn-clear').addEventListener('click', () => {
             grid.fill(0);
+            destroyHook();
             destroyBodyList(terrainBodies);
             destroyBodyList(dynamicBodies);
             lastIslands = [];
@@ -2125,8 +2369,7 @@
         document.getElementById('btn-apply-grid').addEventListener('click', applyGridSettings);
 
         const controlCodes = new Set([
-            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-            'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space'
+            'ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'KeyH', 'KeyK'
         ]);
         window.addEventListener('keydown', (e) => {
             if (controlCodes.has(e.code)) {

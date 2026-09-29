@@ -64,7 +64,7 @@
 
 - [Historia de la simulación de agua en el cine](https://www.youtube.com/watch?v=qdvNNm1kNu4)
 - [Falling sand con velocidad variable](https://powder-simulation.vercel.app/)
-- [Mejoras a falling sand para simulación de agua]_(https://www.youtube.com/watch?v=2qfjJ-0ZeVM)
+- [Mejoras a falling sand para simulación de agua]\_(https://www.youtube.com/watch?v=2qfjJ-0ZeVM)
 - [Lattice-Boltzmann Method](https://www.youtube.com/watch?v=iKAVRgIrUOU)
 - [Navier-stokes](https://topaz1008.github.io/canvas-fluid-solver/)
 - [Liquid Fun](https://google.github.io/liquidfun/)
@@ -83,11 +83,13 @@
 
 - [Multiple Neighborhoods Cellular Automata] (https://softologyblog.wordpress.com/2018/03/09/multiple-neighborhoods-cellular-automata/)
 - [Kernel Convolution](https://www.youtube.com/watch?v=C_zFhWdM4ic)
+- [Multiple Neighborhood Cellular Automata](https://www.youtube.com/watch?v=QySHxx_L3G0)
 - [Game of Life + Smooth Life + Lenia](https://www.youtube.com/watch?v=6kiBYjvyojQ)
 - [Lenia](https://www.youtube.com/watch?v=iE46jKYcI4Y)
 - [Más sobre Lenia](https://www.youtube.com/playlist?list=PLxls5YhYdJ0xYabkHAP63cMhPq2mJVSe-)
 - [Particle Lenia](https://google-research.github.io/self-organising-systems/particle-lenia/)
 - [Particle Life](/4 - artificial_life/particle_life_standalone.html)
+- [Ants and Slime](https://www.youtube.com/watch?v=X-iSQQgOd1A)
 
 ## Unidad 5 — Optimización de simulaciones
 

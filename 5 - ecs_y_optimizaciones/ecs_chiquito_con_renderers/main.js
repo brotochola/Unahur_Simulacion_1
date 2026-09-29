@@ -7,12 +7,14 @@ import { World } from "./world.js";
 import { Fish } from "./fish.js";
 import { SoftwareRenderSystem } from "./softwareRenderSystem.js";
 import { ThreeRenderSystem } from "./threeRenderSystem.js";
+import { HtmlRenderSystem } from "./htmlRenderSystem.js";
 
 const world = new World({
   width: 800,
   height: 600,
-  renderer: SoftwareRenderSystem,
-  // renderer: ThreeRenderSystem,
+  // renderer: SoftwareRenderSystem,
+  renderer: ThreeRenderSystem,
+  // renderer: HtmlRenderSystem,
   viewport: document.getElementById("viewport"),
 });
 
@@ -20,7 +22,7 @@ world.registerEntityClass(Fish, 10000);
 world.startGameLoop();
 
 // Spawear entidades con posición y velocidad aleatoria dentro del mundo
-for (let i = 0; i < 10000; i++) {
+for (let i = 0; i < 1000; i++) {
   const fish = Fish.create();
   fish.x = Math.random() * world.width;
   fish.y = Math.random() * world.height;
