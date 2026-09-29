@@ -1,0 +1,11 @@
+body {
+  margin: 0;
+  background: #0f0f1a;
+  font-family: system-ui, sans-serif;
+}
+
+#viewport {
+  margin: 16px;
+  overflow: hidden;
+  background: #1a1a2e;
+}

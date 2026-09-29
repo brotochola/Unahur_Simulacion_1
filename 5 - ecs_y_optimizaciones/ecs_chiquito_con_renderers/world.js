@@ -92,6 +92,7 @@ export class World {
       PreRenderSystem.init(this._renderQueueCapacity);
     }
 
+    //cada entidad define que sistemas usa
     const systems = entityClass.systems;
 
     for (let i = 0; i < systems.length; i++) {

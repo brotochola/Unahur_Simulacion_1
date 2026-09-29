@@ -18,6 +18,8 @@ const world = new World({
   viewport: document.getElementById("viewport"),
 });
 
+window.world = world;
+
 world.registerEntityClass(Fish, 10000);
 world.startGameLoop();
 

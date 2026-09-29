@@ -22,6 +22,7 @@ export class ThreeRenderSystem {
   static _camera = null;
   static _dummy = null;  // Object3D reutilizable — zero-alloc en draw()
   static _initialized = false;
+  static _compiled = false;
 
   static async init(viewport) {
     const W = viewport.clientWidth;
@@ -76,7 +77,11 @@ export class ThreeRenderSystem {
     const mat = new THREE.MeshBasicMaterial({ color: 0xe94560 }); // sin iluminación
     const mesh = new THREE.InstancedMesh(geo, mat, pool._capacity);
     mesh.frustumCulled = false; // el culling ya lo hace PreRenderSystem
-    mesh.count = 0;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // No bajar mesh.count acá. En r171, count <= 1000 mete las matrices en un
+    // UBO de 64KB; el array del constructor (10000×64 bytes) lo hace overflow
+    // y WebGPU marca bindGroup_object como inválido. compileAsync en el primer
+    // draw() corre con count = capacity y elige el path de atributos.
     this._scene.add(mesh);
     pool._instancedMesh = mesh;
     pool._drawCount = 0; // contador de instancias visible este frame
@@ -85,6 +90,12 @@ export class ThreeRenderSystem {
   // Draw loop: consume la RenderQueue y actualiza las matrices de instancia.
   // renderAsync() en vez de render() es requerido por WebGPU.
   static async draw() {
+    // Compilar con mesh.count = capacity (>1000) antes de bajarlo al visible.
+    if (!this._compiled) {
+      await this._renderer.compileAsync(this._scene, this._camera);
+      this._compiled = true;
+    }
+
     const { count, order, poolId, index, pools } = RenderQueue;
     const dummy = this._dummy;
     const viewH = this._viewH;
