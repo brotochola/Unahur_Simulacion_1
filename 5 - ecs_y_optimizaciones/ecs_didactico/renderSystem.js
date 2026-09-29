@@ -12,6 +12,8 @@ export function createRenderSystem(viewport) {
   const ctx = canvas.getContext("2d");
 
   return function renderSystem(world) {
+    const t0 = performance.now();
+
     ctx.fillStyle = "#1a1a2e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -24,5 +26,8 @@ export function createRenderSystem(viewport) {
       ctx.fillStyle = world.has(id, Velocity) ? "#e94560" : "#4ecdc4";
       ctx.fillRect(Position.x[p] - 2, Position.y[p] - 2, 4, 4);
     }
+
+    // El World resta esto del total del update → processMs.
+    world.renderMs = performance.now() - t0;
   };
 }

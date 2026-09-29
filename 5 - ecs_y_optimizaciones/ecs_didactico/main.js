@@ -13,7 +13,7 @@ const world = new World({ width: 800, height: 600 });
 // Los sistemas se registran en el World. Ninguna entidad los "elige".
 world.addSystem(physicsSystem);
 world.addSystem(boundsSystem);
-world.setRenderSystem(createRenderSystem(viewport));
+world.addSystem(createRenderSystem(viewport));
 world.setHud(hud);
 
 const anchorCount = 5;

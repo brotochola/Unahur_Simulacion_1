@@ -54,13 +54,14 @@ Nadie escribió `if (esPez)`. La diferencia la marcan los componentes.
 requestAnimationFrame
         │
         ▼
-   world._loop
+   world.update(dt)
         │
-        ├─ update(dt)          → physics + bounds   (processMs)
-        └─ renderSystem(dt)    → canvas             (renderMs)
+        ├─ physicsSystem   → query(Position, Velocity) → mueve
+        ├─ boundsSystem    → query(Position, Velocity) → rebota
+        └─ renderSystem    → query(Position)           → dibuja
 ```
 
-Los sistemas de lógica se registran con `addSystem`. El dibujo va aparte con `setRenderSystem`, para poder medir proceso y render por separado. **Ninguna entidad declara qué sistemas la usan.** Eso es lo que diferencia este código del de `ecs_chiquito_con_renderers`, donde aparece algo como:
+Todos se registran con `addSystem` (el render también es un sistema). El render escribe `world.renderMs`; el loop hace `processMs = total − renderMs`. **Ninguna entidad declara qué sistemas la usan.** Eso es lo que diferencia este código del de `ecs_chiquito_con_renderers`, donde aparece algo como:
 
 ```js
 static systems = [PhysicsSystem, KeepWithinBoundsSystem, PreRenderSystem];
@@ -90,8 +91,7 @@ removeComponent(id, Store)
 has(id, Store)
 get(id, Store)          // slot denso en el store
 query(StoreA, StoreB)   // ids que tienen todos
-addSystem(fn)           // lógica
-setRenderSystem(fn)     // dibujo (medido aparte)
+addSystem(fn)
 setHud(el)
 start()
 ```

@@ -13,12 +13,11 @@ export class World {
     this._alive = []; // true si el id está vivo
     this._stores = new Set(); // stores registrados al hacer addComponent
     this._systems = [];
-    this._renderSystem = null;
 
     this.lastTime = 0;
     this.deltaTime = 0;
     this.processMs = 0;
-    this.renderMs = 0;
+    this.renderMs = 0; // lo escribe el render system; process = total − render
     this._hud = null;
     this._boundLoop = this._loop.bind(this);
   }
@@ -90,10 +89,6 @@ export class World {
     this._systems.push(system);
   }
 
-  setRenderSystem(system) {
-    this._renderSystem = system;
-  }
-
   setHud(el) {
     this._hud = el;
   }
@@ -109,14 +104,11 @@ export class World {
     this.deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
 
+    this.renderMs = 0;
     const t0 = performance.now();
     this.update(this.deltaTime);
-    const t1 = performance.now();
-    if (this._renderSystem) this._renderSystem(this, this.deltaTime);
-    const t2 = performance.now();
-
-    this.processMs = t1 - t0;
-    this.renderMs = t2 - t1;
+    const totalMs = performance.now() - t0;
+    this.processMs = totalMs - this.renderMs;
 
     if (this._hud) {
       this._hud.textContent =
