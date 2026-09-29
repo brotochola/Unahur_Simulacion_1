@@ -67,6 +67,7 @@
 - [Mejoras a falling sand para simulación de agua]\_(https://www.youtube.com/watch?v=2qfjJ-0ZeVM)
 - [Lattice-Boltzmann Method](https://www.youtube.com/watch?v=iKAVRgIrUOU)
 - [Navier-stokes](https://topaz1008.github.io/canvas-fluid-solver/)
+- [SPH de cero](https://www.youtube.com/watch?v=rSKMYc1CQHE&list=PLFt_AvWsXl0dJrPelwdVSMVC_MDTYPJWn)
 - [Liquid Fun](https://google.github.io/liquidfun/)
 - [Liquid Fun: explicación](/3%20-%20simulacion%20de%20fluidos/Inside%20LiquidFun.pdf)
 - [PIC + FLIP](https://matthias-research.github.io/pages/tenMinutePhysics/18-flip.pdf)
@@ -85,11 +86,18 @@
 - [Kernel Convolution](https://www.youtube.com/watch?v=C_zFhWdM4ic)
 - [Multiple Neighborhood Cellular Automata](https://www.youtube.com/watch?v=QySHxx_L3G0)
 - [Game of Life + Smooth Life + Lenia](https://www.youtube.com/watch?v=6kiBYjvyojQ)
+- [SmoothLife] (https://rreusser.github.io/notebooks/smooth-life/)
+- [SmoothLife] (https://fuzzy-life.netlify.app/)
 - [Lenia](https://www.youtube.com/watch?v=iE46jKYcI4Y)
+- [NeatAI Lenia](- https://www.youtube.com/watch?v=7-97RhAZhXI)
 - [Más sobre Lenia](https://www.youtube.com/playlist?list=PLxls5YhYdJ0xYabkHAP63cMhPq2mJVSe-)
-- [Particle Lenia](https://google-research.github.io/self-organising-systems/particle-lenia/)
+
 - [Particle Life](/4 - artificial_life/particle_life_standalone.html)
 - [Ants and Slime](https://www.youtube.com/watch?v=X-iSQQgOd1A)
+- [Particle Life] (https://www.youtube.com/watch?v=SYDAcivFV-U)
+
+- [Particle Lenia](https://www.youtube.com/watch?v=vfI36yzl6nU)
+- [Particle Lenia](https://google-research.github.io/self-organising-systems/particle-lenia/)
 
 ## Unidad 5 — Optimización de simulaciones
 
