@@ -5,7 +5,22 @@ body {
 }
 
 #viewport {
+  position: relative;
   margin: 16px;
   overflow: hidden;
   background: #1a1a2e;
+}
+
+#hud {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  z-index: 1;
+  color: #e8e8f0;
+  background: rgba(0, 0, 0, 0.55);
+  font: 12px/1.4 ui-monospace, monospace;
+  pointer-events: none;
+  white-space: pre;
 }

@@ -13,9 +13,13 @@ export class World {
     this._alive = []; // true si el id está vivo
     this._stores = new Set(); // stores registrados al hacer addComponent
     this._systems = [];
+    this._renderSystem = null;
 
     this.lastTime = 0;
     this.deltaTime = 0;
+    this.processMs = 0;
+    this.renderMs = 0;
+    this._hud = null;
     this._boundLoop = this._loop.bind(this);
   }
 
@@ -86,6 +90,14 @@ export class World {
     this._systems.push(system);
   }
 
+  setRenderSystem(system) {
+    this._renderSystem = system;
+  }
+
+  setHud(el) {
+    this._hud = el;
+  }
+
   update(dt) {
     const systems = this._systems;
     for (let i = 0; i < systems.length; i++) {
@@ -96,7 +108,23 @@ export class World {
   _loop(now) {
     this.deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
+
+    const t0 = performance.now();
     this.update(this.deltaTime);
+    const t1 = performance.now();
+    if (this._renderSystem) this._renderSystem(this, this.deltaTime);
+    const t2 = performance.now();
+
+    this.processMs = t1 - t0;
+    this.renderMs = t2 - t1;
+
+    if (this._hud) {
+      this._hud.textContent =
+        `dt        ${(this.deltaTime * 1000).toFixed(1)} ms\n` +
+        `process   ${this.processMs.toFixed(1)} ms\n` +
+        `render    ${this.renderMs.toFixed(1)} ms`;
+    }
+
     requestAnimationFrame(this._boundLoop);
   }
 
