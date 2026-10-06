@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Uint8Array Grid Collision Demo</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#111;color:#ddd;font-family:system-ui,sans-serif}
+  canvas{display:block;width:100vw;height:100vh;image-rendering:pixelated;cursor:crosshair}
+  .hud{position:fixed;left:12px;top:12px;padding:10px 12px;background:rgba(0,0,0,.62);border:1px solid #333;border-radius:8px;line-height:1.45;font-size:13px;pointer-events:none}
+  .hud b{color:#fff}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="hud">
+  <b>Uint8Array collision test</b><br>
+  A / D or ← / → : move<br>
+  W / ↑ / Space : jump<br>
+  R : reset<br>
+  Click: toggle tile
+  <div id="stats"></div>
+</div>
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const stats = document.getElementById('stats');
+
+const TILE = 24;
+const WORLD_W = 70;
+const WORLD_H = 32;
+
+// 0 = empty, 1 = solid.
+const world = new Uint8Array(WORLD_W * WORLD_H);
+
+function idx(tx, ty) { return ty * WORLD_W + tx; }
+function solid(tx, ty) {
+  // Outside the world is solid.
+  if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
+  return world[idx(tx, ty)] !== 0;
+}
+
+function clearWorld() {
+  world.fill(0);
+
+  // Floor.
+  for (let x = 0; x < WORLD_W; x++) {
+    world[idx(x, WORLD_H - 2)] = 1;
+    world[idx(x, WORLD_H - 1)] = 1;
+  }
+
+  // Platforms / walls.
+  rect(6, 24, 7, 1);
+  rect(18, 20, 8, 1);
+  rect(31, 25, 2, 5);
+  rect(39, 17, 9, 1);
+  rect(54, 22, 6, 1);
+  rect(62, 14, 2, 16);
+
+  // A little staircase.
+  rect(8, 21, 2, 1);
+  rect(10, 20, 2, 1);
+  rect(12, 19, 2, 1);
+  rect(14, 18, 2, 1);
+}
+
+function rect(x, y, w, h) {
+  for (let yy = y; yy < y + h; yy++) {
+    for (let xx = x; xx < x + w; xx++) {
+      if (xx >= 0 && yy >= 0 && xx < WORLD_W && yy < WORLD_H) world[idx(xx, yy)] = 1;
+    }
+  }
+}
+
+class Player {
+  constructor({ x = 0, y = 0, w = 18, h = 36, world, tileSize }) {
+    this.world = world;
+    this.tileSize = tileSize;
+
+    this.x = x;
+    this.y = y;
+    this.w = w;
+    this.h = h;
+    this.vx = 0;
+    this.vy = 0;
+    this.onGround = false;
+  }
+
+  reset(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.onGround = false;
+  }
+
+  isSolid(tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
+    return this.world[ty * WORLD_W + tx] !== 0;
+  }
+
+  forEachOverlappedSolid(x, y, w, h, fn) {
+    const tile = this.tileSize;
+    const minTX = Math.floor(x / tile);
+    const maxTX = Math.floor((x + w - Number.EPSILON) / tile);
+    const minTY = Math.floor(y / tile);
+    const maxTY = Math.floor((y + h - Number.EPSILON) / tile);
+
+    for (let ty = minTY; ty <= maxTY; ty++) {
+      for (let tx = minTX; tx <= maxTX; tx++) {
+        if (this.isSolid(tx, ty)) fn(tx, ty);
+      }
+    }
+  }
+
+  moveX(dx) {
+    if (dx === 0) return false;
+
+    this.x += dx;
+
+    const tile = this.tileSize;
+    const eps = 0.00001;
+    const minTY = Math.floor(this.y / tile);
+    const maxTY = Math.floor((this.y + this.h - eps) / tile);
+
+    if (dx > 0) {
+      // Check the column touched by our right edge.
+      const tx = Math.floor((this.x + this.w - eps) / tile);
+
+      for (let ty = minTY; ty <= maxTY; ty++) {
+        if (!this.isSolid(tx, ty)) continue;
+
+        this.x = tx * tile - this.w;
+        this.vx = 0;
+        return true;
+      }
+    } else {
+      // Check the column touched by our left edge.
+      const tx = Math.floor(this.x / tile);
+
+      for (let ty = minTY; ty <= maxTY; ty++) {
+        if (!this.isSolid(tx, ty)) continue;
+
+        this.x = (tx + 1) * tile;
+        this.vx = 0;
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  moveY(dy) {
+    if (dy === 0) return false;
+
+    this.y += dy;
+
+    const tile = this.tileSize;
+    const eps = 0.00001;
+    const minTX = Math.floor(this.x / tile);
+    const maxTX = Math.floor((this.x + this.w - eps) / tile);
+
+    if (dy > 0) {
+      // Check the row touched by our bottom edge.
+      const ty = Math.floor((this.y + this.h - eps) / tile);
+
+      for (let tx = minTX; tx <= maxTX; tx++) {
+        if (!this.isSolid(tx, ty)) continue;
+
+        this.y = ty * tile - this.h;
+        this.vy = 0;
+        this.onGround = true;
+        return true;
+      }
+    } else {
+      // Check the row touched by our top edge.
+      const ty = Math.floor(this.y / tile);
+
+      for (let tx = minTX; tx <= maxTX; tx++) {
+        if (!this.isSolid(tx, ty)) continue;
+
+        this.y = (ty + 1) * tile;
+        this.vy = 0;
+        return true;
+      }
+    }
+
+    this.onGround = false;
+    return false;
+  }
+
+  update(dt) {
+    const accel = 1800;
+    const maxSpeed = 280;
+    const friction = 2200;
+    const gravity = 1700;
+    const jumpSpeed = 600;
+
+    const left = keys.has('KeyA') || keys.has('ArrowLeft');
+    const right = keys.has('KeyD') || keys.has('ArrowRight');
+
+    if (left) this.vx -= accel * dt;
+    if (right) this.vx += accel * dt;
+
+    if (!left && !right) {
+      if (this.vx > 0) this.vx = Math.max(0, this.vx - friction * dt);
+      if (this.vx < 0) this.vx = Math.min(0, this.vx + friction * dt);
+    }
+
+    this.vx = Math.max(-maxSpeed, Math.min(maxSpeed, this.vx));
+
+    const jump = keys.has('Space') || keys.has('KeyW') || keys.has('ArrowUp');
+    if (jump && this.onGround) {
+      this.vy = -jumpSpeed;
+      this.onGround = false;
+    }
+
+    this.vy += gravity * dt;
+    this.vy = Math.min(this.vy, 1200);
+
+    // Substeps prevent tunneling when a frame moves more than one tile.
+    const maxMovePerStep = this.tileSize * 0.75;
+    const totalX = this.vx * dt;
+    const totalY = this.vy * dt;
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(totalX), Math.abs(totalY)) / maxMovePerStep));
+    const stepX = totalX / steps;
+    const stepY = totalY / steps;
+
+    for (let i = 0; i < steps; i++) {
+      this.moveX(stepX);
+      this.moveY(stepY);
+    }
+  }
+}
+
+const spawn = { x: 100, y: 100 };
+const player = new Player({
+  x: spawn.x,
+  y: spawn.y,
+  w: 18,
+  h: 36,
+  world,
+  tileSize: TILE
+});
+
+const keys = new Set();
+window.addEventListener('keydown', e => {
+  keys.add(e.code);
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyR') resetPlayer();
+});
+window.addEventListener('keyup', e => keys.delete(e.code));
+
+function resetPlayer() {
+  player.reset(spawn.x, spawn.y);
+}
+
+
+let cameraX = 0;
+let cameraY = 0;
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = Math.floor(innerWidth * dpr);
+  canvas.height = Math.floor(innerHeight * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function render() {
+  const W = innerWidth;
+  const H = innerHeight;
+  ctx.setTransform(devicePixelRatio || 1, 0, 0, devicePixelRatio || 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  cameraX = player.x - W * 0.5;
+  cameraY = player.y - H * 0.55;
+
+  // Keep camera in world bounds.
+  cameraX = Math.max(0, Math.min(WORLD_W * TILE - W, cameraX));
+  cameraY = Math.max(0, Math.min(WORLD_H * TILE - H, cameraY));
+
+  ctx.save();
+  ctx.translate(-cameraX, -cameraY);
+
+  // Background grid.
+  ctx.strokeStyle = '#202020';
+  ctx.lineWidth = 1;
+  const startX = Math.floor(cameraX / TILE) * TILE;
+  const endX = Math.min(WORLD_W * TILE, cameraX + W + TILE);
+  const startY = Math.floor(cameraY / TILE) * TILE;
+  const endY = Math.min(WORLD_H * TILE, cameraY + H + TILE);
+  for (let x = startX; x <= endX; x += TILE) {
+    ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, endY); ctx.stroke();
+  }
+  for (let y = startY; y <= endY; y += TILE) {
+    ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.stroke();
+  }
+
+  // Solid cells — driven directly by Uint8Array.
+  for (let ty = Math.floor(cameraY/TILE); ty <= Math.floor((cameraY+H)/TILE); ty++) {
+    for (let tx = Math.floor(cameraX/TILE); tx <= Math.floor((cameraX+W)/TILE); tx++) {
+      if (!solid(tx, ty)) continue;
+      ctx.fillStyle = '#4a4a4a';
+      ctx.fillRect(tx*TILE, ty*TILE, TILE, TILE);
+      ctx.strokeStyle = '#676767';
+      ctx.strokeRect(tx*TILE+0.5, ty*TILE+0.5, TILE-1, TILE-1);
+    }
+  }
+
+  // Player AABB.
+  ctx.fillStyle = '#f28c28';
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.strokeStyle = '#fff';
+  ctx.strokeRect(player.x + 0.5, player.y + 0.5, player.w - 1, player.h - 1);
+
+  // Feet line.
+  ctx.strokeStyle = '#ffeb3b';
+  ctx.beginPath();
+  ctx.moveTo(player.x, player.y + player.h);
+  ctx.lineTo(player.x + player.w, player.y + player.h);
+  ctx.stroke();
+
+  ctx.restore();
+
+  stats.innerHTML = `x ${player.x.toFixed(1)} y ${player.y.toFixed(1)}<br>` +
+                    `vx ${player.vx.toFixed(1)} vy ${player.vy.toFixed(1)}<br>` +
+                    `onGround ${player.onGround}<br>` +
+                    `tile ${Math.floor((player.x+player.w/2)/TILE)}, ${Math.floor((player.y+player.h/2)/TILE)}<br>` +
+                    `grid ${WORLD_W}×${WORLD_H} / ${world.length} cells`;
+}
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const tx = Math.floor((e.clientX + cameraX) / TILE);
+  const ty = Math.floor((e.clientY + cameraY) / TILE);
+  if (tx >= 0 && ty >= 0 && tx < WORLD_W && ty < WORLD_H) {
+    world[idx(tx, ty)] ^= 1;
+  }
+});
+
+clearWorld();
+resetPlayer();
+
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  dt = Math.min(dt, 0.033);
+  player.update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

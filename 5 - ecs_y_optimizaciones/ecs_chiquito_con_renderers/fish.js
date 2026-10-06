@@ -245,3 +245,5 @@ export class Fish {
     return this._resultBuf;
   }
 }
+
+window.Fish = Fish;
