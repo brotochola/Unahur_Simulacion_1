@@ -246,8 +246,8 @@
     <div id="app">
         <aside id="sidebar">
             <h1>Grilla → MS → Box2D</h1>
-            <p class="hint">A/D cohetes · click izq según modo (Dibujar / Disparar / Arpón / Borrar) · H/K soga · rueda
-                zoom.</p>
+            <p class="hint">W/↑ jetpack · A/D mover · click izq según modo (Dibujar / Disparar / Arpón / Borrar) · H/K
+                soga · rueda zoom.</p>
             <div id="stats">extracted: 0 | static: 0 | dynamic: 0</div>
 
             <div class="section">
@@ -393,7 +393,7 @@
             <details class="doc">
                 <summary>Cámara / zoom / pincel</summary>
                 <ul>
-                    <li>Cámara centrada en la nave, clamp al mundo.</li>
+                    <li>Cámara centrada en el personaje, clamp al mundo.</li>
                     <li>Zoom: slider o rueda del mouse sobre el canvas.</li>
                     <li>Pincel: click izq en modo Dibujar/Borrar. Radio + hardness.</li>
                     <li>Láser: modo Disparar + click izq (mira al cursor).</li>
@@ -402,14 +402,14 @@
             </details>
 
             <details class="doc">
-                <summary>Nave</summary>
+                <summary>Personaje</summary>
                 <ul>
-                    <li><code>A</code> / <code>D</code>: cohete izquierdo / derecho (thrust diferencial, la nave gira).
-                    </li>
+                    <li><code>W</code> / <code>↑</code>: jetpack (empuja hacia arriba del mundo).</li>
+                    <li><code>A</code> / <code>D</code> o flechas: empuje horizontal.</li>
                     <li>Modo <b>Disparar</b> + click izq: ray DDA sobre grilla → kernel daño.</li>
                     <li>Modo <b>Arpón</b> + click izq: dispara punta hacia el cursor. Primer body (static o dynamic)
                         recibe weld. Click otra vez suelta. <code>H</code> recoge, <code>K</code> estira la soga.</li>
-                    <li>Body dynamic, rotación libre, damping angular. Caer fuera → respawn.</li>
+                    <li>Rectángulo dynamic, rotación fija. Caer fuera → respawn.</li>
                 </ul>
             </details>
 
@@ -459,7 +459,6 @@
             b2Body_GetShapeCount,
             b2Body_ComputeAABB,
             b2Body_GetWorldPoint,
-            b2Body_GetWorldVector,
             b2Body_GetLocalPoint,
             b2Body_SetAwake,
             b2Body_SetBullet,
@@ -497,8 +496,9 @@
         const FIXED_DT = 1 / 60;
         const GRAVITY = 400;
         const SHIP_HALF_W = 10;
-        const SHIP_HALF_H = 12;
-        const THRUST_FORCE = 200000;
+        const SHIP_HALF_H = 14;
+        const THRUST_FORCE = 480000;
+        const MOVE_FORCE = 280000;
         const SHOT_COOLDOWN = 0.12;
         const CAT_SHIP = 0x0002;
         const CAT_HOOK = 0x0004;
@@ -1049,8 +1049,8 @@
                 density: 1.2,
                 friction: 0.4,
                 restitution: 0.05,
-                fixedRotation: false,
-                linearDamping: 0.35,
+                fixedRotation: true,
+                linearDamping: 0.8,
                 angularDamping: 5,
                 categoryBits: CAT_SHIP,
                 maskBits: MASK_SHIP
@@ -1063,24 +1063,21 @@
             return !!keys[code];
         }
 
-        function fireEngine(localX, localY) {
-            const pt = b2Body_GetWorldPoint(playerBodyId, new b2Vec2(localX, localY));
-            const dir = b2Body_GetWorldVector(playerBodyId, new b2Vec2(0, -1));
-            b2Body_ApplyForce(
-                playerBodyId,
-                new b2Vec2(dir.x * THRUST_FORCE, dir.y * THRUST_FORCE),
-                pt,
-                true
-            );
+        function applyPlayerForce(fx, fy) {
+            const pos = b2Body_GetPosition(playerBodyId);
+            b2Body_ApplyForce(playerBodyId, new b2Vec2(fx, fy), pos, true);
+        }
+
+        function jetpackHeld() {
+            return keyDown('KeyW') || keyDown('ArrowUp') || keyDown('Space');
         }
 
         function updatePlayer(dt) {
             if (!playerBodyId) return;
 
-            const left = keyDown('KeyA') || keyDown('ArrowLeft');
-            const right = keyDown('KeyD') || keyDown('ArrowRight');
-            if (left) fireEngine(-SHIP_HALF_W * 0.7, SHIP_HALF_H * 0.85);
-            if (right) fireEngine(SHIP_HALF_W * 0.7, SHIP_HALF_H * 0.85);
+            if (jetpackHeld()) applyPlayerForce(0, -THRUST_FORCE);
+            if (keyDown('KeyA') || keyDown('ArrowLeft')) applyPlayerForce(-MOVE_FORCE, 0);
+            if (keyDown('KeyD') || keyDown('ArrowRight')) applyPlayerForce(MOVE_FORCE, 0);
 
             if (hook) {
                 if (keyDown('KeyH')) setRopeLength(hook.maxLen - HOOK_REEL * dt);
@@ -1100,39 +1097,34 @@
             if (!playerBodyId) return;
             const pos = b2Body_GetPosition(playerBodyId);
             const angle = b2Rot_GetAngle(b2Body_GetRotation(playerBodyId));
-            const left = keyDown('KeyA') || keyDown('ArrowLeft');
-            const right = keyDown('KeyD') || keyDown('ArrowRight');
+            const thrusting = jetpackHeld();
 
             ctx.save();
             ctx.translate(pos.x, pos.y);
             ctx.rotate(angle);
 
-            const flame = (lx) => {
-                const h = 7 + Math.random() * 6;
+            ctx.fillStyle = '#4a5568';
+            ctx.fillRect(SHIP_HALF_W - 1, -4, 7, 12);
+
+            if (thrusting) {
+                const h = 8 + Math.random() * 8;
                 ctx.fillStyle = 'rgba(255, 180, 60, 0.9)';
                 ctx.beginPath();
-                ctx.moveTo(lx - 4, SHIP_HALF_H);
-                ctx.lineTo(lx + 4, SHIP_HALF_H);
-                ctx.lineTo(lx, SHIP_HALF_H + h);
+                ctx.moveTo(SHIP_HALF_W, 8);
+                ctx.lineTo(SHIP_HALF_W + 6, 8);
+                ctx.lineTo(SHIP_HALF_W + 3, 8 + h);
                 ctx.closePath();
                 ctx.fill();
-            };
-            if (left) flame(-SHIP_HALF_W * 0.55);
-            if (right) flame(SHIP_HALF_W * 0.55);
+            }
 
             ctx.fillStyle = '#48bb78';
             ctx.strokeStyle = '#9ae6b4';
             ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(0, -SHIP_HALF_H);
-            ctx.lineTo(SHIP_HALF_W, SHIP_HALF_H);
-            ctx.lineTo(-SHIP_HALF_W, SHIP_HALF_H);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+            ctx.fillRect(-SHIP_HALF_W, -SHIP_HALF_H, SHIP_HALF_W * 2, SHIP_HALF_H * 2);
+            ctx.strokeRect(-SHIP_HALF_W, -SHIP_HALF_H, SHIP_HALF_W * 2, SHIP_HALF_H * 2);
 
             ctx.fillStyle = '#1a202c';
-            ctx.fillRect(-3, -5, 6, 5);
+            ctx.fillRect(-4, -SHIP_HALF_H + 4, 8, 6);
             ctx.restore();
         }
 
@@ -2369,7 +2361,7 @@
         document.getElementById('btn-apply-grid').addEventListener('click', applyGridSettings);
 
         const controlCodes = new Set([
-            'ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'KeyH', 'KeyK'
+            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'KeyA', 'KeyD', 'KeyW', 'Space', 'KeyH', 'KeyK'
         ]);
         window.addEventListener('keydown', (e) => {
             if (controlCodes.has(e.code)) {
