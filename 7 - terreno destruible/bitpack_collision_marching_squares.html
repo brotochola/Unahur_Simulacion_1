@@ -176,6 +176,15 @@
       margin-top: 10px;
     }
 
+    #stats,
+    #perf {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      font-variant-numeric: tabular-nums;
+      white-space: pre;
+    }
+
     #perf-wrap {
       display: flex;
       align-items: flex-start;
@@ -184,9 +193,11 @@
     }
 
     #perf {
-      font-family: ui-monospace, Consolas, monospace;
-      font-size: 11px;
-      line-height: 1.4;
+      flex: 0 0 44ch;
+      width: 44ch;
+      min-width: 44ch;
+      max-width: 44ch;
+      overflow: hidden;
       color: #9ecfb8;
       pointer-events: auto;
     }
@@ -204,6 +215,26 @@
 
     #perf .hot {
       color: #ffb020;
+    }
+
+    #mem {
+      margin-top: 4px;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      font-variant-numeric: tabular-nums;
+      color: #9ecfb8;
+    }
+
+    .mem-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .mem-val {
+      white-space: pre;
     }
 
     #minimap-wrap {
@@ -242,7 +273,9 @@
   <div class="hud">
     <b>Colisión en bits · dibujo con marching squares</b>
     <button type="button" class="help" aria-label="Ayuda del demo">?
-      <span class="tooltip">Hay dos mundos: la grilla de bits (colisión real del personaje) y el campo desenfocado + marching squares (solo dibujo). Pintás bits; el blur arma un campo escalar; el umbral corta ese campo; marching squares traza el contorno. La física nunca mira el contorno.</span>
+      <span class="tooltip">Hay dos mundos: la grilla de bits (colisión real del personaje) y el campo desenfocado +
+        marching squares (solo dibujo). Pintás bits; el blur arma un campo escalar; el umbral corta ese campo; marching
+        squares traza el contorno. La física nunca mira el contorno.</span>
     </button><br>
     A / D o flechas: mover<br>
     W / flecha arriba / espacio: saltar<br>
@@ -251,7 +284,9 @@
     <div id="stats"></div>
     <h3>Performance
       <button type="button" class="help" aria-label="Ayuda de performance">?
-        <span class="tooltip">Tiempos en milisegundos, suavizados (EMA) y el HUD se refresca 8 veces por segundo para no pagar reflow a 60 Hz. En idle blur_ms y ms_rebuild_ms tienen que estar en ~0: el terreno cacheado no se recalcula. Al pintar solo se ensucian 1–9 chunks. Amarillo = esa etapa se está comiendo el frame.</span>
+        <span class="tooltip">Tiempos en milisegundos, suavizados (EMA), a 8 Hz. En idle blur_ms y ms_rebuild_ms van a
+          ~0. draw_calls es el blit de este frame (gl.draw*), no el bake de chunks. Amarillo = esa etapa se come el
+          frame. La memoria está en la sección de abajo.</span>
       </button>
     </h3>
     <div id="perf-wrap">
@@ -259,11 +294,82 @@
       <canvas id="step-graph" width="100" height="66"
         title="step_ms total de los últimos 100 steps: física, blur, campo, marching squares, minimapa y render. Un pixel = un step. La escala llega al menos a 10 ms; si hay un pico más alto, se estira. Amarillo = 4 ms o más."></canvas>
     </div>
+    <h3>Uso de memoria
+      <button type="button" class="help" aria-label="Ayuda de memoria">?
+        <span class="tooltip">Bytes de nuestras estructuras. CPU = arrays en RAM. GPU = texturas que creamos (campo,
+          grilla, chunks). No cuenta el framebuffer de Pixi ni el canvas del minimapa. Player y fondo son Graphics: 0 B
+          de textura.</span>
+      </button>
+    </h3>
+    <div id="mem">
+      <div class="mem-row">
+        <span class="name">Colisión packed
+          <button type="button" class="help" aria-label="Ayuda de bits packed">?
+            <span class="tooltip">Uint8Array bit-packed: 1 bit por celda. Es la fuente de verdad de sólido/vacío.
+              1024×768 = 96 KB.</span>
+          </button>
+        </span>
+        <span id="mem-bits" class="mem-val"></span>
+      </div>
+      <div class="mem-row">
+        <span class="name">cells[]
+          <button type="button" class="help" aria-label="Ayuda de cells">?
+            <span class="tooltip">Copia uint8 (0/1) de la misma grilla. getSolid lee esto, más rápido que extraer el
+              bit. Ocupa 8× el packed.</span>
+          </button>
+        </span>
+        <span id="mem-cells" class="mem-val"></span>
+      </div>
+      <div class="mem-row">
+        <span class="name">Blur Float32
+          <button type="button" class="help" aria-label="Ayuda de blur mem">?
+            <span class="tooltip">blurredField: un float por celda (4 bytes) con el valor 0..1 después del kernel. 32×
+              el packed. Es el input de marching squares.</span>
+          </button>
+        </span>
+        <span id="mem-blur" class="mem-val"></span>
+      </div>
+      <div class="mem-row">
+        <span class="name">Sprite campo
+          <button type="button" class="help" aria-label="Ayuda de textura campo">?
+            <span class="tooltip">Un píxel por celda, NEAREST, estirado × TILE. Color = valor del blur 0..1. Misma técnica que el sprite de tiles.</span>
+          </button>
+        </span>
+        <span id="mem-field" class="mem-val"></span>
+      </div>
+      <div class="mem-row">
+        <span class="name">Sprites MS
+          <button type="button" class="help" aria-label="Ayuda de texturas MS">?
+            <span class="tooltip">Una RenderTexture por chunk con el contorno de marching squares. Vacío = sin textura.
+              Acá está casi toda la VRAM del terreno.</span>
+          </button>
+        </span>
+        <span id="mem-ms" class="mem-val"></span>
+      </div>
+      <div class="mem-row">
+        <span class="name">Sprite tiles
+          <button type="button" class="help" aria-label="Ayuda de textura tiles">?
+            <span class="tooltip">Igual que el campo: un píxel por celda, NEAREST, estirado × TILE. Gris = bit sólido. Se edita el ImageData en setSolid. El checkbox solo oculta el sprite.</span>
+          </button>
+        </span>
+        <span id="mem-tiles" class="mem-val"></span>
+      </div>
+      <div class="mem-row">
+        <span class="name">GPU total
+          <button type="button" class="help" aria-label="Ayuda de GPU total">?
+            <span class="tooltip">Suma de field + tiles + MS. No incluye framebuffer, minimapa, ni Graphics (player/fondo).</span>
+          </button>
+        </span>
+        <span id="mem-gpu" class="mem-val"></span>
+      </div>
+    </div>
   </div>
   <div id="minimap-wrap">
     <canvas id="minimap" width="102" height="77"></canvas>
     <button type="button" class="help" aria-label="Ayuda del minimapa">?
-      <span class="tooltip">Mapa 102×77 de la grilla de bits (1024×768 celdas ≈ 10×10 por píxel). Un ImageData se actualiza en setSolid: cada píxel tiene un contador de celdas sólidas; si hay ≥1 se pinta. El rectángulo es la cámara; el punto naranja el personaje. No usa blur ni marching squares.</span>
+      <span class="tooltip">Mapa 102×77 de la grilla de bits (1024×768 celdas ≈ 10×10 por píxel). Un ImageData se
+        actualiza en setSolid: cada píxel tiene un contador de celdas sólidas; si hay ≥1 se pinta. El rectángulo es la
+        cámara; el punto naranja el personaje. No usa blur ni marching squares.</span>
     </button>
   </div>
   <div class="panel">
@@ -271,7 +377,10 @@
 
     <h3>Algoritmo
       <button type="button" class="help" aria-label="Ayuda del algoritmo">?
-        <span class="tooltip">Pipeline: pintás bits (0/1 por celda). Un blur circular con kernel smoothstep arma un campo 0..1 (un sample por celda, dibujado encima de esa misma celda). Marching squares mira cada 2×2 de samples: si un vértice está sobre el umbral y el vecino no, interpola el cruce y traza un segmento. Eso es solo visual. El AABB del personaje choca contra los bits, no contra esas líneas.</span>
+        <span class="tooltip">Pipeline: pintás bits (0/1 por celda). Un blur circular con kernel smoothstep arma un
+          campo 0..1 (un sample por celda, dibujado encima de esa misma celda). Marching squares mira cada 2×2 de
+          samples: si un vértice está sobre el umbral y el vecino no, interpola el cruce y traza un segmento. Eso es
+          solo visual. El AABB del personaje choca contra los bits, no contra esas líneas.</span>
       </button>
     </h3>
     <ol class="algo">
@@ -280,7 +389,9 @@
         <span>
           <span class="name">Bits
             <button type="button" class="help" aria-label="Ayuda de bits">?
-              <span class="tooltip">Uint8Array bit-packed: 1 bit por celda. setSolid escribe el bit y una copia cells[] 0/1. Si el valor no cambia, no-op (no ensucia). Fuera del mapa cuenta como sólido. Esto es la colisión.</span>
+              <span class="tooltip">Uint8Array bit-packed: 1 bit por celda. setSolid escribe el bit y una copia cells[]
+                0/1. Si el valor no cambia, no-op (no ensucia). Fuera del mapa cuenta como sólido. Esto es la
+                colisión.</span>
             </button>
           </span>
           <span class="explain">1 bit por celda. La colisión real.</span>
@@ -291,7 +402,10 @@
         <span>
           <span class="name">Blur
             <button type="button" class="help" aria-label="Ayuda de paso blur">?
-              <span class="tooltip">Cada celda del campo es un promedio ponderado de las celdas vecinas dentro del radio. El peso es smoothstep(1 − dist/r): más al centro, cero en el borde del disco. No es un box blur. El kernel se precalcula al mover el slider. Solo se recalcula el rectángulo sucio (pintura expandida por el radio).</span>
+              <span class="tooltip">Cada celda del campo es un promedio ponderado de las celdas vecinas dentro del
+                radio. El peso es smoothstep(1 − dist/r): más al centro, cero en el borde del disco. No es un box blur.
+                El kernel se precalcula al mover el slider. Solo se recalcula el rectángulo sucio (pintura expandida por
+                el radio).</span>
             </button>
           </span>
           <span class="explain">Disco smoothstep → campo 0..1 por celda.</span>
@@ -302,7 +416,9 @@
         <span>
           <span class="name">Umbral
             <button type="button" class="help" aria-label="Ayuda de paso umbral">?
-              <span class="tooltip">Cada sample del campo se clasifica: ≥ iso = “dentro”, &lt; iso = “fuera”. Los 4 bits de un cuadrado 2×2 arman un código 0..15. Ese código elige qué segmentos dibujar. El punto exacto del cruce se interpola: t = (iso − v1) / (v2 − v1).</span>
+              <span class="tooltip">Cada sample del campo se clasifica: ≥ iso = “dentro”, &lt; iso = “fuera”. Los 4 bits
+                de un cuadrado 2×2 arman un código 0..15. Ese código elige qué segmentos dibujar. El punto exacto del
+                cruce se interpola: t = (iso − v1) / (v2 − v1).</span>
             </button>
           </span>
           <span class="explain">Clasifica cada sample y arma el código 0–15.</span>
@@ -313,7 +429,10 @@
         <span>
           <span class="name">Marching squares
             <button type="button" class="help" aria-label="Ayuda de marching squares">?
-              <span class="tooltip">Los 4 samples de celdas vecinas son los vértices de un cuadrado cuyo centro cae en la esquina compartida. El contorno se interpola entre centros de celda, por eso no pega al borde del tile: no es un error, es el dual grid. Casos 5 y 10 (silla de montar) se resuelven con el promedio de los 4 valores.</span>
+              <span class="tooltip">Los 4 samples de celdas vecinas son los vértices de un cuadrado cuyo centro cae en
+                la esquina compartida. El contorno se interpola entre centros de celda, por eso no pega al borde del
+                tile: no es un error, es el dual grid. Casos 5 y 10 (silla de montar) se resuelven con el promedio de
+                los 4 valores.</span>
             </button>
           </span>
           <span class="explain">Traza el iso-contorno entre centros de celda.</span>
@@ -324,7 +443,10 @@
         <span>
           <span class="name">Chunks sucios
             <button type="button" class="help" aria-label="Ayuda de chunks">?
-              <span class="tooltip">El mundo se parte en bloques de 16×16 celdas. Al pintar se marca un AABB expandido por blurRadius+1 (el +1 es porque MS usa 2×2). Solo esos chunks rehace Graphics → textura → sprite. Idle = 0 rebuild. Cambiar blur ensucia el campo y el MS; iso/relleno solo el MS; opacidad del campo solo el alpha.</span>
+              <span class="tooltip">El mundo se parte en bloques de 16×16 celdas. Al pintar se marca un AABB expandido
+                por blurRadius+1 (el +1 es porque MS usa 2×2). Solo esos chunks rehace Graphics → textura → sprite. Idle
+                = 0 rebuild. Cambiar blur ensucia el campo y el MS; iso/relleno solo el MS; opacidad del campo solo el
+                alpha.</span>
             </button>
           </span>
           <span class="explain">16×16. Rebuild solo lo que cambió.</span>
@@ -337,7 +459,9 @@
       <label>
         <span class="name">Blur
           <button type="button" class="help" aria-label="Ayuda de blur">?
-            <span class="tooltip">Radio en celdas del disco de desenfoque. 0 = el campo es una copia de los bits (cuadraditos). Más radio = más celdas vecinas entran al promedio y el contorno se redondea. No toca la colisión. Rebuild de campo + MS en todo el mundo.</span>
+            <span class="tooltip">Radio en celdas del disco de desenfoque. 0 = el campo es una copia de los bits
+              (cuadraditos). Más radio = más celdas vecinas entran al promedio y el contorno se redondea. No toca la
+              colisión. Rebuild de campo + MS en todo el mundo.</span>
           </button>
         </span>
         <span id="blur-val">1</span>
@@ -349,7 +473,10 @@
       <label>
         <span class="name">Campo blur
           <button type="button" class="help" aria-label="Ayuda de campo blur">?
-            <span class="tooltip">Heatmap del campo: un píxel por celda, alineado con el tile de colisión (mismo cuadrado). El color es el valor 0..1 después del blur. Marching squares usa exactamente estos números. El sample “oficial” está en el centro de cada celda; el contorno se interpola entre centros, no en el borde del tile. 0 oculta el sprite (solo alpha, sin rebuild).</span>
+            <span class="tooltip">Heatmap del campo: un píxel por celda, alineado con el tile de colisión (mismo
+              cuadrado). El color es el valor 0..1 después del blur. Marching squares usa exactamente estos números. El
+              sample “oficial” está en el centro de cada celda; el contorno se interpola entre centros, no en el borde
+              del tile. 0 oculta el sprite (solo alpha, sin rebuild).</span>
           </button>
         </span>
         <span id="field-val">0.40</span>
@@ -362,7 +489,9 @@
       <label>
         <span class="name">Umbral
           <button type="button" class="help" aria-label="Ayuda de umbral">?
-            <span class="tooltip">Iso-valor. Sample ≥ umbral cuenta como sólido para el contorno. Más alto = la forma se encoge (hace falta más “materia blureada”). Más bajo = se agranda y redondea. No recalcula el blur, solo vuelve a marchar los chunks.</span>
+            <span class="tooltip">Iso-valor. Sample ≥ umbral cuenta como sólido para el contorno. Más alto = la forma se
+              encoge (hace falta más “materia blureada”). Más bajo = se agranda y redondea. No recalcula el blur, solo
+              vuelve a marchar los chunks.</span>
           </button>
         </span>
         <span id="iso-val">0.50</span>
@@ -375,7 +504,8 @@
       <label>
         <span class="name">Opacidad de relleno
           <button type="button" class="help" aria-label="Ayuda de opacidad">?
-            <span class="tooltip">Alpha de los polígonos “dentro” del iso-contorno (los casos MS que rellenan). En 0 solo queda la polilínea. Rebuild de texturas MS, el campo no se toca.</span>
+            <span class="tooltip">Alpha de los polígonos “dentro” del iso-contorno (los casos MS que rellenan). En 0
+              solo queda la polilínea. Rebuild de texturas MS, el campo no se toca.</span>
           </button>
         </span>
         <span id="fill-val">0.35</span>
@@ -387,7 +517,9 @@
       <label>
         <span class="name">Grosor del pincel
           <button type="button" class="help" aria-label="Ayuda de pincel">?
-            <span class="tooltip">Radio en celdas del sello circular al pintar bits. 1 = una celda. Click izquierdo pone sólido; Shift o click derecho borra. Cada bit que cambia ensucia un AABB expandido por el radio de blur + 1 (vecinos de MS).</span>
+            <span class="tooltip">Radio en celdas del sello circular al pintar bits. 1 = una celda. Click izquierdo pone
+              sólido; Shift o click derecho borra. Cada bit que cambia ensucia un AABB expandido por el radio de blur +
+              1 (vecinos de MS).</span>
           </button>
         </span>
         <span id="brush-val">2</span>
@@ -401,7 +533,9 @@
       <label>
         <span class="name">Tamaño
           <button type="button" class="help" aria-label="Ayuda de tamaño">?
-            <span class="tooltip">Escala del AABB. moveX/moveY recorren las celdas que pisa el rectángulo y preguntan getSolid (bits). El contorno de marching squares no participa. Si choca de costado y el obstáculo es más bajo que la altura de escalón, tryStepUp lo levanta.</span>
+            <span class="tooltip">Escala del AABB. moveX/moveY recorren las celdas que pisa el rectángulo y preguntan
+              getSolid (bits). El contorno de marching squares no participa. Si choca de costado y el obstáculo es más
+              bajo que la altura de escalón, tryStepUp lo levanta.</span>
           </button>
         </span>
         <span id="scale-val">1.00×</span>
@@ -413,7 +547,9 @@
       <label>
         <span class="name">Lerp de cámara
           <button type="button" class="help" aria-label="Ayuda de lerp de cámara">?
-            <span class="tooltip">Mezcla exponencial independiente del FPS: a = 1 − (1 − lerp)^60dt. 1 = la cámara salta al target. Valores bajos = persigue. 0 = quieta. world.position = (−camX, −camY); los sprites de terreno no se recalculan al mover la cámara.</span>
+            <span class="tooltip">Mezcla exponencial independiente del FPS: a = 1 − (1 − lerp)^60dt. 1 = la cámara salta
+              al target. Valores bajos = persigue. 0 = quieta. world.position = (−camX, −camY); los sprites de terreno
+              no se recalculan al mover la cámara.</span>
           </button>
         </span>
         <span id="cam-val">0.18</span>
@@ -427,7 +563,7 @@
       <span>
         <span class="name">Mostrar tiles de colisión
           <button type="button" class="help" aria-label="Ayuda de tiles">?
-            <span class="tooltip">Dibuja cada bit sólido en su celda exacta (tx×TILE, ty×TILE), la misma caja que usa getSolid. Debería calzar con el heatmap del campo (un píxel por celda). El contorno MS no calza con el borde del tile: interpola entre centros. Toggle de layer, sin rebuild de blur/MS.</span>
+            <span class="tooltip">Una textura WORLD_W×WORLD_H, un píxel gris por bit sólido, NEAREST × TILE. Calza con el campo. El checkbox solo oculta el sprite; setSolid ya escribió el píxel.</span>
           </button>
         </span>
         <span class="explain">Muestra la grilla de bits, la colisión real.</span>
@@ -439,7 +575,9 @@
       <label>
         <span class="name">Altura de escalón
           <button type="button" class="help" aria-label="Ayuda de altura de escalón">?
-            <span class="tooltip">Step-up: si moveX pega contra un sólido, mide rise = pies − techo de esa celda. Si 0 &lt; rise ≤ este valor y hay espacio para el AABB arriba, se acepta el lift y no se frena vx. 0 = off. 12 px = 1 celda de esta grilla.</span>
+            <span class="tooltip">Step-up: si moveX pega contra un sólido, mide rise = pies − techo de esa celda. Si 0
+              &lt; rise ≤ este valor y hay espacio para el AABB arriba, se acepta el lift y no se frena vx. 0 = off. 12
+              px = 1 celda de esta grilla.</span>
           </button>
         </span>
         <span id="step-val">12 px · 1.00 celdas</span>
@@ -453,7 +591,8 @@
       <span>
         <span class="name">Solo en el suelo
           <button type="button" class="help" aria-label="Ayuda de solo en el suelo">?
-            <span class="tooltip">tryStepUp exige onGround. Si no, un salto contra una cornisa de 1 celda te sube como si fuera un escalón. Desactivalo para trepar también en el aire o al caer.</span>
+            <span class="tooltip">tryStepUp exige onGround. Si no, un salto contra una cornisa de 1 celda te sube como
+              si fuera un escalón. Desactivalo para trepar también en el aire o al caer.</span>
           </button>
         </span>
         <span class="explain">No trepa paredes ni cornisas en el aire.</span>
@@ -464,13 +603,15 @@
       <span>
         <span class="name">Mostrar tolerancia
           <button type="button" class="help" aria-label="Ayuda de mostrar tolerancia">?
-            <span class="tooltip">Franja en los pies = altura de escalón. Un sólido cuyo techo cae dentro de esa franja se puede step-upear. Es debug visual, no cambia la física.</span>
+            <span class="tooltip">Franja en los pies = altura de escalón. Un sólido cuyo techo cae dentro de esa franja
+              se puede step-upear. Es debug visual, no cambia la física.</span>
           </button>
         </span>
         <span class="explain">Marca en el personaje hasta dónde llega el step-up.</span>
       </span>
     </label>
-    <p class="hint">Campo y tiles comparten la misma celda. El contorno MS se traza entre centros (dual grid), por eso no pega al borde. En idle, blur_ms y ms_rebuild_ms van a ~0.</p>
+    <p class="hint">Campo y tiles comparten la misma celda. El contorno MS se traza entre centros (dual grid), por eso
+      no pega al borde. En idle, blur_ms y ms_rebuild_ms van a ~0.</p>
   </div>
   <script>
     'use strict';
@@ -500,6 +641,14 @@
     const miniImg = miniCtx.createImageData(MINI_W, MINI_H);
     const miniPix = miniImg.data;
 
+    const tilesCanvas = document.createElement('canvas');
+    tilesCanvas.width = WORLD_W;
+    tilesCanvas.height = WORLD_H;
+    const tilesCtx = tilesCanvas.getContext('2d');
+    const tilesImg = tilesCtx.createImageData(WORLD_W, WORLD_H);
+    const tilesPix = tilesImg.data;
+    let tilesTexture = null;
+
     let blurRadius = 1;
     let iso = 0.5;
     let fillOpacity = 0.35;
@@ -522,12 +671,11 @@
 
     let dirtyBits = null;
     let msDirtyAll = false;
-    let dirtyTiles = false;
     let kernel = [];
 
     const times = {
       frame: 0, physics: 0, blur: 0, field: 0, msRebuild: 0, pixi: 0, hud: 0,
-      chunksDirty: 0, cellsRebuilt: 0, msCells: 0, liveTextures: 0
+      chunksDirty: 0, cellsRebuilt: 0, msCells: 0, liveTextures: 0, draws: 0
     };
     const ema = {
       frame: 0, physics: 0, blur: 0, field: 0, msRebuild: 0, pixi: 0, hud: 0, fps: 60
@@ -591,6 +739,26 @@
       for (let i = 0; i < MINI_W * MINI_H; i++) paintMiniPixel(i, false);
     }
 
+    function paintTilePixel(tx, ty, solid) {
+      const o = (ty * WORLD_W + tx) * 4;
+      if (solid) {
+        tilesPix[o] = 74;
+        tilesPix[o + 1] = 74;
+        tilesPix[o + 2] = 74;
+        tilesPix[o + 3] = 180;
+      } else {
+        tilesPix[o] = 0;
+        tilesPix[o + 1] = 0;
+        tilesPix[o + 2] = 0;
+        tilesPix[o + 3] = 0;
+      }
+    }
+
+    function uploadTilesRect(x0, y0, x1, y1) {
+      tilesCtx.putImageData(tilesImg, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+      if (tilesTexture) tilesTexture.update();
+    }
+
     function stampMini(tx, ty, nv) {
       const mi = miniIndex(tx, ty);
       if (nv) {
@@ -610,7 +778,7 @@
       if (nv) bits[i >> 3] |= mask;
       else bits[i >> 3] &= ~mask;
       markCell(tx, ty);
-      dirtyTiles = true;
+      paintTilePixel(tx, ty, nv);
       stampMini(tx, ty, nv);
     }
 
@@ -725,6 +893,7 @@
     function clearWorld() {
       bits.fill(0);
       cells.fill(0);
+      tilesPix.fill(0);
       resetMini();
       dirtyBits = null;
       for (let x = 0; x < WORLD_W; x++) {
@@ -924,10 +1093,21 @@
     app.stage.interactive = false;
     app.stage.interactiveChildren = false;
 
+    let drawCalls = 0;
+    const gl = app.renderer.gl;
+    const glDrawArrays = gl.drawArrays.bind(gl);
+    const glDrawElements = gl.drawElements.bind(gl);
+    gl.drawArrays = function () { drawCalls++; return glDrawArrays.apply(this, arguments); };
+    gl.drawElements = function () { drawCalls++; return glDrawElements.apply(this, arguments); };
+
+    app.stage.name = 'stage';
+
     const world = new PIXI.Container();
+    world.name = 'world';
     app.stage.addChild(world);
 
     const worldBg = new PIXI.Graphics();
+    worldBg.name = 'worldBg';
     worldBg.beginFill(0x050807);
     worldBg.drawRect(0, 0, WORLD_W * TILE, WORLD_H * TILE);
     worldBg.endFill();
@@ -940,6 +1120,8 @@
         resolution: 1
       });
       const wrap = new PIXI.Container();
+      wrap.name = 'bakeWrap';
+      if (!g.name) g.name = 'bakeGfx';
       g.position.set(ox, oy);
       wrap.addChild(g);
       app.renderer.render(wrap, { renderTexture: rt, clear: true });
@@ -949,16 +1131,6 @@
       return rt;
     }
 
-    const gridCell = new PIXI.Graphics();
-    gridCell.lineStyle(1, 0x4bffa0, 0.06);
-    gridCell.moveTo(0, 0);
-    gridCell.lineTo(TILE, 0);
-    gridCell.moveTo(0, 0);
-    gridCell.lineTo(0, TILE);
-    const gridTex = bakeGraphics(gridCell, TILE, TILE, 0, 0);
-    const gridSprite = new PIXI.TilingSprite(gridTex, WORLD_W * TILE, WORLD_H * TILE);
-    world.addChild(gridSprite);
-
     const fieldCanvas = document.createElement('canvas');
     fieldCanvas.width = WORLD_W;
     fieldCanvas.height = WORLD_H;
@@ -967,20 +1139,28 @@
     const fieldTexture = PIXI.Texture.from(fieldCanvas);
     fieldTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
     const fieldSprite = new PIXI.Sprite(fieldTexture);
+    fieldSprite.name = 'field';
     fieldSprite.position.set(0, 0);
     fieldSprite.scale.set(TILE);
     fieldSprite.alpha = fieldOpacity;
     fieldSprite.visible = fieldOpacity > 0;
     world.addChild(fieldSprite);
 
-    const tilesLayer = new PIXI.Container();
-    tilesLayer.visible = false;
-    world.addChild(tilesLayer);
+    tilesTexture = PIXI.Texture.from(tilesCanvas);
+    tilesTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    const tilesSprite = new PIXI.Sprite(tilesTexture);
+    tilesSprite.name = 'tiles';
+    tilesSprite.position.set(0, 0);
+    tilesSprite.scale.set(TILE);
+    tilesSprite.visible = showTiles;
+    world.addChild(tilesSprite);
 
     const chunksLayer = new PIXI.Container();
+    chunksLayer.name = 'chunksLayer';
     world.addChild(chunksLayer);
 
     const playerGfx = new PIXI.Graphics();
+    playerGfx.name = 'player';
     world.addChild(playerGfx);
     let playerGfxDirty = true;
     let lastPlayerW = 0;
@@ -990,20 +1170,40 @@
     for (let cy = 0; cy < CHUNKS_Y; cy++) {
       for (let cx = 0; cx < CHUNKS_X; cx++) {
         const ms = new PIXI.Sprite(PIXI.Texture.EMPTY);
-        const tiles = new PIXI.Sprite(PIXI.Texture.EMPTY);
+        ms.name = 'ms_' + cx + '_' + cy;
         chunksLayer.addChild(ms);
-        tilesLayer.addChild(tiles);
-        chunks.push({ cx, cy, ms, tiles, msTex: null, tileTex: null });
+        chunks.push({ cx, cy, ms, msTex: null });
       }
     }
 
-    function liveTextureCount() {
-      let n = 2;
+    function fmtBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function textureBytes(tex) {
+      if (!tex || tex === PIXI.Texture.EMPTY) return 0;
+      const bt = tex.baseTexture;
+      if (!bt || !bt.valid) return 0;
+      const w = bt.realWidth || tex.width || 0;
+      const h = bt.realHeight || tex.height || 0;
+      const res = bt.resolution || 1;
+      return (w * res) * (h * res) * 4;
+    }
+
+    function memSprites() {
+      let ms = 0, msN = 0;
       for (let i = 0; i < chunks.length; i++) {
-        if (chunks[i].msTex) n++;
-        if (chunks[i].tileTex) n++;
+        if (chunks[i].msTex) { ms += textureBytes(chunks[i].msTex); msN++; }
       }
-      return n;
+      const field = textureBytes(fieldTexture);
+      const tiles = textureBytes(tilesTexture);
+      return {
+        field, tiles, ms, msN,
+        count: 2 + msN,
+        total: field + tiles + ms
+      };
     }
 
     function swapTexture(sprite, chunk, key, tex) {
@@ -1056,6 +1256,7 @@
       const originX = ox * TILE;
       const originY = oy * TILE;
       const g = new PIXI.Graphics();
+      g.name = 'msBake_' + chunk.cx + '_' + chunk.cy;
       const doFill = fillOpacity > 0;
       const fillColor = phosphorHex(0.7);
       const strokeColor = phosphorHex(Math.min(1, iso + 0.2));
@@ -1160,39 +1361,6 @@
       return cellsVisited;
     }
 
-    function rebuildTileChunk(chunk) {
-      const ox = chunk.cx * CHUNK;
-      const oy = chunk.cy * CHUNK;
-      const x1 = Math.min(ox + CHUNK, WORLD_W);
-      const y1 = Math.min(oy + CHUNK, WORLD_H);
-      const cw = x1 - ox;
-      const ch = y1 - oy;
-      const originX = ox * TILE;
-      const originY = oy * TILE;
-      const g = new PIXI.Graphics();
-      let any = false;
-      g.beginFill(0x4a4a4a, 0.45);
-      g.lineStyle(1, 0x676767, 0.8);
-      for (let ty = oy; ty < y1; ty++) {
-        const row = ty * WORLD_W;
-        for (let tx = ox; tx < x1; tx++) {
-          if (!cells[row + tx]) continue;
-          any = true;
-          g.drawRect(tx * TILE - originX + 0.5, ty * TILE - originY + 0.5, TILE - 1, TILE - 1);
-        }
-      }
-      g.endFill();
-      if (!any) {
-        g.destroy(true);
-        swapTexture(chunk.tiles, chunk, 'tileTex', null);
-        chunk.tiles.position.set(originX, originY);
-        return;
-      }
-      const tex = bakeGraphics(g, cw * TILE, ch * TILE, 0, 0);
-      swapTexture(chunk.tiles, chunk, 'tileTex', tex);
-      chunk.tiles.position.set(originX, originY);
-    }
-
     function flushTerrain() {
       times.blur = 0;
       times.field = 0;
@@ -1203,9 +1371,9 @@
       if (!dirtyBits && !msDirtyAll) return;
 
       const r = blurRadius;
-      const rebuildTiles = dirtyTiles;
 
       if (dirtyBits) {
+        uploadTilesRect(dirtyBits.x0, dirtyBits.y0, dirtyBits.x1, dirtyBits.y1);
         const fx0 = Math.max(0, dirtyBits.x0 - r);
         const fy0 = Math.max(0, dirtyBits.y0 - r);
         const fx1 = Math.min(WORLD_W - 1, dirtyBits.x1 + r);
@@ -1236,7 +1404,6 @@
         for (let cx = cx0; cx <= cx1; cx++) {
           const chunk = chunks[cy * CHUNKS_X + cx];
           times.msCells += rebuildMSChunk(chunk);
-          if (rebuildTiles) rebuildTileChunk(chunk);
           times.chunksDirty++;
         }
       }
@@ -1244,7 +1411,6 @@
 
       dirtyBits = null;
       msDirtyAll = false;
-      dirtyTiles = false;
     }
 
     function redrawPlayer() {
@@ -1315,6 +1481,11 @@
       return v < 0.05 ? '0.00' : v.toFixed(2);
     }
 
+    function pad(v, n) {
+      const s = String(v);
+      return s.length >= n ? s : ' '.repeat(n - s.length) + s;
+    }
+
     function drawStepGraph(ms) {
       stepHist[stepHistN % STEP_HIST] = ms;
       stepHistN++;
@@ -1343,25 +1514,35 @@
     }
 
     function writeHud() {
-      times.liveTextures = liveTextureCount();
+      const mem = memSprites();
+      times.liveTextures = mem.count;
+      const cx = Math.floor((player.x + player.w / 2) / TILE);
+      const cy = Math.floor((player.y + player.h / 2) / TILE);
       stats.innerHTML =
-        `x ${player.x.toFixed(1)} y ${player.y.toFixed(1)}<br>` +
-        `vx ${player.vx.toFixed(1)} vy ${player.vy.toFixed(1)}<br>` +
-        `en suelo ${player.onGround}<br>` +
-        `escalón ${stepHeight} px · ${(stepHeight / TILE).toFixed(2)} celdas<br>` +
-        `celda ${Math.floor((player.x + player.w / 2) / TILE)}, ${Math.floor((player.y + player.h / 2) / TILE)}<br>` +
-        `grilla ${WORLD_W}×${WORLD_H} · ${CELL_COUNT} bits · ${bits.length} bytes`;
+        `x ${pad(player.x.toFixed(1), 8)} y ${pad(player.y.toFixed(1), 8)}<br>` +
+        `vx ${pad(player.vx.toFixed(1), 7)} vy ${pad(player.vy.toFixed(1), 7)}<br>` +
+        `en suelo ${pad(player.onGround, 5)}<br>` +
+        `escalón ${pad(stepHeight, 2)} px · ${pad((stepHeight / TILE).toFixed(2), 4)} celdas<br>` +
+        `celda ${pad(cx, 4)}, ${pad(cy, 4)}<br>` +
+        `grilla ${WORLD_W}×${WORLD_H} · ${CELL_COUNT} celdas`;
       perfEl.innerHTML =
-        `<span title="Frames por segundo y duración total del frame (EMA).">fps ${ema.fps.toFixed(0)} · frame_ms ${fmtMs(ema.frame)}</span><br>` +
-        `<span class="${hot(ema.physics, 1)}" title="AABB vs bits: moveX, moveY, step-up. No mira el campo ni el contorno.">physics_ms ${fmtMs(ema.physics)}</span><br>` +
-        `<span class="${hot(ema.blur, 2)}" title="Promedio ponderado del rectángulo sucio. 0 si nadie pintó ni cambió el radio.">blur_ms ${fmtMs(ema.blur)}</span><br>` +
-        `<span class="${hot(ema.field, 1)}" title="Upload del heatmap (ImageData → textura). 0 si el campo no cambió.">field_ms ${fmtMs(ema.field)}</span><br>` +
-        `<span class="${hot(ema.msRebuild, 2)}" title="Graphics de marching squares horneados a textura por chunk sucio.">ms_rebuild_ms ${fmtMs(ema.msRebuild)}</span><br>` +
-        `<span class="${hot(ema.pixi, 4)}" title="Blit de sprites cacheados + jugador. Esto corre todos los frames.">pixi_ms ${fmtMs(ema.pixi)}</span><br>` +
-        `<span title="Escritura del DOM, a 8 Hz.">hud_ms ${fmtMs(ema.hud)}</span><br>` +
-        `<span title="Chunks 16×16 que se regeneraron este frame / total.">chunks_dirty ${times.chunksDirty} / ${CHUNK_COUNT}</span><br>` +
-        `<span title="Celdas reblureadas y celdas 2×2 recorridas por MS en el rebuild.">cells_rebuilt ${times.cellsRebuilt} · ms_cells ${times.msCells}</span><br>` +
-        `<span title="Texturas GPU vivas (campo, grilla, MS y tiles por chunk).">texturas ${times.liveTextures} · chunks ${CHUNK}×${CHUNK}</span>`;
+        `<span title="Frames por segundo y duración total del frame (EMA).">fps ${pad(ema.fps.toFixed(0), 4)} · frame_ms ${pad(fmtMs(ema.frame), 6)}</span><br>` +
+        `<span class="${hot(ema.physics, 1)}" title="AABB vs bits: moveX, moveY, step-up. No mira el campo ni el contorno.">physics_ms ${pad(fmtMs(ema.physics), 6)}</span><br>` +
+        `<span class="${hot(ema.blur, 2)}" title="Promedio ponderado del rectángulo sucio. 0 si nadie pintó ni cambió el radio.">blur_ms ${pad(fmtMs(ema.blur), 6)}</span><br>` +
+        `<span class="${hot(ema.field, 1)}" title="Upload del heatmap (ImageData → textura). 0 si el campo no cambió.">field_ms ${pad(fmtMs(ema.field), 6)}</span><br>` +
+        `<span class="${hot(ema.msRebuild, 2)}" title="Graphics de marching squares horneados a textura por chunk sucio.">ms_rebuild_ms ${pad(fmtMs(ema.msRebuild), 6)}</span><br>` +
+        `<span class="${hot(ema.pixi, 4)}" title="Blit de sprites cacheados + jugador. Esto corre todos los frames.">pixi_ms ${pad(fmtMs(ema.pixi), 6)}</span><br>` +
+        `<span title="Escritura del DOM, a 8 Hz.">hud_ms ${pad(fmtMs(ema.hud), 6)}</span><br>` +
+        `<span title="Chunks 16×16 que se regeneraron este frame / total.">chunks_dirty ${pad(times.chunksDirty, 4)} / ${CHUNK_COUNT}</span><br>` +
+        `<span title="Celdas reblureadas y celdas 2×2 recorridas por MS en el rebuild.">cells_rebuilt ${pad(times.cellsRebuilt, 6)} · ms_cells ${pad(times.msCells, 6)}</span><br>` +
+        `<span title="gl.drawArrays + gl.drawElements del blit del stage. No incluye bake a RenderTexture.">draw_calls ${pad(times.draws, 4)}</span>`;
+      document.getElementById('mem-bits').textContent = fmtBytes(bits.byteLength);
+      document.getElementById('mem-cells').textContent = fmtBytes(cells.byteLength);
+      document.getElementById('mem-blur').textContent = fmtBytes(blurredField.byteLength);
+      document.getElementById('mem-field').textContent = fmtBytes(mem.field);
+      document.getElementById('mem-ms').textContent = mem.msN + ' tex · ' + fmtBytes(mem.ms);
+      document.getElementById('mem-tiles').textContent = fmtBytes(mem.tiles);
+      document.getElementById('mem-gpu').textContent = fmtBytes(mem.total) + ' · ' + mem.count + ' tex';
     }
 
     function ease(prev, x) {
@@ -1456,7 +1637,7 @@
     });
     document.getElementById('show-tiles').addEventListener('change', e => {
       showTiles = e.target.checked;
-      tilesLayer.visible = showTiles;
+      tilesSprite.visible = showTiles;
     });
     document.getElementById('step').addEventListener('input', e => {
       stepHeight = parseInt(e.target.value, 10);
@@ -1493,7 +1674,9 @@
       drawMinimap();
 
       t0 = performance.now();
+      drawCalls = 0;
       app.renderer.render(app.stage);
+      times.draws = drawCalls;
       times.pixi = performance.now() - t0;
 
       times.frame = performance.now() - tFrame;
