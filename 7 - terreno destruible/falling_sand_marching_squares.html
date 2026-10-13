@@ -116,6 +116,20 @@
   .actions button.warn:hover{background:var(--amber-dim); color:#1a0f00;}
 
   .hint{font-size:9px; color:var(--ink-dim); line-height:1.5; margin-top:6px;}
+  .explain{font-size:11px; color:var(--ink); line-height:1.55; margin:0 0 8px;}
+  .explain:last-child{margin-bottom:0;}
+
+  [data-tip]{cursor:help;}
+  #float-tip{
+    position:fixed; z-index:9999; display:none;
+    max-width:300px;
+    background:#07110e; color:var(--ink);
+    border:1px solid var(--phosphor); border-radius:2px;
+    padding:8px 10px;
+    font-size:11px; line-height:1.45; letter-spacing:0.01em;
+    pointer-events:none;
+    box-shadow:0 8px 24px rgba(0,0,0,0.55), 0 0 16px rgba(75,255,160,0.12);
+  }
 </style>
 </head>
 <body>
@@ -129,29 +143,37 @@
 </div>
 
 <div id="panel">
-  <h1>Sand // Field</h1>
-  <div class="sub">falling-sand continuo · render marching squares</div>
+  <h1 data-tip="Dos capas. La grilla guarda arena como densidad de 0 a 255. Marching squares lee esa grilla y dibuja la curva de nivel del isovalor.">Sand // Field</h1>
+  <div class="sub">arena continua · contorno por marching squares</div>
 
   <div class="grp">
-    <div class="grp-title">Simulación</div>
-    <div class="row"><label>Tamaño de celda (px)</label><input id="cellPx" type="range" min="3" max="14" step="1" value="6"><span class="val" id="cellPxVal"></span></div>
-    <div class="row"><label>Flow rate</label><input id="flowRate" type="range" min="1" max="255" step="1" value="70"><span class="val" id="flowRateVal"></span></div>
-    <div class="row"><label>Umbral de reposo</label><input id="restThresh" type="range" min="0" max="40" step="1" value="4"><span class="val" id="restThreshVal"></span></div>
-    <div class="row"><label>Spread lateral</label><input id="spread" type="range" min="0" max="100" step="1" value="35"><span class="val" id="spreadVal"></span></div>
-    <div class="row"><label>Pasos por frame</label><input id="stepsPerFrame" type="range" min="1" max="6" step="1" value="1"><span class="val" id="stepsPerFrameVal"></span></div>
+    <div class="grp-title" data-tip="La leyenda de arriba a la izquierda del canvas muestra las celdas de la grilla, el isovalor activo y si la física está en RUN o en PAUSE.">Qué es esto</div>
+    <p class="explain">Cada celda guarda una densidad de 0 (vacío) a 255 (lleno). En cada paso suelta arena hacia abajo; si abajo no entra, prueba las dos diagonales; después puede nivelarse con los vecinos de la misma fila.</p>
+    <p class="explain">Marching squares dibuja la curva donde esa densidad vale el isovalor. En cada cuadrado de 2×2 marca las esquinas que quedan adentro y corta las aristas en un punto interpolado. Si dos esquinas opuestas están adentro, desempata con el promedio de las cuatro.</p>
+    <p class="hint">Click o arrastre pinta. Shift pinta en cero. El cursor de ayuda abre el detalle de cada control.</p>
   </div>
 
   <div class="grp">
-    <div class="grp-title">Pincel</div>
-    <div class="row"><label>Radio</label><input id="brushSize" type="range" min="1" max="18" step="1" value="5"><span class="val" id="brushSizeVal"></span></div>
-    <div class="row"><label>Valor</label><input id="brushVal" type="range" min="0" max="255" step="1" value="255"><span class="val" id="brushValVal"></span></div>
-    <div class="hint">click / drag = agrega · shift+click = borra</div>
+    <div class="grp-title" data-tip="Reglas con las que la densidad pasa de una celda a otra. El contorno solo dibuja el resultado.">Simulación</div>
+    <div class="row" data-tip="Lado de cada celda, en píxeles. Más chico: más celdas y más detalle, y el cálculo pesa más. Al moverlo se arma una grilla nueva y se pierde la arena actual."><label>Tamaño de celda (px)</label><input id="cellPx" type="range" min="3" max="14" step="1" value="6"><span class="val" id="cellPxVal"></span></div>
+    <div class="row" data-tip="Tope de densidad que una celda puede ceder en un paso. Más alto: la arena cae y se acomoda más rápido."><label>Flow rate</label><input id="flowRate" type="range" min="1" max="255" step="1" value="70"><span class="val" id="flowRateVal"></span></div>
+    <div class="row" data-tip="Densidad mínima para que una celda vuelva a moverse. Con este valor o menos queda en reposo, así los restos chicos no fluyen sin parar."><label>Umbral de reposo</label><input id="restThresh" type="range" min="0" max="40" step="1" value="4"><span class="val" id="restThreshVal"></span></div>
+    <div class="row" data-tip="Fracción del flujo que se reparte a los vecinos de la misma fila. 0 deja la arena caer en vertical. Cerca de 1 se aplana y forma charcos. El número de la derecha ya está en fracción (0 a 1)."><label>Spread lateral</label><input id="spread" type="range" min="0" max="100" step="1" value="35"><span class="val" id="spreadVal"></span></div>
+    <div class="row" data-tip="Cuántas veces corre la física en cada cuadro. Subirlo acelera lo que ves, con las mismas reglas."><label>Pasos por frame</label><input id="stepsPerFrame" type="range" min="1" max="6" step="1" value="1"><span class="val" id="stepsPerFrameVal"></span></div>
+    <div class="hint">La física mueve la arena. Los controles de marching squares solo cambian el dibujo.</div>
   </div>
 
   <div class="grp">
-    <div class="grp-title">Marching squares</div>
-    <div class="row"><label>Isovalor</label><input id="iso" type="range" min="1" max="254" step="1" value="128"><span class="val" id="isoVal"></span></div>
-    <div class="row"><label>Interp. de arista</label>
+    <div class="grp-title" data-tip="Cómo se deposita densidad sobre el canvas.">Pincel</div>
+    <div class="row" data-tip="Radio del círculo, medido en celdas."><label>Radio</label><input id="brushSize" type="range" min="1" max="18" step="1" value="5"><span class="val" id="brushSizeVal"></span></div>
+    <div class="row" data-tip="Densidad que deja el pincel, de 0 a 255. Si la celda ya tenía más, se queda con el valor mayor. Con Shift el pincel vacía la celda a 0."><label>Valor</label><input id="brushVal" type="range" min="0" max="255" step="1" value="255"><span class="val" id="brushValVal"></span></div>
+    <div class="hint" data-tip="Sin Shift el pincel deposita el valor elegido. Si la celda ya tenía más, se queda con ese valor. Con Shift pone esas celdas en 0.">click / drag = deposita · shift+click = borra</div>
+  </div>
+
+  <div class="grp">
+    <div class="grp-title" data-tip="Algoritmo que convierte el campo de densidades en una curva. Recorre cada cuadrado de 2×2, numera las esquinas que superan el isovalor y traza el segmento que corresponde a ese caso.">Marching squares</div>
+    <div class="row" data-tip="Densidad de la curva de nivel. Una esquina cuenta como adentro cuando su valor es mayor o igual a este número. El trazo pasa por donde el campo vale exactamente el isovalor."><label>Isovalor</label><input id="iso" type="range" min="1" max="254" step="1" value="128"><span class="val" id="isoVal"></span></div>
+    <div class="row" data-tip="Dónde cae el cruce sobre cada arista. Lerp es la proporción lineal entre las dos densidades. Smoothstep y smootherstep corren ese punto hacia el extremo más cercano; smootherstep usa una curva más plana en los extremos. Pow deforma la proporción con el exponente k. Midpoint fijo corta siempre a la mitad del lado: el contorno queda más quebrado y alineado a la grilla."><label>Interp. de arista</label>
       <select id="interpMode">
         <option value="lerp">lerp</option>
         <option value="smoothstep">smoothstep</option>
@@ -160,44 +182,45 @@
         <option value="midpoint">midpoint fijo</option>
       </select>
     </div>
-    <div class="row"><label>Exponente k (pow)</label><input id="powK" type="range" min="10" max="600" step="1" value="100"><span class="val" id="powKVal"></span></div>
-    <div class="row"><label>Blur pre-pass</label><input id="blur" type="range" min="0" max="4" step="1" value="0"><span class="val" id="blurVal"></span></div>
-    <div class="row"><label>Grosor de línea</label><input id="lineWidth" type="range" min="5" max="40" step="1" value="15"><span class="val" id="lineWidthVal"></span></div>
-    <div class="row"><label>Multi-nivel</label>
-      <div class="toggle"><button data-t="multi" data-v="0" class="active">off</button><button data-t="multi" data-v="1">on</button></div>
+    <div class="row" data-tip="Solo entra en juego con la interpolación pow. k = 1 coincide con la lineal. Con k mayor que 1 el cruce se corre hacia un extremo de la arista; con k menor que 1, hacia el extremo opuesto. El número de la derecha es el exponente."><label>Exponente k (pow)</label><input id="powK" type="range" min="10" max="600" step="1" value="100"><span class="val" id="powKVal"></span></div>
+    <div class="row" data-tip="Radio, en celdas, de un desenfoque cuadrado sobre una copia del campo, antes de trazar el contorno. 0 usa la arena tal cual. Subirlo redondea las curvas. La física sigue usando la grilla sin desenfoque."><label>Blur pre-pass</label><input id="blur" type="range" min="0" max="4" step="1" value="0"><span class="val" id="blurVal"></span></div>
+    <div class="row" data-tip="Ancho del trazo del contorno, en píxeles. El número de la derecha ya está en píxeles (de 0,5 a 4)."><label>Grosor de línea</label><input id="lineWidth" type="range" min="5" max="40" step="1" value="15"><span class="val" id="lineWidthVal"></span></div>
+    <div class="row" data-tip="Off: una sola curva, en el isovalor. On: varias curvas de nivel, una cada tantos puntos de densidad. La más cercana al isovalor se dibuja más fuerte."><label>Multi-nivel</label>
+      <div class="toggle"><button data-t="multi" data-v="0" class="active" data-tip="Una sola curva, dibujada en el isovalor.">off</button><button data-t="multi" data-v="1" data-tip="Varias curvas de nivel separadas por el paso. La más cercana al isovalor se traza más fuerte.">on</button></div>
     </div>
-    <div class="row"><label>Paso entre niveles</label><input id="levelStep" type="range" min="8" max="64" step="1" value="32"><span class="val" id="levelStepVal"></span></div>
+    <div class="row" data-tip="Distancia de densidad entre una curva de nivel y la siguiente. Solo se usa con multi-nivel en on."><label>Paso entre niveles</label><input id="levelStep" type="range" min="8" max="64" step="1" value="32"><span class="val" id="levelStepVal"></span></div>
+    <div class="hint">Estos controles dibujan el contorno. La arena se mueve con las reglas de Simulación.</div>
   </div>
 
   <div class="grp">
-    <div class="grp-title">Vista</div>
-    <div class="row"><label>Modo</label>
+    <div class="grp-title" data-tip="Qué capas se ven sobre el canvas. La física de la arena sigue igual.">Vista</div>
+    <div class="row" data-tip="Contorno: las líneas de marching squares, más el relleno si la opacidad es mayor que cero. Raw: la grilla de densidades, un rectángulo por celda. Ambos: la grilla opaca y el contorno encima."><label>Modo</label>
       <div class="toggle">
-        <button data-t="view" data-v="contour" class="active">contorno</button>
-        <button data-t="view" data-v="raw">raw</button>
-        <button data-t="view" data-v="both">ambos</button>
+        <button data-t="view" data-v="contour" class="active" data-tip="Solo las líneas de marching squares. El campo se ve detrás según la opacidad de relleno.">contorno</button>
+        <button data-t="view" data-v="raw" data-tip="Solo la grilla de densidades, opaca. Cada celda se pinta según su valor y la paleta.">raw</button>
+        <button data-t="view" data-v="both" data-tip="La grilla opaca y, encima, el contorno de marching squares.">ambos</button>
       </div>
     </div>
-    <div class="row"><label>Paleta</label>
+    <div class="row" data-tip="Phosphor: verdes de fósforo, más brillantes donde hay más densidad. Heat: de teal frío a ámbar y blanco, como un mapa de calor."><label>Paleta</label>
       <div class="toggle">
-        <button data-t="palette" data-v="phosphor" class="active">phosphor</button>
-        <button data-t="palette" data-v="heat">heat</button>
+        <button data-t="palette" data-v="phosphor" class="active" data-tip="Verdes de fósforo. Más densidad, más brillo.">phosphor</button>
+        <button data-t="palette" data-v="heat" data-tip="Mapa de calor: teal con poca densidad, ámbar en el medio, blanco en el máximo.">heat</button>
       </div>
     </div>
-    <div class="row"><label>Opacidad de relleno</label><input id="fillOpacity" type="range" min="0" max="100" step="1" value="18"><span class="val" id="fillOpacityVal"></span></div>
-    <div class="row"><label>Scanlines</label>
-      <div class="toggle"><button data-t="scan" data-v="1" class="active">on</button><button data-t="scan" data-v="0">off</button></div>
+    <div class="row" data-tip="Qué tan visible queda el campo de densidades con el modo contorno o ambos, de 0 a 1. En raw la grilla se dibuja siempre opaca y este valor no entra."><label>Opacidad de relleno</label><input id="fillOpacity" type="range" min="0" max="100" step="1" value="18"><span class="val" id="fillOpacityVal"></span></div>
+    <div class="row" data-tip="Líneas horizontales de monitor encima del canvas. Solo cambian el aspecto."><label>Scanlines</label>
+      <div class="toggle"><button data-t="scan" data-v="1" class="active" data-tip="Muestra las líneas de monitor sobre el canvas.">on</button><button data-t="scan" data-v="0" data-tip="Oculta las líneas de monitor.">off</button></div>
     </div>
   </div>
 
   <div class="grp">
-    <div class="grp-title">Transporte</div>
+    <div class="grp-title" data-tip="Correr, frenar o llenar el campo. En pausa el dibujo sigue, así que se puede pintar y mover controles con la arena quieta.">Transporte</div>
     <div class="actions">
-      <button id="btnPlay">Pausa</button>
-      <button id="btnStep">Step ▸</button>
-      <button id="btnClear" class="warn">Clear</button>
-      <button id="btnNoise" class="warn">Noise</button>
-      <button id="btnRain" class="wide">Rain (spawn arriba)</button>
+      <button id="btnPlay" data-tip="Pausa congela la física. Play la suelta de nuevo. El canvas se sigue dibujando igual en los dos estados.">Pausa</button>
+      <button id="btnStep" data-tip="Avanza un solo paso de física. Entra en juego con la simulación en pausa.">Step ▸</button>
+      <button id="btnClear" class="warn" data-tip="Pone todas las celdas en 0.">Clear</button>
+      <button id="btnNoise" class="warn" data-tip="Llena la grilla al azar: la mitad de las celdas queda vacía y el resto recibe una densidad aleatoria entre 0 y 255.">Noise</button>
+      <button id="btnRain" class="wide" data-tip="En cada paso suelta arena en celdas al azar de la fila de arriba. Otro click lo apaga.">Rain (spawn arriba)</button>
     </div>
   </div>
 </div>
@@ -579,6 +602,43 @@
     this.style.color = P.raining ? '#4bffa0' : '';
     this.textContent = P.raining ? 'Rain (activo — click para parar)' : 'Rain (spawn arriba)';
   });
+
+  (function bindFloatTips(){
+    const tip = document.createElement('div');
+    tip.id = 'float-tip';
+    document.body.appendChild(tip);
+    let current = null;
+    function place(el){
+      const text = el.getAttribute('data-tip');
+      if(!text){ tip.style.display = 'none'; return; }
+      tip.textContent = text;
+      tip.style.display = 'block';
+      const r = el.getBoundingClientRect();
+      const pad = 8;
+      let x = r.left - tip.offsetWidth - pad;
+      let y = r.top;
+      if(x < pad) x = r.right + pad;
+      if(x + tip.offsetWidth > window.innerWidth - pad) x = window.innerWidth - tip.offsetWidth - pad;
+      if(x < pad) x = pad;
+      if(y + tip.offsetHeight > window.innerHeight - pad) y = window.innerHeight - tip.offsetHeight - pad;
+      if(y < pad) y = pad;
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    }
+    document.addEventListener('mouseover', e=>{
+      const el = e.target.closest('[data-tip]');
+      if(!el){ current = null; tip.style.display = 'none'; return; }
+      current = el;
+      place(el);
+    });
+    document.addEventListener('mouseout', e=>{
+      const el = e.target.closest('[data-tip]');
+      if(!el) return;
+      if(e.relatedTarget && el.contains(e.relatedTarget)) return;
+      if(current === el){ current = null; tip.style.display = 'none'; }
+    });
+    window.addEventListener('scroll', ()=>{ if(current) place(current); }, true);
+  })();
 
   // initial seed: a couple of mounds so there's something to see immediately
   (function seed(){

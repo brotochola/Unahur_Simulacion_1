@@ -125,10 +125,16 @@
 
 - Representación híbrida grilla-malla (grid + mesh) para la deformación de terreno.
 - Reconstrucción de contornos mediante marching squares.
+- Algoritmos para simplificar lineas compuestas:
+  - https://mourner.github.io/simplify-js/
+- Algoritmos para triangulación:
+  - Earcut: https://github.com/mapbox/earcut
+  - Delaunay: https://mapbox.github.io/delaunator/
+
 - Enfoques alternativos basados en cuerpos rígidos compuestos, profundizados en la Unidad 10 (Box2D).
 - Casos de referencia de la industria (Noita, Worms, Astroneer, A Game About Digging A Hole) como estudio de decisiones de diseño y de rendimiento.
 
-- https://brotochola.github.io/destructible_terrain_2d/
+- Ejemplo quadtree/mamushka: https://brotochola.github.io/destructible_terrain_2d/
 -
 
 ## Unidad 8 — Simulación de sonido

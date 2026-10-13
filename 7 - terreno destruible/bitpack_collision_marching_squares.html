@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Bits, blur y marching squares</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #06090a;
+      color: #cfe8dc;
+      font-family: system-ui, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      image-rendering: pixelated;
+      cursor: crosshair;
+    }
+
+    .hud,
+    .panel {
+      position: fixed;
+      padding: 10px 12px;
+      background: rgba(6, 12, 10, .78);
+      border: 1px solid #1e6b48;
+      border-radius: 8px;
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .hud {
+      left: 12px;
+      top: 12px;
+      pointer-events: none;
+    }
+
+    .hud b,
+    .panel b {
+      color: #4bffa0;
+    }
+
+    .panel {
+      right: 12px;
+      top: 12px;
+      width: 250px;
+      pointer-events: auto;
+    }
+
+    .panel label {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 8px 0 2px;
+      font-size: 12px;
+    }
+
+    .panel input[type="range"] {
+      width: 100%;
+    }
+
+    .panel .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .hint {
+      color: #6f8a80;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="hud">
+    <b>Colisión en bits · dibujo con marching squares</b><br>
+    A / D o flechas: mover<br>
+    W / flecha arriba / espacio: saltar<br>
+    R: reiniciar personaje<br>
+    Arrastrar: dibujar · Shift o click derecho: borrar<br>
+    <div id="stats"></div>
+  </div>
+  <div class="panel">
+    <b>Dibujo y personaje</b>
+    <label>Blur <span id="blur-val">1</span></label>
+    <input id="blur" type="range" min="0" max="8" step="1" value="1">
+    <label>Umbral <span id="iso-val">0.50</span></label>
+    <input id="iso" type="range" min="0.05" max="0.95" step="0.05" value="0.5">
+    <label>Opacidad de relleno <span id="fill-val">0.35</span></label>
+    <input id="fill" type="range" min="0" max="1" step="0.05" value="0.35">
+    <label>Grosor del pincel <span id="brush-val">2</span></label>
+    <input id="brush" type="range" min="1" max="10" step="1" value="2">
+    <label>Tamaño del personaje <span id="scale-val">1.00×</span></label>
+    <input id="scale" type="range" min="25" max="300" step="5" value="100">
+    <label class="check">
+      <input id="show-tiles" type="checkbox">
+      Mostrar tiles de colisión
+    </label>
+    <p class="hint">El blur usa un kernel smoothstep (más peso al centro, no un promedio plano). El personaje choca contra los bits; el contorno sale del campo desenfocado.</p>
+  </div>
+  <script>
+    'use strict';
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const stats = document.getElementById('stats');
+
+    const TILE = 12;
+    const WORLD_W = 170;
+    const WORLD_H = 132;
+    const CELL_COUNT = WORLD_W * WORLD_H;
+
+    const bits = new Uint8Array(Math.ceil(CELL_COUNT / 8));
+    const blurredField = new Float32Array(CELL_COUNT);
+    const blurTmp = new Float32Array(CELL_COUNT);
+
+    let blurRadius = 1;
+    let iso = 0.5;
+    let fillOpacity = 0.35;
+    let showTiles = false;
+    let brushSize = 2;
+    const PLAYER_BASE_W = 18;
+    const PLAYER_BASE_H = 36;
+    let playerScale = 1;
+
+    let painting = false;
+    let paintValue = true;
+    let lastPaintTx = null;
+    let lastPaintTy = null;
+
+    function bitIndex(tx, ty) {
+      return ty * WORLD_W + tx;
+    }
+
+    function getSolid(tx, ty) {
+      if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
+      const i = bitIndex(tx, ty);
+      return (bits[i >> 3] & (1 << (i & 7))) !== 0;
+    }
+
+    function setSolid(tx, ty, v) {
+      if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return;
+      const i = bitIndex(tx, ty);
+      const mask = 1 << (i & 7);
+      if (v) bits[i >> 3] |= mask;
+      else bits[i >> 3] &= ~mask;
+    }
+
+    function unpackBits(out) {
+      for (let i = 0; i < CELL_COUNT; i++) {
+        out[i] = (bits[i >> 3] & (1 << (i & 7))) ? 1 : 0;
+      }
+    }
+
+    function smoothstep01(t) {
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      return t * t * (3 - 2 * t);
+    }
+
+    function computeField() {
+      unpackBits(blurTmp);
+      if (blurRadius <= 0) {
+        blurredField.set(blurTmp);
+        return blurredField;
+      }
+      const r = blurRadius;
+      const r2 = r * r;
+      for (let y = 0; y < WORLD_H; y++) {
+        for (let x = 0; x < WORLD_W; x++) {
+          let sum = 0, wsum = 0;
+          const y0 = Math.max(0, y - r);
+          const y1 = Math.min(WORLD_H - 1, y + r);
+          const x0 = Math.max(0, x - r);
+          const x1 = Math.min(WORLD_W - 1, x + r);
+          for (let yy = y0; yy <= y1; yy++) {
+            const dy = yy - y;
+            const rowOff = yy * WORLD_W;
+            for (let xx = x0; xx <= x1; xx++) {
+              const dx = xx - x;
+              const d2 = dx * dx + dy * dy;
+              if (d2 > r2) continue;
+              const t = 1 - Math.sqrt(d2) / r;
+              const w = smoothstep01(t);
+              sum += blurTmp[rowOff + xx] * w;
+              wsum += w;
+            }
+          }
+          let v = wsum > 1e-8 ? sum / wsum : 0;
+          blurredField[y * WORLD_W + x] = smoothstep01(v);
+        }
+      }
+      return blurredField;
+    }
+
+    function eventToCell(e) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) * (innerWidth / rect.width);
+      const sy = (e.clientY - rect.top) * (innerHeight / rect.height);
+      return {
+        tx: Math.floor((sx + cameraX) / TILE),
+        ty: Math.floor((sy + cameraY) / TILE)
+      };
+    }
+
+    function stamp(tx, ty, value) {
+      const r = Math.max(0, brushSize - 1);
+      const r2 = r * r;
+      if (r === 0) {
+        setSolid(tx, ty, value);
+        return;
+      }
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (dx * dx + dy * dy > r2) continue;
+          setSolid(tx + dx, ty + dy, value);
+        }
+      }
+    }
+
+    function paintLine(x0, y0, x1, y1, value) {
+      let dx = Math.abs(x1 - x0);
+      let dy = Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx - dy;
+      let x = x0, y = y0;
+      while (true) {
+        stamp(x, y, value);
+        if (x === x1 && y === y1) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+      }
+    }
+
+    function applyPlayerScale(scale) {
+      const nw = Math.max(4, PLAYER_BASE_W * scale);
+      const nh = Math.max(8, PLAYER_BASE_H * scale);
+      const feet = player.y + player.h;
+      const cx = player.x + player.w / 2;
+      player.w = nw;
+      player.h = nh;
+      player.x = cx - nw / 2;
+      player.y = feet - nh;
+      playerScale = scale;
+    }
+
+    function rect(x, y, w, h) {
+      for (let yy = y; yy < y + h; yy++) {
+        for (let xx = x; xx < x + w; xx++) setSolid(xx, yy, true);
+      }
+    }
+
+    function clearWorld() {
+      bits.fill(0);
+      for (let x = 0; x < WORLD_W; x++) {
+        setSolid(x, WORLD_H - 2, true);
+        setSolid(x, WORLD_H - 1, true);
+      }
+      rect(6, 24, 7, 1);
+      rect(18, 20, 8, 1);
+      rect(31, 25, 2, 5);
+      rect(39, 17, 9, 1);
+      rect(54, 22, 6, 1);
+      rect(62, 14, 2, 16);
+      rect(8, 21, 2, 1);
+      rect(10, 20, 2, 1);
+      rect(12, 19, 2, 1);
+      rect(14, 18, 2, 1);
+    }
+
+    class Player {
+      constructor({ x = 0, y = 0, w = 18, h = 36, tileSize }) {
+        this.tileSize = tileSize;
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.vx = 0;
+        this.vy = 0;
+        this.onGround = false;
+      }
+
+      reset(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.onGround = false;
+      }
+
+      isSolid(tx, ty) {
+        return getSolid(tx, ty);
+      }
+
+      moveX(dx) {
+        if (dx === 0) return false;
+        this.x += dx;
+        const tile = this.tileSize;
+        const eps = 0.00001;
+        const minTY = Math.floor(this.y / tile);
+        const maxTY = Math.floor((this.y + this.h - eps) / tile);
+        if (dx > 0) {
+          const tx = Math.floor((this.x + this.w - eps) / tile);
+          for (let ty = minTY; ty <= maxTY; ty++) {
+            if (!this.isSolid(tx, ty)) continue;
+            this.x = tx * tile - this.w;
+            this.vx = 0;
+            return true;
+          }
+        } else {
+          const tx = Math.floor(this.x / tile);
+          for (let ty = minTY; ty <= maxTY; ty++) {
+            if (!this.isSolid(tx, ty)) continue;
+            this.x = (tx + 1) * tile;
+            this.vx = 0;
+            return true;
+          }
+        }
+        return false;
+      }
+
+      moveY(dy) {
+        if (dy === 0) return false;
+        this.y += dy;
+        const tile = this.tileSize;
+        const eps = 0.00001;
+        const minTX = Math.floor(this.x / tile);
+        const maxTX = Math.floor((this.x + this.w - eps) / tile);
+        if (dy > 0) {
+          const ty = Math.floor((this.y + this.h - eps) / tile);
+          for (let tx = minTX; tx <= maxTX; tx++) {
+            if (!this.isSolid(tx, ty)) continue;
+            this.y = ty * tile - this.h;
+            this.vy = 0;
+            this.onGround = true;
+            return true;
+          }
+        } else {
+          const ty = Math.floor(this.y / tile);
+          for (let tx = minTX; tx <= maxTX; tx++) {
+            if (!this.isSolid(tx, ty)) continue;
+            this.y = (ty + 1) * tile;
+            this.vy = 0;
+            return true;
+          }
+        }
+        this.onGround = false;
+        return false;
+      }
+
+      update(dt) {
+        const accel = 1800;
+        const maxSpeed = 280;
+        const friction = 2200;
+        const gravity = 1700;
+        const jumpSpeed = 600;
+        const left = keys.has('KeyA') || keys.has('ArrowLeft');
+        const right = keys.has('KeyD') || keys.has('ArrowRight');
+        if (left) this.vx -= accel * dt;
+        if (right) this.vx += accel * dt;
+        if (!left && !right) {
+          if (this.vx > 0) this.vx = Math.max(0, this.vx - friction * dt);
+          if (this.vx < 0) this.vx = Math.min(0, this.vx + friction * dt);
+        }
+        this.vx = Math.max(-maxSpeed, Math.min(maxSpeed, this.vx));
+        const jump = keys.has('Space') || keys.has('KeyW') || keys.has('ArrowUp');
+        if (jump && this.onGround) {
+          this.vy = -jumpSpeed;
+          this.onGround = false;
+        }
+        this.vy += gravity * dt;
+        this.vy = Math.min(this.vy, 1200);
+        const maxMovePerStep = this.tileSize * 0.75;
+        const totalX = this.vx * dt;
+        const totalY = this.vy * dt;
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(totalX), Math.abs(totalY)) / maxMovePerStep));
+        const stepX = totalX / steps;
+        const stepY = totalY / steps;
+        for (let i = 0; i < steps; i++) {
+          this.moveX(stepX);
+          this.moveY(stepY);
+        }
+      }
+    }
+
+    const spawn = { x: 100, y: 100 };
+    const player = new Player({ x: spawn.x, y: spawn.y, w: 18, h: 36, tileSize: TILE });
+    const keys = new Set();
+    window.addEventListener('keydown', e => {
+      keys.add(e.code);
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+      if (e.code === 'KeyR') player.reset(spawn.x, spawn.y);
+    });
+    window.addEventListener('keyup', e => keys.delete(e.code));
+
+    let cameraX = 0;
+    let cameraY = 0;
+
+    function resize() {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(innerWidth * dpr);
+      canvas.height = Math.floor(innerHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function phosphor(v, a) {
+      const t = Math.max(0, Math.min(1, v));
+      return `rgba(${75 + t * 60 | 0},${255 * Math.min(1, 0.3 + t * 0.9) | 0},${140 + t * 80 | 0},${a})`;
+    }
+
+    let imgData = null;
+    const offscreen = document.createElement('canvas');
+    function renderField(field, alpha) {
+      if (!imgData || imgData.width !== WORLD_W || imgData.height !== WORLD_H) {
+        imgData = ctx.createImageData(WORLD_W, WORLD_H);
+        offscreen.width = WORLD_W;
+        offscreen.height = WORLD_H;
+      }
+      const d = imgData.data;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const t = field[i];
+        const o = i * 4;
+        d[o] = 75 + t * 60;
+        d[o + 1] = 255 * Math.min(1, 0.25 + t * 0.9);
+        d[o + 2] = 140 + t * 80;
+        d[o + 3] = alpha * 255;
+      }
+      offscreen.getContext('2d').putImageData(imgData, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(offscreen, 0, 0, WORLD_W, WORLD_H, 0, 0, WORLD_W * TILE, WORLD_H * TILE);
+    }
+
+    function edgePoint(v1, v2, x1, y1, x2, y2) {
+      let t = (iso - v1) / (v2 - v1);
+      if (!isFinite(t)) t = 0.5;
+      t = Math.max(0, Math.min(1, t));
+      return [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t];
+    }
+
+    function marchingSquares(field) {
+      ctx.strokeStyle = phosphor(Math.min(1, iso + 0.2), 0.95);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const c = TILE;
+      for (let y = 0; y < WORLD_H - 1; y++) {
+        const rowOff = y * WORLD_W;
+        const rowOff2 = (y + 1) * WORLD_W;
+        for (let x = 0; x < WORLD_W - 1; x++) {
+          const tl = field[rowOff + x], tr = field[rowOff + x + 1];
+          const bl = field[rowOff2 + x], br = field[rowOff2 + x + 1];
+          const state = (tl >= iso ? 8 : 0) | (tr >= iso ? 4 : 0) | (br >= iso ? 2 : 0) | (bl >= iso ? 1 : 0);
+          if (state === 0 || state === 15) continue;
+          const px = x * c, py = y * c;
+          const T = () => edgePoint(tl, tr, px, py, px + c, py);
+          const R = () => edgePoint(tr, br, px + c, py, px + c, py + c);
+          const B = () => edgePoint(bl, br, px, py + c, px + c, py + c);
+          const L = () => edgePoint(tl, bl, px, py, px, py + c);
+          const seg = (a, b) => { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); };
+          switch (state) {
+            case 1: seg(L(), B()); break;
+            case 2: seg(R(), B()); break;
+            case 3: seg(L(), R()); break;
+            case 4: seg(T(), R()); break;
+            case 5: {
+              const avg = (tl + tr + br + bl) / 4;
+              if (avg >= iso) { seg(T(), L()); seg(R(), B()); }
+              else { seg(T(), R()); seg(L(), B()); }
+              break;
+            }
+            case 6: seg(T(), B()); break;
+            case 7: seg(T(), L()); break;
+            case 8: seg(T(), L()); break;
+            case 9: seg(T(), B()); break;
+            case 10: {
+              const avg = (tl + tr + br + bl) / 4;
+              if (avg >= iso) { seg(T(), R()); seg(L(), B()); }
+              else { seg(T(), L()); seg(R(), B()); }
+              break;
+            }
+            case 11: seg(T(), R()); break;
+            case 12: seg(L(), R()); break;
+            case 13: seg(R(), B()); break;
+            case 14: seg(L(), B()); break;
+          }
+        }
+      }
+      ctx.stroke();
+    }
+
+    function renderCollisionTiles(W, H) {
+      const ty0 = Math.floor(cameraY / TILE);
+      const ty1 = Math.floor((cameraY + H) / TILE);
+      const tx0 = Math.floor(cameraX / TILE);
+      const tx1 = Math.floor((cameraX + W) / TILE);
+      for (let ty = ty0; ty <= ty1; ty++) {
+        for (let tx = tx0; tx <= tx1; tx++) {
+          if (!getSolid(tx, ty)) continue;
+          ctx.fillStyle = 'rgba(74, 74, 74, 0.45)';
+          ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+          ctx.strokeStyle = 'rgba(103, 103, 103, 0.8)';
+          ctx.strokeRect(tx * TILE + 0.5, ty * TILE + 0.5, TILE - 1, TILE - 1);
+        }
+      }
+    }
+
+    function render() {
+      const W = innerWidth;
+      const H = innerHeight;
+      ctx.setTransform(devicePixelRatio || 1, 0, 0, devicePixelRatio || 1, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+
+      cameraX = player.x - W * 0.5;
+      cameraY = player.y - H * 0.55;
+      cameraX = Math.max(0, Math.min(WORLD_W * TILE - W, cameraX));
+      cameraY = Math.max(0, Math.min(WORLD_H * TILE - H, cameraY));
+
+      ctx.save();
+      ctx.translate(-cameraX, -cameraY);
+
+      ctx.fillStyle = '#050807';
+      ctx.fillRect(0, 0, WORLD_W * TILE, WORLD_H * TILE);
+
+      ctx.strokeStyle = 'rgba(75, 255, 160, 0.06)';
+      ctx.lineWidth = 1;
+      const startX = Math.floor(cameraX / TILE) * TILE;
+      const endX = Math.min(WORLD_W * TILE, cameraX + W + TILE);
+      const startY = Math.floor(cameraY / TILE) * TILE;
+      const endY = Math.min(WORLD_H * TILE, cameraY + H + TILE);
+      for (let x = startX; x <= endX; x += TILE) {
+        ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, endY); ctx.stroke();
+      }
+      for (let y = startY; y <= endY; y += TILE) {
+        ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.stroke();
+      }
+
+      const field = computeField();
+      if (fillOpacity > 0) renderField(field, fillOpacity);
+      if (showTiles) renderCollisionTiles(W, H);
+      marchingSquares(field);
+
+      ctx.fillStyle = '#f28c28';
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+      ctx.strokeStyle = '#fff';
+      ctx.strokeRect(player.x + 0.5, player.y + 0.5, player.w - 1, player.h - 1);
+      ctx.strokeStyle = '#ffeb3b';
+      ctx.beginPath();
+      ctx.moveTo(player.x, player.y + player.h);
+      ctx.lineTo(player.x + player.w, player.y + player.h);
+      ctx.stroke();
+
+      ctx.restore();
+
+      stats.innerHTML =
+        `x ${player.x.toFixed(1)} y ${player.y.toFixed(1)}<br>` +
+        `vx ${player.vx.toFixed(1)} vy ${player.vy.toFixed(1)}<br>` +
+        `en suelo ${player.onGround}<br>` +
+        `celda ${Math.floor((player.x + player.w / 2) / TILE)}, ${Math.floor((player.y + player.h / 2) / TILE)}<br>` +
+        `grilla ${WORLD_W}×${WORLD_H} · ${CELL_COUNT} bits · ${bits.length} bytes`;
+    }
+
+    function startPaint(e) {
+      const { tx, ty } = eventToCell(e);
+      painting = true;
+      paintValue = !(e.shiftKey || e.button === 2);
+      lastPaintTx = tx;
+      lastPaintTy = ty;
+      stamp(tx, ty, paintValue);
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      if (e.button !== 0 && e.button !== 2) return;
+      e.preventDefault();
+      startPaint(e);
+    });
+    canvas.addEventListener('mousemove', e => {
+      if (!painting) return;
+      const { tx, ty } = eventToCell(e);
+      if (tx === lastPaintTx && ty === lastPaintTy) return;
+      paintLine(lastPaintTx, lastPaintTy, tx, ty, paintValue);
+      lastPaintTx = tx;
+      lastPaintTy = ty;
+    });
+    window.addEventListener('mouseup', () => {
+      painting = false;
+      lastPaintTx = null;
+      lastPaintTy = null;
+    });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    document.getElementById('blur').addEventListener('input', e => {
+      blurRadius = parseInt(e.target.value, 10);
+      document.getElementById('blur-val').textContent = blurRadius;
+    });
+    document.getElementById('iso').addEventListener('input', e => {
+      iso = parseFloat(e.target.value);
+      document.getElementById('iso-val').textContent = iso.toFixed(2);
+    });
+    document.getElementById('fill').addEventListener('input', e => {
+      fillOpacity = parseFloat(e.target.value);
+      document.getElementById('fill-val').textContent = fillOpacity.toFixed(2);
+    });
+    document.getElementById('brush').addEventListener('input', e => {
+      brushSize = parseInt(e.target.value, 10);
+      document.getElementById('brush-val').textContent = brushSize;
+    });
+    document.getElementById('scale').addEventListener('input', e => {
+      const scale = parseInt(e.target.value, 10) / 100;
+      document.getElementById('scale-val').textContent = scale.toFixed(2) + '×';
+      applyPlayerScale(scale);
+    });
+    document.getElementById('show-tiles').addEventListener('change', e => {
+      showTiles = e.target.checked;
+    });
+
+    clearWorld();
+    player.reset(spawn.x, spawn.y);
+
+    let last = performance.now();
+    function frame(now) {
+      let dt = (now - last) / 1000;
+      last = now;
+      dt = Math.min(dt, 0.033);
+      player.update(dt);
+      render();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

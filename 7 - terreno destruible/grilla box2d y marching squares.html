@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marching Squares + Box2D</title>
+    <title>Grilla, marching squares y Box2D</title>
     <style>
         * {
             box-sizing: border-box;
@@ -51,16 +51,50 @@
             background: #0a0a0a;
         }
 
+        #stage-frame {
+            display: flex;
+            flex-direction: column;
+            max-width: 100%;
+            max-height: 100%;
+            min-width: 0;
+            min-height: 0;
+            width: min(100%, calc((100vh - 24px - 58px) * 16 / 9));
+        }
+
         #sandbox {
             background: #111;
             border: 2px solid #444;
-            border-radius: 6px;
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
             cursor: crosshair;
             aspect-ratio: 16 / 9;
-            max-width: 100%;
-            max-height: 100%;
-            width: min(100%, calc((100vh - 24px) * 16 / 9));
+            width: 100%;
             height: auto;
+            max-height: calc(100vh - 24px - 58px);
+        }
+
+        #class-caption {
+            flex: 0 0 auto;
+            background: #141414;
+            border: 2px solid #444;
+            border-top: 1px solid #333;
+            border-radius: 0 0 6px 6px;
+            padding: 8px 12px 9px;
+            line-height: 1.3;
+        }
+
+        #class-caption-title {
+            display: block;
+            font-size: 15px;
+            font-weight: 700;
+            color: #9ae6b4;
+        }
+
+        #class-caption-line {
+            display: block;
+            margin-top: 2px;
+            font-size: 13px;
+            color: #e2e8f0;
         }
 
         h1 {
@@ -180,39 +214,61 @@
             font-size: 12px;
         }
 
-        details.doc {
+        #class-step-btns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        #class-step-btns button {
+            flex: 1 1 42%;
+            min-width: 88px;
+            padding: 6px 8px;
+            font-size: 11px;
+            background: #444;
+        }
+
+        #class-step-btns button.active {
+            background: #2f855a;
+        }
+
+        #class-step-text {
+            font-size: 12px;
+            color: #c8c8c8;
+            line-height: 1.45;
             background: #181818;
             border: 1px solid #2e2e2e;
             border-radius: 6px;
             padding: 8px 10px;
         }
 
-        details.doc summary {
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            color: #63b3ed;
+        #class-step-text p {
+            margin: 0 0 8px;
         }
 
-        details.doc p,
-        details.doc li {
-            font-size: 12px;
-            color: #b0b0b0;
-            line-height: 1.4;
-            margin: 6px 0 0;
+        #class-step-text p:last-child {
+            margin: 0;
         }
 
-        details.doc ul {
-            margin: 6px 0 0;
-            padding-left: 18px;
-        }
-
-        details.doc code {
+        #class-step-text code {
             font-size: 11px;
             background: #222;
             padding: 1px 4px;
             border-radius: 3px;
             color: #fbd38d;
+        }
+
+        #cell-inspector {
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            color: #a0aec0;
+            background: #161616;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            min-height: 5.2em;
         }
 
         .val {
@@ -240,195 +296,166 @@
             opacity: 0.45;
             pointer-events: none;
         }
+
+        [data-tip] {
+            cursor: help;
+        }
+
+        #float-tip {
+            position: fixed;
+            z-index: 9999;
+            display: none;
+            max-width: 340px;
+            background: #152033;
+            color: #f4f4f4;
+            border: 1px solid #63b3ed;
+            border-radius: 6px;
+            padding: 8px 11px;
+            font-size: 12px;
+            line-height: 1.4;
+            pointer-events: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
     </style>
 </head>
 <body>
     <div id="app">
         <aside id="sidebar">
-            <h1>Grilla → MS → Box2D</h1>
-            <p class="hint">W/↑ jetpack · A/D mover · click izq según modo (Dibujar / Disparar / Arpón / Borrar) · H/K
-                soga · rueda zoom.</p>
-            <div id="stats">extracted: 0 | static: 0 | dynamic: 0</div>
+            <h1 data-tip="El demo recorre tres capas: una grilla de densidades, el algoritmo marching squares (cuadrados marchantes) que dibuja el borde del sólido, y Box2D que usa esos polígonos para la física.">Grilla, marching squares y Box2D</h1>
+            <p class="hint" data-tip="Teclas del personaje y del arpón. El click izquierdo hace lo que indique el modo de herramienta.">W o flecha arriba: jetpack. A y D o flechas: mover. Click izquierdo según el modo (Dibujar, Disparar, Arpón, Borrar). H y K: recoger o alargar la soga. Rueda del mouse: acercar o alejar.</p>
+            <div id="stats" data-tip="Resumen del último recálculo: cuántas islas hay, cuántas quedaron fijas, cuántas cayeron, y cómo se armó la colisión.">Islas: 0 · estáticas: 0 · dinámicas: 0</div>
 
             <div class="section">
-                <h3>Herramientas</h3>
+                <h3 data-tip="Elegí qué hace el click izquierdo sobre el lienzo.">Herramientas</h3>
                 <div class="row">
-                    <button id="btn-draw" class="mode-btn active">Dibujar</button>
-                    <button id="btn-shoot" class="mode-btn">Disparar</button>
-                    <button id="btn-harpoon" class="mode-btn">Arpón</button>
-                    <button id="btn-erase" class="mode-btn">Borrar</button>
+                    <button id="btn-draw" class="mode-btn active" data-tip="Click y arrastre suman densidad en la grilla. Al soltar se recalcula el terreno.">Dibujar</button>
+                    <button id="btn-shoot" class="mode-btn" data-tip="Click dispara un rayo desde el personaje hacia el cursor y baja la densidad donde pega.">Disparar</button>
+                    <button id="btn-harpoon" class="mode-btn" data-tip="Click lanza un arpón hacia el cursor. Si pega en un cuerpo, queda soldado. Otro click suelta. H acorta la soga, K la alarga.">Arpón</button>
+                    <button id="btn-erase" class="mode-btn" data-tip="Click y arrastre bajan la densidad. Sirve para cavar o separar un trozo que después puede caer.">Borrar</button>
                 </div>
-                <button id="btn-clear">Limpiar Todo</button>
-                <div class="field" id="brush-size-field">
-                    <label for="brush-size">Pincel (celdas): <span class="val" id="brush-size-val">3</span></label>
+                <button id="btn-clear" data-tip="Pone toda la grilla en cero y borra el terreno y los escombros. El personaje sigue.">Limpiar todo</button>
+                <div class="field" id="brush-size-field" data-tip="Radio del pincel, medido en nodos de la grilla. Más grande = mancha más ancha.">
+                    <label for="brush-size">Radio del pincel (nodos): <span class="val" id="brush-size-val">3</span></label>
                     <input type="range" id="brush-size" min="1" max="12" value="3">
                 </div>
-                <div class="field" id="brush-hardness-field">
-                    <label for="brush-hardness">Hardness: <span class="val" id="brush-hardness-val">0.35</span></label>
+                <div class="field" id="brush-hardness-field" data-tip="Cero: el pincel es suave, la densidad cae hacia el borde. Uno: círculo duro, todos los nodos del radio reciben el mismo cambio.">
+                    <label for="brush-hardness">Dureza del pincel: <span class="val" id="brush-hardness-val">0.35</span></label>
                     <input type="range" id="brush-hardness" min="0" max="1" step="0.05" value="0.35">
                 </div>
             </div>
 
             <div class="section" id="shot-fields">
-                <h3>Disparo</h3>
-                <div class="field">
-                    <label for="shot-power">Poder: <span class="val" id="shot-power-val">0.40</span></label>
+                <h3 data-tip="Parámetros del rayo cuando el modo es Disparar.">Disparo</h3>
+                <div class="field" data-tip="Cuánta densidad se resta en el centro del impacto. Uno vacía el nodo de un golpe.">
+                    <label for="shot-power">Fuerza del impacto: <span class="val" id="shot-power-val">0.40</span></label>
                     <input type="range" id="shot-power" min="0.05" max="1" step="0.05" value="0.4">
                 </div>
-                <div class="field">
-                    <label for="shot-radius">Radio (celdas): <span class="val" id="shot-radius-val">2</span></label>
+                <div class="field" data-tip="Cuántos nodos alrededor del impacto también reciben daño.">
+                    <label for="shot-radius">Radio del daño (nodos): <span class="val" id="shot-radius-val">2</span></label>
                     <input type="range" id="shot-radius" min="0" max="8" step="1" value="2">
                 </div>
-                <div class="field">
-                    <label for="shot-falloff">Falloff: <span class="val" id="shot-falloff-val">1.0</span></label>
+                <div class="field" data-tip="Cero: todo el radio recibe el mismo daño. Más alto: el daño se atenúa hacia el borde.">
+                    <label for="shot-falloff">Atenuación con la distancia: <span class="val" id="shot-falloff-val">1.0</span></label>
                     <input type="range" id="shot-falloff" min="0" max="3" step="0.1" value="1">
                 </div>
             </div>
 
             <div class="section">
-                <h3>Fixtures</h3>
-                <div class="field">
-                    <label for="fixture-mode">Modo fixtures Box2D</label>
+                <h3 data-tip="Cómo se convierten las islas en polígonos de colisión de Box2D, y el umbral que decide si un trozo cae o queda fijo.">Colisión</h3>
+                <div class="field" data-tip="Elegí cómo se arman los polígonos de colisión. El área estático o dinámico no cambia: se calcula siempre con marching squares.">
+                    <label for="fixture-mode">Cómo armar la colisión</label>
                     <select id="fixture-mode">
-                        <option value="greedyRects" selected>Greedy rects (MS celdas)</option>
-                        <option value="contourSimplify">Contorno + simplify.js</option>
+                        <option value="greedyRects" selected>Fusión de rectángulos (celdas llenas)</option>
+                        <option value="contourSimplify">Contorno, simplificar y triangular</option>
                     </select>
                 </div>
-                <div class="field">
-                    <label for="threshold-slider">Umbral área (celdas²): <span class="val"
+                <div class="field" data-tip="Si el área de una isla (en celdas al cuadrado) es menor que este valor, el cuerpo es dinámico: cae y se puede empujar. Si es mayor o igual, queda estático: es terreno fijo.">
+                    <label for="threshold-slider">Umbral de área (celdas al cuadrado): <span class="val"
                             id="threshold-val">80</span></label>
                     <input type="range" id="threshold-slider" min="5" max="400" value="80">
                 </div>
-                <div class="field" id="simplify-field">
-                    <label for="simplify-tol">Tolerancia simplify (px): <span class="val"
+                <div class="field" id="simplify-field" data-tip="En el modo contorno, cuánto se puede alejar el polígono simplificado del original, en píxeles. Más tolerancia = menos vértices, forma más tosca.">
+                    <label for="simplify-tol">Tolerancia al simplificar (píxeles): <span class="val"
                             id="simplify-tol-val">3</span></label>
                     <input type="range" id="simplify-tol" min="0" max="20" step="0.5" value="3">
                 </div>
                 <div id="greedy-fields">
-                    <div class="field">
-                        <label for="greedy-prefer">Greedy: expansión</label>
+                    <div class="field" data-tip="Cómo crece cada rectángulo al fusionar celdas completamente llenas (caso 15 de marching squares).">
+                        <label for="greedy-prefer">Dirección de la fusión de rectángulos</label>
                         <select id="greedy-prefer">
-                            <option value="maxArea" selected>Máx. área (prueba H y V)</option>
+                            <option value="maxArea" selected>Mayor área (prueba horizontal y vertical)</option>
                             <option value="horizontal">Primero horizontal</option>
                             <option value="vertical">Primero vertical</option>
                         </select>
                     </div>
                     <div class="row">
-                        <div class="field">
-                            <label for="greedy-max-w">Max ancho (celdas, 0=∞): <span class="val"
+                        <div class="field" data-tip="Tope de ancho de cada rectángulo, en celdas. Cero = sin límite.">
+                            <label for="greedy-max-w">Ancho máximo (celdas, 0 = sin límite): <span class="val"
                                     id="greedy-max-w-val">0</span></label>
                             <input type="range" id="greedy-max-w" min="0" max="80" value="0">
                         </div>
-                        <div class="field">
-                            <label for="greedy-max-h">Max alto (celdas, 0=∞): <span class="val"
+                        <div class="field" data-tip="Tope de alto de cada rectángulo, en celdas. Cero = sin límite.">
+                            <label for="greedy-max-h">Alto máximo (celdas, 0 = sin límite): <span class="val"
                                     id="greedy-max-h-val">0</span></label>
                             <input type="range" id="greedy-max-h" min="0" max="80" value="0">
                         </div>
                     </div>
-                    <label class="field inline">
+                    <label class="field inline" data-tip="Además de los rectángulos de celdas llenas, agrega los polígonos de las celdas de borde (casos 1 a 14), para que la colisión siga el contorno de marching squares.">
                         <input type="checkbox" id="greedy-include-edges" checked>
-                        Incluir fixtures de borde MS (1–14)
+                        Incluir polígonos de las celdas de borde
                     </label>
                 </div>
             </div>
 
             <div class="section">
-                <h3>Vista</h3>
-                <div class="field">
-                    <label for="zoom-slider">Zoom: <span class="val" id="zoom-val">1.00x</span></label>
+                <h3 data-tip="Acercar o alejar la cámara. También se puede usar la rueda del mouse sobre el lienzo.">Vista</h3>
+                <div class="field" data-tip="Acercá para leer densidades y números de caso. Alejá para ver el mundo entero.">
+                    <label for="zoom-slider">Acercamiento: <span class="val" id="zoom-val">1.00×</span></label>
                     <input type="range" id="zoom-slider" min="25" max="300" value="100">
                 </div>
             </div>
 
             <div class="section">
-                <h3>Grilla</h3>
-                <div class="field">
-                    <label for="cell-size">Celda (px): <span class="val" id="cell-size-val">8</span></label>
+                <h3 data-tip="Tamaño de la grilla de densidades. Hay que pulsar Aplicar para recrear el mundo.">Grilla</h3>
+                <div class="field" data-tip="Lado de cada celda, en píxeles del mundo. Más grande = menos detalle y más barato de calcular.">
+                    <label for="cell-size">Tamaño de celda (píxeles): <span class="val" id="cell-size-val">8</span></label>
                     <input type="range" id="cell-size" min="4" max="24" value="8">
                 </div>
                 <div class="row">
-                    <div class="field">
-                        <label for="grid-cols">Cols</label>
+                    <div class="field" data-tip="Cantidad de nodos de izquierda a derecha. Las celdas de marching squares son una menos.">
+                        <label for="grid-cols">Columnas</label>
                         <input type="number" id="grid-cols" min="4" max="400" value="160">
                     </div>
-                    <div class="field">
-                        <label for="grid-rows">Rows</label>
+                    <div class="field" data-tip="Cantidad de nodos de arriba a abajo. Las celdas de marching squares son una menos.">
+                        <label for="grid-rows">Filas</label>
                         <input type="number" id="grid-rows" min="4" max="250" value="100">
                     </div>
                 </div>
-                <button id="btn-apply-grid">Aplicar grilla</button>
+                <button id="btn-apply-grid" data-tip="Recrea la grilla, el mundo físico y el personaje. Se pierde el dibujo actual.">Aplicar grilla</button>
                 <span id="grid-preview" class="muted"></span>
             </div>
 
             <div class="section">
-                <h3>Debug</h3>
+                <h3 data-tip="Capas que se dibujan sobre el lienzo. Al elegir una etapa del proceso se prenden las útiles; después se pueden cambiar a mano.">Capas visibles</h3>
                 <div id="debug-toggles"></div>
             </div>
 
-            <details class="doc" open>
-                <summary>Pipeline</summary>
-                <ol>
-                    <li>Grilla <code>Float32</code> [0,1]: nodos ≥ <code>ISO</code> (0.5) = sólido.</li>
-                    <li><b>Marching Squares</b> por celda (16 topologías + lerp geométrico según densidades) → fill /
-                        fixtures.</li>
-                    <li><b>BFS</b> agrupa nodos en islas.</li>
-                    <li><b>Green / shoelace</b> suma área de sólidos MS → si área &lt; umbral → dynamic, si no static.
-                    </li>
-                    <li>Rebuild Box2D en <b>mouseup</b> (pincel) o al instante tras disparo (kernel en grilla).</li>
-                </ol>
-            </details>
-
-            <details class="doc">
-                <summary>Polígonos Box2D</summary>
-                <p><b>Body</b> = 1 isla. <b>Fixture</b> = shape de colisión. Dos modos (select):</p>
-                <p><b>Greedy rects:</b> caso 15 → rectángulos. Parámetros: expansión H/V/máx.área, límites de tamaño,
-                    borde MS on/off. Con “máx. área” en cada semilla prueba ambas orientaciones y elige el rect más
-                    grande (evita tiras finas innecesarias).</p>
-                <p><b>Contorno + simplify:</b> cose aristas MS → separa <b>exterior y agujeros</b> →
-                    <code>simplify.js</code> → <code>earcut</code> (tris con holes) → fixtures. Si falla → greedy.
-                </p>
-                <p>Área static/dynamic = suma Green de sólidos MS (no depende del modo). Fill visual = MS por celda.</p>
-            </details>
-
-            <details class="doc">
-                <summary>Cámara / zoom / pincel</summary>
-                <ul>
-                    <li>Cámara centrada en el personaje, clamp al mundo.</li>
-                    <li>Zoom: slider o rueda del mouse sobre el canvas.</li>
-                    <li>Pincel: click izq en modo Dibujar/Borrar. Radio + hardness.</li>
-                    <li>Láser: modo Disparar + click izq (mira al cursor).</li>
-                    <li>Arpón: modo Arpón + click izq (mira al cursor). H/K recogen o estiran.</li>
-                </ul>
-            </details>
-
-            <details class="doc">
-                <summary>Personaje</summary>
-                <ul>
-                    <li><code>W</code> / <code>↑</code>: jetpack (empuja hacia arriba del mundo).</li>
-                    <li><code>A</code> / <code>D</code> o flechas: empuje horizontal.</li>
-                    <li>Modo <b>Disparar</b> + click izq: ray DDA sobre grilla → kernel daño.</li>
-                    <li>Modo <b>Arpón</b> + click izq: dispara punta hacia el cursor. Primer body (static o dynamic)
-                        recibe weld. Click otra vez suelta. <code>H</code> recoge, <code>K</code> estira la soga.</li>
-                    <li>Rectángulo dynamic, rotación fija. Caer fuera → respawn.</li>
-                </ul>
-            </details>
-
-            <details class="doc">
-                <summary>Debug</summary>
-                <ul>
-                    <li><b>Grilla</b> — líneas de celdas.</li>
-                    <li><b>Nodos</b> — densidad 0…1 (gris); borde si ≥ ISO.</li>
-                    <li><b>Segmentos MS</b> — aristas del marching squares.</li>
-                    <li><b>Fill</b> — sólidos MS por celda.</li>
-                    <li><b>Contornos</b> — outline de islas estáticas (pre-simplify).</li>
-                    <li><b>Fixtures</b> — shapes Box2D (rects greedy o tris simplify).</li>
-                    <li><b>Centro/AABB</b> — origen y caja del body.</li>
-                    <li><b>Labels</b> — área S/D.</li>
-                </ul>
-            </details>
+            <div class="section" id="class-process">
+                <h3 data-tip="Recorré el algoritmo en orden, como en una clase: de la grilla a la colisión.">Proceso (clase)</h3>
+                <p class="muted">Elegí una etapa para ver la explicación y las capas. Después podés prender o apagar capas a mano. Pasá el mouse por cualquier control para leer la ayuda.</p>
+                <div id="class-step-btns"></div>
+                <div id="class-step-text"></div>
+                <div id="cell-inspector" data-tip="Muestra la celda bajo el cursor: las cuatro densidades, el número de caso de marching squares y si esa mancha es terreno o escombro.">Pasá el mouse sobre el lienzo para ver la celda.</div>
+            </div>
         </aside>
         <main id="stage">
-            <canvas id="sandbox" width="960" height="540"></canvas>
+            <div id="stage-frame">
+                <canvas id="sandbox" width="960" height="540"></canvas>
+                <div id="class-caption" data-tip="Etapa actual del proceso. El texto largo está en el panel izquierdo.">
+                    <span id="class-caption-title">1. Grilla de densidades</span>
+                    <span id="class-caption-line">Cada nodo guarda un número entre 0 (vacío) y 1 (sólido).</span>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -491,7 +518,7 @@
         let worldW = COLS * CELL_SIZE;
         let worldH = ROWS * CELL_SIZE;
 
-        const ISO = 0.1;
+        const ISO = 0.1; // umbral marching squares: nodo sólido si densidad ≥ ISO
         const BRUSH_STRENGTH = 0.35;
         const FIXED_DT = 1 / 60;
         const GRAVITY = 400;
@@ -553,8 +580,13 @@
         /** @type {{ bodyId: any, dynamic: boolean, area: number, contour: {x:number,y:number}[], color: string }[]} */
         let dynamicBodies = [];
 
-        /** Cached island debug from last rebuild */
+        /** Cached island debug from last rebuild (static only, for overlays viejos). */
         let lastIslands = [];
+        /** Todas las islas del último extract, antes de borrar las dinámicas de la grilla. */
+        let lastPipelineIslands = [];
+        /** @type {null|{ cx:number, cy:number }} */
+        let hoverCell = null;
+        let classStepId = 'grid';
 
         function syncWorldSize() {
             MS_COLS = Math.max(1, COLS - 1);
@@ -568,7 +600,7 @@
 
         function updateGridPreview() {
             const el = document.getElementById('grid-preview');
-            if (el) el.textContent = `${COLS}×${ROWS} · mundo ${worldW}×${worldH}px`;
+            if (el) el.textContent = `${COLS} columnas × ${ROWS} filas · mundo ${worldW} × ${worldH} píxeles`;
         }
 
         function seedPlatform() {
@@ -666,22 +698,86 @@
         };
 
         const debugLabels = {
-            grid: 'Grilla',
-            nodes: 'Nodos densidad',
-            msSegs: 'Segmentos MS',
-            fill: 'Fill terreno',
-            contours: 'Contornos isla',
-            fixtures: 'Fixtures Box2D',
-            centers: 'Centro / AABB',
-            labels: 'Labels área'
+            grid: 'Líneas de la grilla',
+            nodes: 'Nodos de densidad',
+            msSegs: 'Bordes de marching squares',
+            fill: 'Relleno del terreno',
+            contours: 'Contorno de cada isla',
+            fixtures: 'Polígonos de colisión',
+            centers: 'Centro y caja de cada cuerpo',
+            labels: 'Etiquetas de área'
         };
+
+        const debugTips = {
+            grid: 'Dibuja las líneas entre celdas. Una celda es el cuadrado formado por cuatro nodos vecinos.',
+            nodes: 'Cada nodo es un valor de densidad entre 0 y 1. El anillo celeste marca los que superan el umbral (sólidos).',
+            msSegs: 'Segmentos que marching squares coloca en las aristas de cada celda: ahí está el borde del sólido.',
+            fill: 'Pinta los polígonos sólidos que marching squares arma en cada celda. Es el terreno que se ve.',
+            contours: 'Línea cerrada alrededor de cada isla, cosida con las aristas de marching squares.',
+            fixtures: 'Polígonos que Box2D usa para chocar: rectángulos fusionados o triángulos del contorno, según el modo.',
+            centers: 'Punto de origen del cuerpo y el rectángulo que lo envuelve (caja alineada a los ejes).',
+            labels: 'Escribe el área de cada isla en celdas al cuadrado.'
+        };
+
+        const CLASS_STEPS = [
+            {
+                id: 'grid',
+                btn: '1 Grilla',
+                title: '1. Grilla de densidades',
+                caption: 'Cada nodo guarda un número entre 0 (vacío) y 1 (sólido).',
+                tip: 'El terreno empieza como una tabla de números, no como un dibujo.',
+                debug: { grid: true, nodes: true, fill: false, msSegs: false, contours: false, fixtures: false, centers: false, labels: false }
+            },
+            {
+                id: 'iso',
+                btn: '2 Umbral',
+                title: '2. Umbral de densidad',
+                caption: 'Un nodo es sólido si su densidad es al menos 0.1. Si no, está vacío.',
+                tip: 'Marching squares necesita un corte: de este valor para arriba cuenta como adentro del sólido.',
+                debug: { grid: true, nodes: true, fill: false, msSegs: false, contours: false, fixtures: false, centers: false, labels: false }
+            },
+            {
+                id: 'ms',
+                btn: '3 Marching squares',
+                title: '3. Marching squares (cuadrados marchantes)',
+                caption: 'En cada cuadrado de 4 nodos elige 1 de 16 casos y dibuja el borde interpolando las densidades.',
+                tip: 'Este es el algoritmo que convierte la grilla en un contorno. El número en la celda es el caso (0 a 15).',
+                debug: { grid: false, nodes: true, fill: true, msSegs: true, contours: false, fixtures: false, centers: false, labels: false }
+            },
+            {
+                id: 'islands',
+                btn: '4 Islas',
+                title: '4. Detectar islas',
+                caption: 'Los nodos sólidos vecinos (arriba, abajo, izquierda, derecha) forman una isla. Un cuerpo físico = una isla.',
+                tip: 'Búsqueda en anchura sobre la grilla: cada mancha conexa es un objeto aparte.',
+                debug: { grid: false, nodes: false, fill: false, msSegs: false, contours: true, fixtures: false, centers: false, labels: false }
+            },
+            {
+                id: 'area',
+                btn: '5 Área',
+                title: '5. Superficie: estático o dinámico',
+                caption: 'El área se suma con la fórmula de lazo (shoelace) sobre los polígonos de marching squares. Si es chica, el trozo cae.',
+                tip: 'El umbral se regula en Colisión. El modo de polígonos no cambia esta cuenta.',
+                debug: { grid: false, nodes: false, fill: true, msSegs: false, contours: true, fixtures: false, centers: false, labels: false }
+            },
+            {
+                id: 'fixtures',
+                btn: '6 Colisión',
+                title: '6. Polígonos de colisión',
+                caption: 'Un cuerpo físico = una isla. Cada polígono convexo es una forma de colisión de Box2D.',
+                tip: 'Acá se ve la diferencia entre fusionar rectángulos o simplificar el contorno y triangularlo.',
+                debug: { grid: false, nodes: false, fill: true, msSegs: false, contours: false, fixtures: true, centers: true, labels: false }
+            }
+        ];
 
         (function buildDebugToggles() {
             const row = document.getElementById('debug-toggles');
             for (const key of Object.keys(debug)) {
                 const lab = document.createElement('label');
+                lab.setAttribute('data-tip', debugTips[key] || debugLabels[key]);
                 const cb = document.createElement('input');
                 cb.type = 'checkbox';
+                cb.dataset.debug = key;
                 cb.checked = debug[key];
                 cb.addEventListener('change', () => { debug[key] = cb.checked; });
                 lab.appendChild(cb);
@@ -689,6 +785,77 @@
                 row.appendChild(lab);
             }
         })();
+
+        (function buildClassSteps() {
+            const row = document.getElementById('class-step-btns');
+            for (const step of CLASS_STEPS) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.dataset.step = step.id;
+                btn.textContent = step.btn;
+                btn.setAttribute('data-tip', step.tip);
+                btn.addEventListener('click', () => setClassStep(step.id));
+                row.appendChild(btn);
+            }
+        })();
+
+        function classStepBody(step) {
+            if (step.id === 'grid') {
+                return '<p>El terreno no es un dibujo de sí o no: es una <b>tabla regular de nodos</b>. Cada nodo guarda un número entre 0 (aire) y 1 (tierra). El pincel suma o resta esos números. Una <b>celda</b> es el cuadrado entre cuatro nodos vecinos. El lado de esa celda se mide en píxeles del mundo.</p><p>Al soltar el mouse se vuelve a calcular el contorno y la física. Acercá la vista para leer el valor de cada nodo. El recuadro de abajo describe la celda bajo el cursor.</p>';
+            }
+            if (step.id === 'iso') {
+                return '<p>Para decidir dónde está el sólido hace falta un <b>umbral de densidad</b>. En este demo vale <b>0.1</b>: si el nodo llega a ese valor o más, cuenta como sólido; si no, como vacío. No usamos 0.5: con 0.1 el pincel suave “prende” más fácil.</p><p>El borde del terreno <b>no pasa por el nodo</b>. Pasa por el punto de la arista donde la densidad interpolada vale exactamente el umbral. Los nodos sólidos se marcan con un anillo celeste.</p>';
+            }
+            if (step.id === 'ms') {
+                return '<p><b>Marching squares</b> (cuadrados marchantes) recorre la grilla celda por celda. En cada cuadrado mira las cuatro esquinas y pregunta: ¿esta densidad llega al umbral? Sí o no. Cuatro respuestas binarias dan <b>16 combinaciones</b> (2⁴), numeradas de 0 a 15.</p><p>El número de caso = 8×(superior izquierda) + 4×(superior derecha) + 2×(inferior derecha) + 1×(inferior izquierda), usando 1 si es sólida y 0 si no. Caso 0: todo vacío, sin borde. Caso 15: todo lleno, sin borde. En los demás, el algoritmo sabe por cuáles aristas cruza el contorno.</p><p>El punto exacto sobre la arista se interpola: <code>t = (umbral − densidadA) / (densidadB − densidadA)</code>. Los casos 5 y 10 son “silla”: dos segmentos y dos trozos de sólido. El número pintado en la celda es el caso. El recuadro de abajo muestra las cuatro densidades y esa interpolación.</p>';
+            }
+            if (step.id === 'islands') {
+                return '<p>Se recorre la grilla con una <b>búsqueda en anchura</b>: de cada nodo sólido se visitan sus cuatro vecinos (arriba, abajo, izquierda, derecha). Cada mancha conexa es una <b>isla</b>.</p><p>La isla se queda con los polígonos de marching squares cuyas esquinas sólidas le pertenecen. En una silla (casos 5 y 10) las dos mitades pueden ser de islas distintas. Un cuerpo de Box2D = una isla. Si el área es chica, esa isla se saca de la grilla y cae (el dibujo de esta etapa recuerda dónde estaba).</p>';
+            }
+            if (step.id === 'area') {
+                return '<p>El área de cada isla se calcula con la fórmula de Green / lazo (shoelace): <code>A = ½ |Σ (xᵢ yᵢ₊₁ − xᵢ₊₁ yᵢ)|</code>. Se suman los polígonos sólidos de marching squares. <b>No depende</b> de cómo se armen después las formas de colisión. Se expresa en celdas al cuadrado (área en píxeles dividido el área de una celda).</p><p>Si el área es <b>menor que el umbral</b>, el cuerpo es <b>dinámico</b>: cae, se puede empujar, y se borra de la grilla para no regenerarlo. Si no, es <b>estático</b>: terreno fijo. El umbral se regula en la sección Colisión.</p>';
+            }
+            if (fixtureMode === 'contourSimplify') {
+                return '<p><b>Modo contorno:</b> se unen las aristas de marching squares en anillos (el exterior y los agujeros), se simplifican con Douglas–Peucker (tolerancia en píxeles) y se triangulan. Cada triángulo es una forma de colisión. Si no se puede cerrar bien el anillo, se usa la fusión de rectángulos.</p><p>En el lienzo: <b>rojo</b> = contorno crudo, <b>verde</b> = simplificado. Un cuerpo físico = una isla.</p>';
+            }
+            return '<p><b>Modo fusión de rectángulos:</b> las celdas completamente llenas (caso 15) se agrupan en rectángulos. Opcionalmente se agregan los polígonos de las celdas de borde (casos 1 a 14). En este modo <b>no se simplifica el contorno</b>: para ver eso, cambiá el menú a “Contorno, simplificar y triangular”.</p><p>Un cuerpo físico = una isla. Cada polígono convexo = una forma de colisión. Amarillo: estático. Rojo: dinámico.</p>';
+        }
+
+        function fixturesCaption() {
+            if (fixtureMode === 'contourSimplify') {
+                return 'Contorno, simplificar y triangular. Rojo = crudo, verde = simplificado.';
+            }
+            return 'Fusión de rectángulos (celdas llenas) más bordes. En este modo no se simplifica el contorno.';
+        }
+
+        function syncDebugCheckboxes() {
+            for (const key of Object.keys(debug)) {
+                const cb = document.querySelector(`#debug-toggles input[data-debug="${key}"]`);
+                if (cb) cb.checked = debug[key];
+            }
+        }
+
+        function refreshClassStepText() {
+            const step = CLASS_STEPS.find(s => s.id === classStepId) || CLASS_STEPS[0];
+            const title = document.getElementById('class-caption-title');
+            const line = document.getElementById('class-caption-line');
+            const text = document.getElementById('class-step-text');
+            if (title) title.textContent = step.title;
+            if (line) line.textContent = step.id === 'fixtures' ? fixturesCaption() : step.caption;
+            if (text) text.innerHTML = classStepBody(step);
+            for (const btn of document.querySelectorAll('#class-step-btns button')) {
+                btn.classList.toggle('active', btn.dataset.step === classStepId);
+            }
+        }
+
+        function setClassStep(id) {
+            const step = CLASS_STEPS.find(s => s.id === id);
+            if (!step) return;
+            classStepId = step.id;
+            Object.assign(debug, step.debug);
+            syncDebugCheckboxes();
+            refreshClassStepText();
+        }
 
         syncWorldSize();
         seedPlatform();
@@ -1433,6 +1600,7 @@
             grid = new Float32Array(COLS * ROWS);
             seedPlatform();
             lastIslands = [];
+            lastPipelineIslands = [];
             lastExtractCount = 0;
             camX = worldW / 2;
             camY = worldH / 2;
@@ -1880,6 +2048,30 @@
 
         let lastExtractCount = 0;
 
+        function captureSimplifyPreview(island) {
+            island.contourRaw = island.contour ? island.contour.slice() : [];
+            island.contourSimplified = null;
+            island.holesRaw = [];
+            island.holesSimplified = [];
+            if (fixtureMode !== 'contourSimplify') return;
+            const sx = island.cellCx ?? 0;
+            const sy = island.cellCy ?? 0;
+            const rawLoops = (island.loops && island.loops.length)
+                ? island.loops
+                : (island.contour ? [island.contour] : []);
+            const { outer, holes } = classifyLoops(rawLoops, sx, sy);
+            if (!outer || outer.length < 3) return;
+            island.contourRaw = outer;
+            island.holesRaw = holes;
+            island.contourSimplified = orientContourSolidInside(simplifyRing(outer, simplifyTol), sx, sy);
+            island.holesSimplified = holes.map(h => {
+                const c = loopCentroid(h);
+                let s = simplifyRing(h, simplifyTol);
+                if (!pointInPolygon(c.x, c.y, s)) s = s.slice().reverse();
+                return s;
+            }).filter(h => h.length >= 3);
+        }
+
         function rebuildPhysics() {
             destroyHook();
             destroyBodyList(terrainBodies);
@@ -1887,12 +2079,18 @@
 
             const islands = extractIslands();
             lastExtractCount = islands.length;
+            lastPipelineIslands = [];
             const debugIslands = [];
 
             for (let i = 0; i < islands.length; i++) {
                 const island = islands[i];
                 const color = islandColor(i);
                 const isDynamic = island.areaCells < areaThreshold;
+                island.color = color;
+                island.index = i;
+                island.isDynamic = isDynamic;
+                captureSimplifyPreview(island);
+                lastPipelineIslands.push(island);
 
                 if (isDynamic) {
                     const body = createBodyFromIsland(island, true, color);
@@ -1907,24 +2105,27 @@
             lastIslands = debugIslands;
             dirtyPhysics = false;
             updateStats();
+            updateInspector();
         }
 
         function updateStats() {
             const s = lastMeshStats;
-            const mode = fixtureMode === 'contourSimplify' ? 'contour' : 'greedy';
+            const mode = fixtureMode === 'contourSimplify'
+                ? 'contorno, simplificar y triangular'
+                : 'fusión de rectángulos';
             let meshLine;
-            if (mode === 'contour') {
-                meshLine = `contour ${s.verts}→${s.simp}` +
-                    (s.holes ? ` · holes ${s.holes}` : '') +
-                    ` · fixtures ${s.fixtures} · tol ${simplifyTol}`;
+            if (fixtureMode === 'contourSimplify') {
+                meshLine = `vértices ${s.verts} → ${s.simp}` +
+                    (s.holes ? ` · agujeros ${s.holes}` : '') +
+                    ` · formas de colisión ${s.fixtures} · tolerancia ${simplifyTol} píxeles`;
             } else {
-                meshLine = `rects ${s.rects} · edge ${s.edge} · fixtures ${s.fixtures}`;
+                meshLine = `rectángulos ${s.rects} · bordes ${s.edge} · formas de colisión ${s.fixtures}`;
             }
             const fps = avgRenderMs > 0.01 ? (1000 / Math.max(avgPhysicsMs + avgRenderMs, 0.01)) : 0;
             document.getElementById('stats').textContent =
-                `extracted: ${lastExtractCount} | S:${terrainBodies.length} D:${dynamicBodies.length} | thr:${areaThreshold} | ${mode}\n` +
-                `${meshLine}\n` +
-                `physics: ${avgPhysicsMs.toFixed(2)}ms | render: ${avgRenderMs.toFixed(2)}ms | fps~${fps.toFixed(0)}`;
+                `Islas: ${lastExtractCount} · estáticas: ${terrainBodies.length} · dinámicas: ${dynamicBodies.length} · umbral: ${areaThreshold} celdas al cuadrado\n` +
+                `Colisión: ${mode} · ${meshLine}\n` +
+                `física: ${avgPhysicsMs.toFixed(2)} milisegundos · dibujo: ${avgRenderMs.toFixed(2)} milisegundos · fotogramas por segundo ≈ ${fps.toFixed(0)}`;
         }
 
         function syncModeFields() {
@@ -2116,7 +2317,7 @@
                     cy /= island.contour.length;
                     ctx.fillStyle = '#fff';
                     ctx.font = '11px ui-monospace, monospace';
-                    ctx.fillText(`S ${island.areaCells.toFixed(1)}`, cx - 12, cy);
+                    ctx.fillText(`estático ${island.areaCells.toFixed(1)}`, cx - 12, cy);
                 }
             }
             if (debug.labels) {
@@ -2124,9 +2325,220 @@
                     const pos = b2Body_GetPosition(b.bodyId);
                     ctx.fillStyle = '#feb2b2';
                     ctx.font = '11px ui-monospace, monospace';
-                    ctx.fillText(`D ${b.area.toFixed(1)}`, pos.x - 12, pos.y);
+                    ctx.fillText(`dinámico ${b.area.toFixed(1)}`, pos.x - 12, pos.y);
                 }
             }
+        }
+
+        function overlayBusy() {
+            const v = visibleCellRange();
+            const cells = (v.cx1 - v.cx0 + 1) * (v.cy1 - v.cy0 + 1);
+            return { v, cells, ok: zoom >= 1.05 && cells <= 2200 };
+        }
+
+        function worldText(x, y, text, fill, align = 'center') {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(1 / zoom, 1 / zoom);
+            ctx.fillStyle = fill;
+            ctx.font = '11px ui-monospace, monospace';
+            ctx.textAlign = align;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 0, 0);
+            ctx.restore();
+        }
+
+        function drawDensityLabels() {
+            const { v, ok } = overlayBusy();
+            if (!ok) return;
+            for (let y = v.ny0; y <= v.ny1; y++) {
+                for (let x = v.nx0; x <= v.nx1; x++) {
+                    const val = node(x, y);
+                    if (val <= 1e-4) continue;
+                    worldText(
+                        x * CELL_SIZE + 4 / zoom,
+                        y * CELL_SIZE - 7 / zoom,
+                        val.toFixed(2),
+                        val >= ISO ? '#9ae6b4' : '#a0aec0',
+                        'left'
+                    );
+                }
+            }
+        }
+
+        function drawCaseIds() {
+            const { v, ok } = overlayBusy();
+            if (!ok) return;
+            for (let cy = v.cy0; cy <= v.cy1; cy++) {
+                for (let cx = v.cx0; cx <= v.cx1; cx++) {
+                    const id = cellCorners(cx, cy).caseId;
+                    if (id === 0) continue;
+                    worldText(
+                        (cx + 0.5) * CELL_SIZE,
+                        (cy + 0.5) * CELL_SIZE,
+                        String(id),
+                        id === 15 ? 'rgba(154,230,180,0.7)' : '#fbd38d'
+                    );
+                }
+            }
+        }
+
+        function drawIslandFills() {
+            const v = visibleCellRange();
+            for (const island of lastPipelineIslands) {
+                ctx.fillStyle = island.color.replace(')', ' / 0.34)');
+                for (const c of island.cellsMeta) {
+                    if (c.cx < v.cx0 || c.cx > v.cx1 || c.cy < v.cy0 || c.cy > v.cy1) continue;
+                    for (const part of c.parts) {
+                        if (part.verts.length < 3) continue;
+                        ctx.beginPath();
+                        ctx.moveTo(part.verts[0].x, part.verts[0].y);
+                        for (let i = 1; i < part.verts.length; i++) ctx.lineTo(part.verts[i].x, part.verts[i].y);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+            }
+            const { v: nv, ok } = overlayBusy();
+            if (!ok) return;
+            const r = Math.max(1.6, 3 / zoom);
+            for (const island of lastPipelineIslands) {
+                ctx.fillStyle = island.color;
+                for (const n of island.nodes) {
+                    if (n.x < nv.nx0 || n.x > nv.nx1 || n.y < nv.ny0 || n.y > nv.ny1) continue;
+                    ctx.beginPath();
+                    ctx.arc(n.x * CELL_SIZE, n.y * CELL_SIZE, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        function drawAreaClassLabels() {
+            for (const island of lastPipelineIslands) {
+                const tag = island.isDynamic ? 'DINÁMICO' : 'ESTÁTICO';
+                const fill = island.isDynamic ? '#feb2b2' : '#9ae6b4';
+                const x = island.cellCx;
+                const y = island.cellCy;
+                worldText(x, y - 8 / zoom, tag, fill);
+                worldText(x, y + 8 / zoom, `${island.areaCells.toFixed(1)} celdas al cuadrado`, '#fff');
+            }
+            for (const b of dynamicBodies) {
+                const pos = b2Body_GetPosition(b.bodyId);
+                worldText(pos.x, pos.y, `cae ${b.area.toFixed(1)}`, '#fc8181');
+            }
+        }
+
+        function strokeLoop(pts, stroke, width) {
+            if (!pts || pts.length < 2) return;
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = width / zoom;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        function drawSimplifyOverlay() {
+            if (fixtureMode !== 'contourSimplify') return;
+            for (const island of lastPipelineIslands) {
+                strokeLoop(island.contourRaw, 'rgba(252, 129, 129, 0.95)', 2.4);
+                for (const h of island.holesRaw || []) strokeLoop(h, 'rgba(252, 129, 129, 0.55)', 1.6);
+                strokeLoop(island.contourSimplified, 'rgba(104, 211, 145, 0.95)', 2.4);
+                for (const h of island.holesSimplified || []) strokeLoop(h, 'rgba(104, 211, 145, 0.55)', 1.6);
+            }
+        }
+
+        function drawHoverHighlight() {
+            if (!hoverCell) return;
+            const { cx, cy } = hoverCell;
+            if (cx < 0 || cy < 0 || cx >= MS_COLS || cy >= MS_ROWS) return;
+            const x0 = cx * CELL_SIZE;
+            const y0 = cy * CELL_SIZE;
+            ctx.strokeStyle = 'rgba(250, 240, 80, 0.95)';
+            ctx.lineWidth = 2 / zoom;
+            ctx.strokeRect(x0, y0, CELL_SIZE, CELL_SIZE);
+            const c = cellCorners(cx, cy);
+            const pairs = [
+                [c.tl, c.tr, c.edges[0]],
+                [c.tr, c.br, c.edges[1]],
+                [c.bl, c.br, c.edges[2]],
+                [c.tl, c.bl, c.edges[3]]
+            ];
+            ctx.fillStyle = '#f6e05e';
+            for (const [v0, v1, p] of pairs) {
+                if ((v0 >= ISO) === (v1 >= ISO)) continue;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3.4 / zoom, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawClassOverlays() {
+            if (classStepId === 'grid') drawDensityLabels();
+            if (classStepId === 'ms') drawCaseIds();
+            if (classStepId === 'islands') drawIslandFills();
+            if (classStepId === 'area') drawAreaClassLabels();
+            if (classStepId === 'fixtures') drawSimplifyOverlay();
+            drawHoverHighlight();
+        }
+
+        function islandAtCell(cx, cy) {
+            for (const island of lastPipelineIslands) {
+                for (const c of island.cellsMeta) {
+                    if (c.cx === cx && c.cy === cy) return island;
+                }
+            }
+            return null;
+        }
+
+        function cornerMark(val) {
+            return val >= ISO ? 'sólida' : 'vacía';
+        }
+
+        function edgeLerpLine(name, v0, v1) {
+            if ((v0 >= ISO) === (v1 >= ISO)) {
+                return `Arista ${name}: no cruza el umbral`;
+            }
+            const dv = v1 - v0;
+            const t = Math.abs(dv) < 1e-6 ? 0 : (ISO - v0) / dv;
+            return `Arista ${name}: cruza a t = ${t.toFixed(2)}  (${v0.toFixed(2)} → ${v1.toFixed(2)})`;
+        }
+
+        function updateInspector() {
+            const el = document.getElementById('cell-inspector');
+            if (!el) return;
+            if (!hoverCell) {
+                el.textContent = 'Pasá el mouse sobre el lienzo para ver la celda.';
+                return;
+            }
+            const { cx, cy } = hoverCell;
+            if (cx < 0 || cy < 0 || cx >= MS_COLS || cy >= MS_ROWS) {
+                el.textContent = 'Fuera de la grilla.';
+                return;
+            }
+            const c = cellCorners(cx, cy);
+            const island = islandAtCell(cx, cy);
+            const kindCell = c.caseId === 0 ? 'vacía' : c.caseId === 15 ? 'llena' : 'de borde';
+            const lines = [
+                `Celda columna ${cx}, fila ${cy} · caso ${c.caseId} (${kindCell})`,
+                `Superior izquierda ${c.tl.toFixed(2)} (${cornerMark(c.tl)})   Superior derecha ${c.tr.toFixed(2)} (${cornerMark(c.tr)})`,
+                `Inferior izquierda ${c.bl.toFixed(2)} (${cornerMark(c.bl)})   Inferior derecha ${c.br.toFixed(2)} (${cornerMark(c.br)})`,
+                `Umbral de densidad = ${ISO}`,
+                'Número de caso = 8×superior izquierda + 4×superior derecha + 2×inferior derecha + 1×inferior izquierda',
+                edgeLerpLine('de arriba', c.tl, c.tr),
+                edgeLerpLine('derecha', c.tr, c.br),
+                edgeLerpLine('de abajo', c.bl, c.br),
+                edgeLerpLine('izquierda', c.tl, c.bl)
+            ];
+            if (island) {
+                const kind = island.isDynamic ? 'dinámica (cae)' : 'estática (terreno fijo)';
+                lines.push(`Isla ${island.index} · ${kind}`);
+                lines.push(`Área ${island.areaCells.toFixed(1)} celdas al cuadrado · umbral ${areaThreshold}`);
+            } else {
+                lines.push('No hay isla en esta celda (está vacía o el trozo ya se extrajo).');
+            }
+            el.textContent = lines.join('\n');
         }
 
         function cullFallenDynamics() {
@@ -2183,6 +2595,7 @@
                 drawCentersDebug(dynamicBodies);
             }
             if (debug.contours || debug.labels) drawContoursAndLabels();
+            drawClassOverlays();
 
             const dtRen = performance.now() - tRen0;
             avgRenderMs = avgRenderMs * 0.9 + dtRen * 0.1;
@@ -2247,6 +2660,12 @@
         canvas.addEventListener('mousemove', (e) => {
             mouseClientX = e.clientX;
             mouseClientY = e.clientY;
+            const w = screenToWorld(e.clientX, e.clientY);
+            hoverCell = {
+                cx: Math.floor(w.x / CELL_SIZE),
+                cy: Math.floor(w.y / CELL_SIZE)
+            };
+            updateInspector();
             if (isBrushing && (toolMode === 'draw' || toolMode === 'erase')) modifyGrid(e);
         });
         window.addEventListener('mouseup', (e) => {
@@ -2268,14 +2687,17 @@
             destroyBodyList(terrainBodies);
             destroyBodyList(dynamicBodies);
             lastIslands = [];
+            lastPipelineIslands = [];
             lastExtractCount = 0;
             dirtyPhysics = false;
             updateStats();
+            updateInspector();
         });
         document.getElementById('threshold-slider').addEventListener('input', (e) => {
             areaThreshold = parseInt(e.target.value, 10);
             document.getElementById('threshold-val').textContent = areaThreshold;
             updateStats();
+            updateInspector();
         });
 
         document.getElementById('brush-size').addEventListener('input', (e) => {
@@ -2308,6 +2730,7 @@
         document.getElementById('fixture-mode').addEventListener('change', (e) => {
             fixtureMode = e.target.value;
             syncModeFields();
+            refreshClassStepText();
             rebuildFromModeChange();
         });
 
@@ -2334,7 +2757,7 @@
         function setZoom(z) {
             zoom = clamp(z, 0.25, 3);
             document.getElementById('zoom-slider').value = Math.round(zoom * 100);
-            document.getElementById('zoom-val').textContent = zoom.toFixed(2) + 'x';
+            document.getElementById('zoom-val').textContent = zoom.toFixed(2) + ' ×';
         }
         document.getElementById('zoom-slider').addEventListener('input', (e) => {
             setZoom(parseInt(e.target.value, 10) / 100);
@@ -2354,7 +2777,7 @@
             const r = parseInt(document.getElementById('grid-rows').value, 10) || ROWS;
             const cs = parseInt(document.getElementById('cell-size').value, 10) || CELL_SIZE;
             document.getElementById('grid-preview').textContent =
-                `${c}×${r} · mundo ${c * cs}×${r * cs}px (aplicar)`;
+                `${c} columnas × ${r} filas · mundo ${c * cs} × ${r * cs} píxeles (aplicar para recrear)`;
         }
         document.getElementById('grid-cols').addEventListener('input', refreshPreview);
         document.getElementById('grid-rows').addEventListener('input', refreshPreview);
@@ -2379,9 +2802,60 @@
         syncModeFields();
         setToolMode('draw');
 
+        (function bindFloatTips() {
+            const tip = document.createElement('div');
+            tip.id = 'float-tip';
+            document.body.appendChild(tip);
+            let current = null;
+            function place(el) {
+                const text = el.getAttribute('data-tip');
+                if (!text) {
+                    tip.style.display = 'none';
+                    return;
+                }
+                tip.textContent = text;
+                tip.style.display = 'block';
+                const r = el.getBoundingClientRect();
+                const pad = 8;
+                let x = r.right + pad;
+                let y = r.top;
+                const tw = Math.min(340, tip.offsetWidth || 340);
+                const th = tip.offsetHeight;
+                if (x + tw > window.innerWidth - pad) x = r.left - tw - pad;
+                if (x < pad) x = pad;
+                if (y + th > window.innerHeight - pad) y = window.innerHeight - th - pad;
+                if (y < pad) y = pad;
+                tip.style.left = x + 'px';
+                tip.style.top = y + 'px';
+            }
+            document.addEventListener('mouseover', (e) => {
+                const el = e.target.closest('[data-tip]');
+                if (!el || el.id === 'sandbox') {
+                    current = null;
+                    tip.style.display = 'none';
+                    return;
+                }
+                current = el;
+                place(el);
+            });
+            document.addEventListener('mouseout', (e) => {
+                const el = e.target.closest('[data-tip]');
+                if (!el) return;
+                if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+                if (current === el) {
+                    current = null;
+                    tip.style.display = 'none';
+                }
+            });
+            window.addEventListener('scroll', () => {
+                if (current) place(current);
+            }, true);
+        })();
+
         createPhysicsWorld();
         spawnPlayer();
         rebuildPhysics();
+        setClassStep('grid');
         loop();
     </script>
 </body>
