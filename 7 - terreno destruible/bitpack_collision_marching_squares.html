@@ -332,7 +332,8 @@
       <div class="mem-row">
         <span class="name">Sprite campo
           <button type="button" class="help" aria-label="Ayuda de textura campo">?
-            <span class="tooltip">Un píxel por celda, NEAREST, estirado × TILE. Color = valor del blur 0..1. Misma técnica que el sprite de tiles.</span>
+            <span class="tooltip">Un píxel por celda, NEAREST, estirado × TILE. Color = valor del blur 0..1. Misma
+              técnica que el sprite de tiles.</span>
           </button>
         </span>
         <span id="mem-field" class="mem-val"></span>
@@ -349,7 +350,8 @@
       <div class="mem-row">
         <span class="name">Sprite tiles
           <button type="button" class="help" aria-label="Ayuda de textura tiles">?
-            <span class="tooltip">Igual que el campo: un píxel por celda, NEAREST, estirado × TILE. Gris = bit sólido. Se edita el ImageData en setSolid. El slider de Render solo cambia el alpha.</span>
+            <span class="tooltip">Igual que el campo: un píxel por celda, NEAREST, estirado × TILE. Gris = bit sólido.
+              Se edita el ImageData en setSolid. El slider de Render solo cambia el alpha.</span>
           </button>
         </span>
         <span id="mem-tiles" class="mem-val"></span>
@@ -357,7 +359,8 @@
       <div class="mem-row">
         <span class="name">GPU total
           <button type="button" class="help" aria-label="Ayuda de GPU total">?
-            <span class="tooltip">Suma de field + tiles + MS. No incluye framebuffer, minimapa, ni Graphics (player/fondo).</span>
+            <span class="tooltip">Suma de field + tiles + MS. No incluye framebuffer, minimapa, ni Graphics
+              (player/fondo).</span>
           </button>
         </span>
         <span id="mem-gpu" class="mem-val"></span>
@@ -484,19 +487,7 @@
         title="Umbral del contorno de marching squares">
       <p class="explain">Corte del campo. Más alto = forma más chica.</p>
     </div>
-    <div class="ctrl">
-      <label>
-        <span class="name">Opacidad de relleno
-          <button type="button" class="help" aria-label="Ayuda de opacidad">?
-            <span class="tooltip">Alpha de los polígonos “dentro” del iso-contorno (los casos MS que rellenan). En 0
-              solo queda la polilínea. Rebuild de texturas MS, el campo no se toca.</span>
-          </button>
-        </span>
-        <span id="fill-val">0.35</span>
-      </label>
-      <input id="fill" type="range" min="0" max="1" step="0.05" value="0.35" title="Opacidad del relleno del contorno">
-      <p class="explain">Relleno del interior del iso-contorno.</p>
-    </div>
+
     <div class="ctrl">
       <label>
         <span class="name">Grosor del pincel
@@ -520,19 +511,6 @@
     </h3>
     <div class="ctrl">
       <label>
-        <span class="name">Campo
-          <button type="button" class="help" aria-label="Ayuda de campo">?
-            <span class="tooltip">Heatmap del blur: un píxel por celda, alineado al tile. Color = valor 0..1. Marching
-              squares usa esos números. 0 oculta el sprite (solo alpha, sin rebuild).</span>
-          </button>
-        </span>
-        <span id="field-val">0.40</span>
-      </label>
-      <input id="field" type="range" min="0" max="1" step="0.05" value="0.4"
-        title="Opacidad del sprite del campo">
-    </div>
-    <div class="ctrl">
-      <label>
         <span class="name">Tiles
           <button type="button" class="help" aria-label="Ayuda de tiles">?
             <span class="tooltip">Textura WORLD_W×WORLD_H, un píxel gris por bit sólido, NEAREST × TILE. setSolid ya
@@ -544,6 +522,34 @@
       <input id="tiles-alpha" type="range" min="0" max="1" step="0.05" value="0"
         title="Opacidad del sprite de tiles de colisión">
     </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Campo
+          <button type="button" class="help" aria-label="Ayuda de campo">?
+            <span class="tooltip">Heatmap del blur: un píxel por celda, alineado al tile. Color = valor 0..1. Marching
+              squares usa esos números. 0 oculta el sprite (solo alpha, sin rebuild).</span>
+          </button>
+        </span>
+        <span id="field-val">0.40</span>
+      </label>
+      <input id="field" type="range" min="0" max="1" step="0.05" value="0.4" title="Opacidad del sprite del campo">
+    </div>
+
+    <div class="ctrl">
+      <label>
+        <span class="name">Opacidad de relleno
+          <button type="button" class="help" aria-label="Ayuda de opacidad">?
+            <span class="tooltip">Alpha de los polígonos “dentro” del iso-contorno (los casos MS que rellenan). En 0
+              solo queda la polilínea. Rebuild de texturas MS, el campo no se toca.</span>
+          </button>
+        </span>
+        <span id="fill-val">0.35</span>
+      </label>
+      <input id="fill" type="range" min="0" max="1" step="0.05" value="0.35" title="Opacidad del relleno del contorno">
+      <p class="explain">Relleno del interior del iso-contorno.</p>
+    </div>
+
+
     <div class="ctrl">
       <label>
         <span class="name">Marching squares
@@ -566,8 +572,7 @@
         </span>
         <span id="player-alpha-val">1.00</span>
       </label>
-      <input id="player-alpha" type="range" min="0" max="1" step="0.05" value="1"
-        title="Opacidad del personaje">
+      <input id="player-alpha" type="range" min="0" max="1" step="0.05" value="1" title="Opacidad del personaje">
     </div>
 
     <h3>Personaje</h3>
@@ -590,8 +595,9 @@
         <span class="name">Lerp de cámara
           <button type="button" class="help" aria-label="Ayuda de lerp de cámara">?
             <span class="tooltip">Mezcla exponencial independiente del FPS: a = 1 − (1 − lerp)^60dt. 1 = la cámara salta
-              al target. Valores bajos = persigue. 0 = quieta. world.position = (−camX, −camY); los sprites de terreno
-              no se recalculan al mover la cámara.</span>
+              al target. Valores bajos = persigue. 0 = quieta. world.position = (−round(camX), −round(camY)); si no, el
+              filtro mezcla el borde del relleno con el pad transparente y se ve la junta entre chunks. Los sprites de
+              terreno no se recalculan al mover la cámara.</span>
           </button>
         </span>
         <span id="cam-val">0.18</span>
@@ -1150,7 +1156,8 @@
       const rt = PIXI.RenderTexture.create({
         width: Math.max(1, width),
         height: Math.max(1, height),
-        resolution: 1
+        resolution: 1,
+        scaleMode: PIXI.SCALE_MODES.NEAREST
       });
       const wrap = new PIXI.Container();
       wrap.name = 'bakeWrap';
@@ -1495,7 +1502,7 @@
         cameraX += (target.x - cameraX) * a;
         cameraY += (target.y - cameraY) * a;
       }
-      world.position.set(-cameraX, -cameraY);
+      world.position.set(-Math.round(cameraX), -Math.round(cameraY));
     }
 
     function drawMinimap() {
