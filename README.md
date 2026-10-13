@@ -134,6 +134,7 @@
 - Enfoques alternativos basados en cuerpos rígidos compuestos, profundizados en la Unidad 10 (Box2D).
 - Casos de referencia de la industria (Noita, Worms, Astroneer, A Game About Digging A Hole) como estudio de decisiones de diseño y de rendimiento.
 
+- Voronoi, Delaunay y Alpha Shapes: https://www.youtube.com/watch?v=-XCVn73p3xs
 - Ejemplo quadtree/mamushka: https://brotochola.github.io/destructible_terrain_2d/
 -
 

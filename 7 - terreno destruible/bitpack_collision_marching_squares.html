@@ -19,7 +19,6 @@
       display: block;
       width: 100vw;
       height: 100vh;
-      image-rendering: pixelated;
       cursor: crosshair;
     }
 
@@ -38,6 +37,8 @@
       left: 12px;
       top: 12px;
       pointer-events: none;
+      max-height: calc(100vh - 24px);
+      overflow: auto;
     }
 
     .hud b,
@@ -54,7 +55,8 @@
       pointer-events: auto;
     }
 
-    .panel h3 {
+    .panel h3,
+    .hud h3 {
       margin: 12px 0 4px;
       font-size: 12px;
       font-weight: 700;
@@ -78,7 +80,7 @@
       font-size: 12px;
     }
 
-    .ctrl .name {
+    .name {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -100,9 +102,7 @@
 
     .help .tooltip {
       display: none;
-      position: absolute;
-      right: 0;
-      bottom: calc(100% + 7px);
+      position: fixed;
       width: 236px;
       padding: 8px 10px;
       background: #0b1612;
@@ -112,7 +112,7 @@
       font: 400 11px/1.4 system-ui, sans-serif;
       text-align: left;
       white-space: normal;
-      z-index: 3;
+      z-index: 20;
       pointer-events: none;
       box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
     }
@@ -151,7 +151,20 @@
       font-size: 11px;
       margin-top: 10px;
     }
+
+    #perf {
+      margin-top: 8px;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #9ecfb8;
+    }
+
+    #perf .hot {
+      color: #ffb020;
+    }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
 </head>
 <body>
   <canvas id="canvas"></canvas>
@@ -162,46 +175,201 @@
     R: reiniciar personaje<br>
     Arrastrar: dibujar · Shift o click derecho: borrar<br>
     <div id="stats"></div>
+    <h3>Performance</h3>
+    <div id="perf"></div>
   </div>
   <div class="panel">
     <b>Dibujo y personaje</b>
-    <label>Blur <span id="blur-val">1</span></label>
-    <input id="blur" type="range" min="0" max="8" step="1" value="1">
-    <label>Umbral <span id="iso-val">0.50</span></label>
-    <input id="iso" type="range" min="0.05" max="0.95" step="0.05" value="0.5">
-    <label>Opacidad de relleno <span id="fill-val">0.35</span></label>
-    <input id="fill" type="range" min="0" max="1" step="0.05" value="0.35">
-    <label>Grosor del pincel <span id="brush-val">2</span></label>
-    <input id="brush" type="range" min="1" max="10" step="1" value="2">
-    <label>Tamaño del personaje <span id="scale-val">1.00×</span></label>
-    <input id="scale" type="range" min="25" max="300" step="5" value="100">
+
+    <h3>Dibujo</h3>
+    <div class="ctrl">
+      <label>
+        <span class="name">Blur
+          <button type="button" class="help" aria-label="Ayuda de blur">?
+            <span class="tooltip">Radio en celdas del desenfoque del campo visual. El kernel da más peso al centro
+              (smoothstep), no un promedio plano. Solo cambia el dibujo: la colisión sigue siendo la grilla de
+              bits.</span>
+          </button>
+        </span>
+        <span id="blur-val">1</span>
+      </label>
+      <input id="blur" type="range" min="0" max="8" step="1" value="1" title="Radio del desenfoque visual, en celdas">
+      <p class="explain">Suaviza el contorno. No afecta la colisión.</p>
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Campo blur
+          <button type="button" class="help" aria-label="Ayuda de campo blur">?
+            <span class="tooltip">Dibuja la grilla del campo escalar después del blur: un valor por celda, pixelado,
+              corrido medio tile para coincidir con los vértices de marching squares. Es el input del algoritmo. 0 lo
+              oculta. Solo cambia el alpha del sprite, no rebuild.</span>
+          </button>
+        </span>
+        <span id="field-val">0.40</span>
+      </label>
+      <input id="field" type="range" min="0" max="1" step="0.05" value="0.4"
+        title="Opacidad de la grilla del campo desenfocado">
+      <p class="explain">Heatmap de la grilla blureada, el input de MS.</p>
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Umbral
+          <button type="button" class="help" aria-label="Ayuda de umbral">?
+            <span class="tooltip">Valor a partir del cual marching squares dibuja el contorno y el relleno. Más alto =
+              la forma se encoge; más bajo = se agranda y redondea más. Rebuild de chunks MS, el campo no se
+              toca.</span>
+          </button>
+        </span>
+        <span id="iso-val">0.50</span>
+      </label>
+      <input id="iso" type="range" min="0.05" max="0.95" step="0.05" value="0.5"
+        title="Umbral del contorno de marching squares">
+      <p class="explain">Corta el campo desenfocado para armar el trazo.</p>
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Opacidad de relleno
+          <button type="button" class="help" aria-label="Ayuda de opacidad">?
+            <span class="tooltip">Transparencia del polígono que rellena el interior del contorno. En 0 solo se ve la
+              línea; en 1 el relleno es opaco. Rebuild de chunks MS.</span>
+          </button>
+        </span>
+        <span id="fill-val">0.35</span>
+      </label>
+      <input id="fill" type="range" min="0" max="1" step="0.05" value="0.35" title="Opacidad del relleno del contorno">
+      <p class="explain">Qué tan visible es el interior de la forma.</p>
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Grosor del pincel
+          <button type="button" class="help" aria-label="Ayuda de pincel">?
+            <span class="tooltip">Radio del pincel al pintar o borrar celdas sólidas. 1 pinta una sola celda; valores
+              más altos pintan un círculo de bits. Click izquierdo pinta, Shift o click derecho borra.</span>
+          </button>
+        </span>
+        <span id="brush-val">2</span>
+      </label>
+      <input id="brush" type="range" min="1" max="10" step="1" value="2" title="Radio del pincel en celdas">
+      <p class="explain">Tamaño del sello al dibujar o borrar terreno.</p>
+    </div>
+
+    <h3>Personaje</h3>
+    <div class="ctrl">
+      <label>
+        <span class="name">Tamaño
+          <button type="button" class="help" aria-label="Ayuda de tamaño">?
+            <span class="tooltip">Escala del rectángulo de colisión del personaje. La física usa este AABB contra los
+              bits, no contra el contorno suave.</span>
+          </button>
+        </span>
+        <span id="scale-val">1.00×</span>
+      </label>
+      <input id="scale" type="range" min="25" max="300" step="5" value="100" title="Escala del personaje">
+      <p class="explain">Escala el AABB que choca contra los bits.</p>
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Lerp de cámara
+          <button type="button" class="help" aria-label="Ayuda de lerp de cámara">?
+            <span class="tooltip">Qué tan rápido la cámara alcanza al personaje. 1 = pegada, sin retraso. Valores bajos
+              = persigue con suavizado (lerp exponencial independiente del FPS). 0 deja la cámara quieta.</span>
+          </button>
+        </span>
+        <span id="cam-val">0.18</span>
+      </label>
+      <input id="cam-lerp" type="range" min="0" max="1" step="0.02" value="0.18"
+        title="Factor de lerp de la cámara hacia el personaje">
+      <p class="explain">1 = instantánea. Más bajo = más suave.</p>
+    </div>
     <label class="check">
-      <input id="show-tiles" type="checkbox">
-      Mostrar tiles de colisión
+      <input id="show-tiles" type="checkbox" title="Dibuja las celdas sólidas de la grilla de bits">
+      <span>
+        <span class="name">Mostrar tiles de colisión
+          <button type="button" class="help" aria-label="Ayuda de tiles">?
+            <span class="tooltip">Pinta las celdas sólidas de la grilla de bits. Eso es lo que realmente bloquea al
+              personaje; el blur y marching squares son solo visuales. Solo toggle de layer, sin blur/MS.</span>
+          </button>
+        </span>
+        <span class="explain">Muestra la grilla de bits, la colisión real.</span>
+      </span>
     </label>
-    <p class="hint">El blur usa un kernel smoothstep (más peso al centro, no un promedio plano). El personaje choca contra los bits; el contorno sale del campo desenfocado.</p>
+
+    <h3>Escalones</h3>
+    <div class="ctrl">
+      <label>
+        <span class="name">Altura de escalón
+          <button type="button" class="help" aria-label="Ayuda de altura de escalón">?
+            <span class="tooltip">Máximo desnivel que el personaje puede subir solo caminando, sin saltar (step-up). Si
+              choca de costado contra un obstáculo más bajo que este valor y hay espacio arriba, se lo levanta y sigue.
+              0 desactiva el trepar. 12 px = 1 celda, alcanza para la escalera de ejemplo.</span>
+          </button>
+        </span>
+        <span id="step-val">12 px · 1.00 celdas</span>
+      </label>
+      <input id="step" type="range" min="0" max="48" step="1" value="12"
+        title="Altura máxima de escalón automático, en píxeles">
+      <p class="explain">Tolerancia para subir un escalón al caminar. 0 = off.</p>
+    </div>
+    <label class="check">
+      <input id="step-ground" type="checkbox" checked title="Solo subir escalones si el personaje está en el suelo">
+      <span>
+        <span class="name">Solo en el suelo
+          <button type="button" class="help" aria-label="Ayuda de solo en el suelo">?
+            <span class="tooltip">Si está activo, el step-up solo funciona apoyado en el piso. Evita que al saltar
+              contra una cornisa el personaje se “magnetice” y suba. Desactivalo si querés que también trepe escalones
+              en el aire o al caer.</span>
+          </button>
+        </span>
+        <span class="explain">No trepa paredes ni cornisas en el aire.</span>
+      </span>
+    </label>
+    <label class="check">
+      <input id="show-step" type="checkbox" title="Dibuja en el personaje la franja de tolerancia del escalón">
+      <span>
+        <span class="name">Mostrar tolerancia
+          <button type="button" class="help" aria-label="Ayuda de mostrar tolerancia">?
+            <span class="tooltip">Dibuja una franja en los pies del personaje con la altura de escalón actual. Cualquier
+              celda sólida que no pase de esa franja se puede subir caminando.</span>
+          </button>
+        </span>
+        <span class="explain">Marca en el personaje hasta dónde llega el step-up.</span>
+      </span>
+    </label>
+    <p class="hint">El personaje choca contra los bits; el contorno sale del campo desenfocado. Blur y marching squares
+      solo se recalculan en chunks sucios. Pixi cachea cada chunk como textura.</p>
   </div>
   <script>
     'use strict';
 
     const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
     const stats = document.getElementById('stats');
+    const perfEl = document.getElementById('perf');
 
     const TILE = 12;
     const WORLD_W = 170;
     const WORLD_H = 132;
     const CELL_COUNT = WORLD_W * WORLD_H;
+    const CHUNK = 16;
+    const CHUNKS_X = Math.ceil(WORLD_W / CHUNK);
+    const CHUNKS_Y = Math.ceil(WORLD_H / CHUNK);
+    const CHUNK_COUNT = CHUNKS_X * CHUNKS_Y;
+    const TEX_PAD = 4;
 
     const bits = new Uint8Array(Math.ceil(CELL_COUNT / 8));
+    const cells = new Uint8Array(CELL_COUNT);
     const blurredField = new Float32Array(CELL_COUNT);
-    const blurTmp = new Float32Array(CELL_COUNT);
 
     let blurRadius = 1;
     let iso = 0.5;
     let fillOpacity = 0.35;
+    let fieldOpacity = 0.4;
+    let cameraLerp = 0.18;
+    let cameraReady = false;
     let showTiles = false;
     let brushSize = 2;
+    let stepHeight = TILE;
+    let stepOnlyGround = true;
+    let showStep = false;
     const PLAYER_BASE_W = 18;
     const PLAYER_BASE_H = 36;
     let playerScale = 1;
@@ -211,28 +379,56 @@
     let lastPaintTx = null;
     let lastPaintTy = null;
 
+    let dirtyBits = null;
+    let msDirtyAll = false;
+    let dirtyTiles = false;
+    let kernel = [];
+
+    const times = {
+      frame: 0, physics: 0, blur: 0, field: 0, msRebuild: 0, pixi: 0, hud: 0,
+      chunksDirty: 0, cellsRebuilt: 0, msCells: 0, liveTextures: 0
+    };
+    const ema = {
+      frame: 0, physics: 0, blur: 0, field: 0, msRebuild: 0, pixi: 0, hud: 0, fps: 60
+    };
+    let hudAcc = 0;
+
     function bitIndex(tx, ty) {
       return ty * WORLD_W + tx;
     }
 
     function getSolid(tx, ty) {
       if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
-      const i = bitIndex(tx, ty);
-      return (bits[i >> 3] & (1 << (i & 7))) !== 0;
+      return cells[bitIndex(tx, ty)] !== 0;
+    }
+
+    function markCell(tx, ty) {
+      if (!dirtyBits) {
+        dirtyBits = { x0: tx, y0: ty, x1: tx, y1: ty };
+        return;
+      }
+      if (tx < dirtyBits.x0) dirtyBits.x0 = tx;
+      if (ty < dirtyBits.y0) dirtyBits.y0 = ty;
+      if (tx > dirtyBits.x1) dirtyBits.x1 = tx;
+      if (ty > dirtyBits.y1) dirtyBits.y1 = ty;
+    }
+
+    function markAllDirty() {
+      dirtyBits = { x0: 0, y0: 0, x1: WORLD_W - 1, y1: WORLD_H - 1 };
+      msDirtyAll = true;
     }
 
     function setSolid(tx, ty, v) {
       if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return;
       const i = bitIndex(tx, ty);
+      const nv = v ? 1 : 0;
+      if (cells[i] === nv) return;
+      cells[i] = nv;
       const mask = 1 << (i & 7);
-      if (v) bits[i >> 3] |= mask;
+      if (nv) bits[i >> 3] |= mask;
       else bits[i >> 3] &= ~mask;
-    }
-
-    function unpackBits(out) {
-      for (let i = 0; i < CELL_COUNT; i++) {
-        out[i] = (bits[i >> 3] & (1 << (i & 7))) ? 1 : 0;
-      }
+      markCell(tx, ty);
+      dirtyTiles = true;
     }
 
     function smoothstep01(t) {
@@ -240,45 +436,53 @@
       return t * t * (3 - 2 * t);
     }
 
-    function computeField() {
-      unpackBits(blurTmp);
-      if (blurRadius <= 0) {
-        blurredField.set(blurTmp);
-        return blurredField;
-      }
+    function rebuildKernel() {
+      kernel = [];
       const r = blurRadius;
+      if (r <= 0) return;
       const r2 = r * r;
-      for (let y = 0; y < WORLD_H; y++) {
-        for (let x = 0; x < WORLD_W; x++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const d2 = dx * dx + dy * dy;
+          if (d2 > r2) continue;
+          const t = d2 === 0 ? 1 : 1 - Math.sqrt(d2) / r;
+          kernel.push(dx, dy, smoothstep01(t));
+        }
+      }
+    }
+
+    function blurRect(x0, y0, x1, y1) {
+      const r = blurRadius;
+      if (r <= 0) {
+        for (let y = y0; y <= y1; y++) {
+          const row = y * WORLD_W;
+          for (let x = x0; x <= x1; x++) blurredField[row + x] = cells[row + x];
+        }
+        return (x1 - x0 + 1) * (y1 - y0 + 1);
+      }
+      const taps = kernel;
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
           let sum = 0, wsum = 0;
-          const y0 = Math.max(0, y - r);
-          const y1 = Math.min(WORLD_H - 1, y + r);
-          const x0 = Math.max(0, x - r);
-          const x1 = Math.min(WORLD_W - 1, x + r);
-          for (let yy = y0; yy <= y1; yy++) {
-            const dy = yy - y;
-            const rowOff = yy * WORLD_W;
-            for (let xx = x0; xx <= x1; xx++) {
-              const dx = xx - x;
-              const d2 = dx * dx + dy * dy;
-              if (d2 > r2) continue;
-              const t = 1 - Math.sqrt(d2) / r;
-              const w = smoothstep01(t);
-              sum += blurTmp[rowOff + xx] * w;
-              wsum += w;
-            }
+          for (let k = 0; k < taps.length; k += 3) {
+            const xx = x + taps[k];
+            const yy = y + taps[k + 1];
+            if (xx < 0 || yy < 0 || xx >= WORLD_W || yy >= WORLD_H) continue;
+            const w = taps[k + 2];
+            sum += cells[yy * WORLD_W + xx] * w;
+            wsum += w;
           }
-          let v = wsum > 1e-8 ? sum / wsum : 0;
+          const v = wsum > 1e-8 ? sum / wsum : 0;
           blurredField[y * WORLD_W + x] = smoothstep01(v);
         }
       }
-      return blurredField;
+      return (x1 - x0 + 1) * (y1 - y0 + 1);
     }
 
     function eventToCell(e) {
       const rect = canvas.getBoundingClientRect();
-      const sx = (e.clientX - rect.left) * (innerWidth / rect.width);
-      const sy = (e.clientY - rect.top) * (innerHeight / rect.height);
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
       return {
         tx: Math.floor((sx + cameraX) / TILE),
         ty: Math.floor((sy + cameraY) / TILE)
@@ -326,6 +530,7 @@
       player.x = cx - nw / 2;
       player.y = feet - nh;
       playerScale = scale;
+      playerGfxDirty = true;
     }
 
     function rect(x, y, w, h) {
@@ -336,6 +541,8 @@
 
     function clearWorld() {
       bits.fill(0);
+      cells.fill(0);
+      dirtyBits = null;
       for (let x = 0; x < WORLD_W; x++) {
         setSolid(x, WORLD_H - 2, true);
         setSolid(x, WORLD_H - 1, true);
@@ -376,6 +583,44 @@
         return getSolid(tx, ty);
       }
 
+      bodyHitsSolid() {
+        const tile = this.tileSize;
+        const eps = 0.00001;
+        const minTX = Math.floor(this.x / tile);
+        const maxTX = Math.floor((this.x + this.w - eps) / tile);
+        const minTY = Math.floor(this.y / tile);
+        const maxTY = Math.floor((this.y + this.h - eps) / tile);
+        for (let ty = minTY; ty <= maxTY; ty++) {
+          for (let tx = minTX; tx <= maxTX; tx++) {
+            if (this.isSolid(tx, ty)) return true;
+          }
+        }
+        return false;
+      }
+
+      tryStepUp(tx, minTY, maxTY) {
+        if (stepHeight <= 0) return false;
+        if (stepOnlyGround && !this.onGround) return false;
+        const tile = this.tileSize;
+        let stepTop = Infinity;
+        for (let ty = minTY; ty <= maxTY; ty++) {
+          if (!this.isSolid(tx, ty)) continue;
+          const top = ty * tile;
+          if (top < stepTop) stepTop = top;
+        }
+        if (stepTop === Infinity) return false;
+        const rise = this.y + this.h - stepTop;
+        if (rise <= 0 || rise > stepHeight) return false;
+        const oldY = this.y;
+        this.y = stepTop - this.h;
+        if (this.bodyHitsSolid()) {
+          this.y = oldY;
+          return false;
+        }
+        this.onGround = true;
+        return true;
+      }
+
       moveX(dx) {
         if (dx === 0) return false;
         this.x += dx;
@@ -383,21 +628,23 @@
         const eps = 0.00001;
         const minTY = Math.floor(this.y / tile);
         const maxTY = Math.floor((this.y + this.h - eps) / tile);
+        const hitWall = (tx, flushX) => {
+          if (this.tryStepUp(tx, minTY, maxTY)) return false;
+          this.x = flushX;
+          this.vx = 0;
+          return true;
+        };
         if (dx > 0) {
           const tx = Math.floor((this.x + this.w - eps) / tile);
           for (let ty = minTY; ty <= maxTY; ty++) {
             if (!this.isSolid(tx, ty)) continue;
-            this.x = tx * tile - this.w;
-            this.vx = 0;
-            return true;
+            return hitWall(tx, tx * tile - this.w);
           }
         } else {
           const tx = Math.floor(this.x / tile);
           for (let ty = minTY; ty <= maxTY; ty++) {
             if (!this.isSolid(tx, ty)) continue;
-            this.x = (tx + 1) * tile;
-            this.vx = 0;
-            return true;
+            return hitWall(tx, (tx + 1) * tile);
           }
         }
         return false;
@@ -480,61 +727,177 @@
     let cameraX = 0;
     let cameraY = 0;
 
-    function resize() {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(innerWidth * dpr);
-      canvas.height = Math.floor(innerHeight * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    window.addEventListener('resize', resize);
-    resize();
+    const app = new PIXI.Application({
+      view: canvas,
+      resizeTo: window,
+      background: 0x06090a,
+      resolution: Math.min(devicePixelRatio || 1, 2),
+      autoDensity: true,
+      antialias: true
+    });
+    window.__PIXI_APP__ = app;
+    app.ticker.stop();
+    app.stage.interactive = false;
+    app.stage.interactiveChildren = false;
 
-    function phosphor(v, a) {
-      const t = Math.max(0, Math.min(1, v));
-      return `rgba(${75 + t * 60 | 0},${255 * Math.min(1, 0.3 + t * 0.9) | 0},${140 + t * 80 | 0},${a})`;
+    const world = new PIXI.Container();
+    app.stage.addChild(world);
+
+    const worldBg = new PIXI.Graphics();
+    worldBg.beginFill(0x050807);
+    worldBg.drawRect(0, 0, WORLD_W * TILE, WORLD_H * TILE);
+    worldBg.endFill();
+    world.addChild(worldBg);
+
+    function bakeGraphics(g, width, height, ox, oy) {
+      const rt = PIXI.RenderTexture.create({
+        width: Math.max(1, width),
+        height: Math.max(1, height),
+        resolution: 1
+      });
+      const wrap = new PIXI.Container();
+      g.position.set(ox, oy);
+      wrap.addChild(g);
+      app.renderer.render(wrap, { renderTexture: rt, clear: true });
+      wrap.removeChild(g);
+      g.destroy(true);
+      wrap.destroy();
+      return rt;
+    }
+
+    const gridCell = new PIXI.Graphics();
+    gridCell.lineStyle(1, 0x4bffa0, 0.06);
+    gridCell.moveTo(0, 0);
+    gridCell.lineTo(TILE, 0);
+    gridCell.moveTo(0, 0);
+    gridCell.lineTo(0, TILE);
+    const gridTex = bakeGraphics(gridCell, TILE, TILE, 0, 0);
+    const gridSprite = new PIXI.TilingSprite(gridTex, WORLD_W * TILE, WORLD_H * TILE);
+    world.addChild(gridSprite);
+
+    const fieldCanvas = document.createElement('canvas');
+    fieldCanvas.width = WORLD_W;
+    fieldCanvas.height = WORLD_H;
+    const fieldCtx = fieldCanvas.getContext('2d');
+    const fieldImg = fieldCtx.createImageData(WORLD_W, WORLD_H);
+    const fieldTexture = PIXI.Texture.from(fieldCanvas);
+    fieldTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    const fieldSprite = new PIXI.Sprite(fieldTexture);
+    fieldSprite.position.set(TILE * 0.5, TILE * 0.5);
+    fieldSprite.scale.set(TILE);
+    fieldSprite.alpha = fieldOpacity;
+    fieldSprite.visible = fieldOpacity > 0;
+    world.addChild(fieldSprite);
+
+    const tilesLayer = new PIXI.Container();
+    tilesLayer.visible = false;
+    world.addChild(tilesLayer);
+
+    const chunksLayer = new PIXI.Container();
+    world.addChild(chunksLayer);
+
+    const playerGfx = new PIXI.Graphics();
+    world.addChild(playerGfx);
+    let playerGfxDirty = true;
+    let lastPlayerW = 0;
+    let lastPlayerH = 0;
+
+    const chunks = [];
+    for (let cy = 0; cy < CHUNKS_Y; cy++) {
+      for (let cx = 0; cx < CHUNKS_X; cx++) {
+        const ms = new PIXI.Sprite(PIXI.Texture.EMPTY);
+        const tiles = new PIXI.Sprite(PIXI.Texture.EMPTY);
+        chunksLayer.addChild(ms);
+        tilesLayer.addChild(tiles);
+        chunks.push({ cx, cy, ms, tiles, msTex: null, tileTex: null });
+      }
+    }
+
+    function liveTextureCount() {
+      let n = 2;
+      for (let i = 0; i < chunks.length; i++) {
+        if (chunks[i].msTex) n++;
+        if (chunks[i].tileTex) n++;
+      }
+      return n;
+    }
+
+    function swapTexture(sprite, chunk, key, tex) {
+      const old = chunk[key];
+      sprite.texture = tex || PIXI.Texture.EMPTY;
+      sprite.visible = !!tex;
+      chunk[key] = tex;
+      if (old && old !== PIXI.Texture.EMPTY) old.destroy(true);
+    }
+
+    function phosphorHex(v) {
+      const t = v < 0 ? 0 : v > 1 ? 1 : v;
+      const r = (75 + t * 60) | 0;
+      const g = (255 * Math.min(1, 0.3 + t * 0.9)) | 0;
+      const b = (140 + t * 80) | 0;
+      return (r << 16) | (g << 8) | b;
     }
 
     function edgePoint(v1, v2, x1, y1, x2, y2) {
       let t = (iso - v1) / (v2 - v1);
       if (!isFinite(t)) t = 0.5;
-      t = Math.max(0, Math.min(1, t));
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
       return [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t];
     }
 
-    function addPoly(pts) {
-      if (!pts || pts.length < 3) return;
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-      ctx.closePath();
+    function uploadFieldRect(x0, y0, x1, y1) {
+      const d = fieldImg.data;
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const i = y * WORLD_W + x;
+          const t = blurredField[i];
+          const o = i * 4;
+          d[o] = 75 + t * 60;
+          d[o + 1] = 255 * Math.min(1, 0.25 + t * 0.9);
+          d[o + 2] = 140 + t * 80;
+          d[o + 3] = 255;
+        }
+      }
+      fieldCtx.putImageData(fieldImg, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+      fieldTexture.update();
     }
 
-    function marchingSquares(field) {
-      const c = TILE;
+    function rebuildMSChunk(chunk) {
+      const ox = chunk.cx * CHUNK;
+      const oy = chunk.cy * CHUNK;
+      const xEnd = Math.min(ox + CHUNK, WORLD_W - 1);
+      const yEnd = Math.min(oy + CHUNK, WORLD_H - 1);
+      const cw = Math.min(CHUNK, WORLD_W - ox);
+      const ch = Math.min(CHUNK, WORLD_H - oy);
+      const originX = ox * TILE;
+      const originY = oy * TILE;
+      const g = new PIXI.Graphics();
       const doFill = fillOpacity > 0;
-      if (doFill) {
-        ctx.fillStyle = phosphor(0.7, fillOpacity);
-        ctx.beginPath();
-      }
-      ctx.strokeStyle = phosphor(Math.min(1, iso + 0.2), 0.95);
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      const strokePath = new Path2D();
-      for (let y = 0; y < WORLD_H - 1; y++) {
+      const fillColor = phosphorHex(0.7);
+      const strokeColor = phosphorHex(Math.min(1, iso + 0.2));
+      const polys = [];
+      const segs = [];
+      let cellsVisited = 0;
+
+      const addPoly = pts => { polys.push(pts); };
+      const seg = (a, b) => { segs.push(a, b); };
+
+      for (let y = oy; y < yEnd; y++) {
         const rowOff = y * WORLD_W;
         const rowOff2 = (y + 1) * WORLD_W;
-        for (let x = 0; x < WORLD_W - 1; x++) {
-          const tl = field[rowOff + x], tr = field[rowOff + x + 1];
-          const bl = field[rowOff2 + x], br = field[rowOff2 + x + 1];
+        for (let x = ox; x < xEnd; x++) {
+          cellsVisited++;
+          const tl = blurredField[rowOff + x], tr = blurredField[rowOff + x + 1];
+          const bl = blurredField[rowOff2 + x], br = blurredField[rowOff2 + x + 1];
           const state = (tl >= iso ? 8 : 0) | (tr >= iso ? 4 : 0) | (br >= iso ? 2 : 0) | (bl >= iso ? 1 : 0);
           if (state === 0) continue;
-          const px = (x + 0.5) * c, py = (y + 0.5) * c;
-          const TL = [px, py], TR = [px + c, py], BR = [px + c, py + c], BL = [px, py + c];
-          const T = edgePoint(tl, tr, px, py, px + c, py);
-          const R = edgePoint(tr, br, px + c, py, px + c, py + c);
-          const B = edgePoint(bl, br, px, py + c, px + c, py + c);
-          const L = edgePoint(tl, bl, px, py, px, py + c);
+          const px = (x + 0.5) * TILE, py = (y + 0.5) * TILE;
+          const TL = [px, py], TR = [px + TILE, py], BR = [px + TILE, py + TILE], BL = [px, py + TILE];
+          const T = edgePoint(tl, tr, px, py, px + TILE, py);
+          const R = edgePoint(tr, br, px + TILE, py, px + TILE, py + TILE);
+          const B = edgePoint(bl, br, px, py + TILE, px + TILE, py + TILE);
+          const L = edgePoint(tl, bl, px, py, px, py + TILE);
           const avg = (tl + tr + br + bl) / 4;
-          const seg = (a, b) => { strokePath.moveTo(a[0], a[1]); strokePath.lineTo(b[0], b[1]); };
           switch (state) {
             case 1: if (doFill) addPoly([BL, B, L]); seg(L, B); break;
             case 2: if (doFill) addPoly([BR, R, B]); seg(R, B); break;
@@ -570,78 +933,215 @@
           }
         }
       }
-      if (doFill) ctx.fill();
-      ctx.stroke(strokePath);
-    }
 
-    function renderCollisionTiles(W, H) {
-      const ty0 = Math.floor(cameraY / TILE);
-      const ty1 = Math.floor((cameraY + H) / TILE);
-      const tx0 = Math.floor(cameraX / TILE);
-      const tx1 = Math.floor((cameraX + W) / TILE);
-      for (let ty = ty0; ty <= ty1; ty++) {
-        for (let tx = tx0; tx <= tx1; tx++) {
-          if (!getSolid(tx, ty)) continue;
-          ctx.fillStyle = 'rgba(74, 74, 74, 0.45)';
-          ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
-          ctx.strokeStyle = 'rgba(103, 103, 103, 0.8)';
-          ctx.strokeRect(tx * TILE + 0.5, ty * TILE + 0.5, TILE - 1, TILE - 1);
+      if (doFill && polys.length) {
+        g.beginFill(fillColor, fillOpacity);
+        for (let i = 0; i < polys.length; i++) {
+          const pts = polys[i];
+          const flat = new Array(pts.length * 2);
+          for (let p = 0; p < pts.length; p++) {
+            flat[p * 2] = pts[p][0] - originX;
+            flat[p * 2 + 1] = pts[p][1] - originY;
+          }
+          g.drawPolygon(flat);
+        }
+        g.endFill();
+      }
+      if (segs.length) {
+        g.lineStyle({
+          width: 2,
+          color: strokeColor,
+          alpha: 0.95,
+          cap: PIXI.LINE_CAP.ROUND,
+          join: PIXI.LINE_JOIN.ROUND
+        });
+        for (let i = 0; i < segs.length; i += 2) {
+          g.moveTo(segs[i][0] - originX, segs[i][1] - originY);
+          g.lineTo(segs[i + 1][0] - originX, segs[i + 1][1] - originY);
         }
       }
+
+      if (!polys.length && !segs.length) {
+        g.destroy(true);
+        swapTexture(chunk.ms, chunk, 'msTex', null);
+        chunk.ms.position.set(originX, originY);
+        return cellsVisited;
+      }
+
+      const texW = cw * TILE + TILE + TEX_PAD * 2;
+      const texH = ch * TILE + TILE + TEX_PAD * 2;
+      const tex = bakeGraphics(g, texW, texH, TEX_PAD, TEX_PAD);
+      swapTexture(chunk.ms, chunk, 'msTex', tex);
+      chunk.ms.position.set(originX - TEX_PAD, originY - TEX_PAD);
+      return cellsVisited;
     }
 
-    function render() {
-      const W = innerWidth;
-      const H = innerHeight;
-      ctx.setTransform(devicePixelRatio || 1, 0, 0, devicePixelRatio || 1, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-
-      cameraX = player.x - W * 0.5;
-      cameraY = player.y - H * 0.55;
-      cameraX = Math.max(0, Math.min(WORLD_W * TILE - W, cameraX));
-      cameraY = Math.max(0, Math.min(WORLD_H * TILE - H, cameraY));
-
-      ctx.save();
-      ctx.translate(-cameraX, -cameraY);
-
-      ctx.fillStyle = '#050807';
-      ctx.fillRect(0, 0, WORLD_W * TILE, WORLD_H * TILE);
-
-      ctx.strokeStyle = 'rgba(75, 255, 160, 0.06)';
-      ctx.lineWidth = 1;
-      const startX = Math.floor(cameraX / TILE) * TILE;
-      const endX = Math.min(WORLD_W * TILE, cameraX + W + TILE);
-      const startY = Math.floor(cameraY / TILE) * TILE;
-      const endY = Math.min(WORLD_H * TILE, cameraY + H + TILE);
-      for (let x = startX; x <= endX; x += TILE) {
-        ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, endY); ctx.stroke();
+    function rebuildTileChunk(chunk) {
+      const ox = chunk.cx * CHUNK;
+      const oy = chunk.cy * CHUNK;
+      const x1 = Math.min(ox + CHUNK, WORLD_W);
+      const y1 = Math.min(oy + CHUNK, WORLD_H);
+      const cw = x1 - ox;
+      const ch = y1 - oy;
+      const originX = ox * TILE;
+      const originY = oy * TILE;
+      const g = new PIXI.Graphics();
+      let any = false;
+      g.beginFill(0x4a4a4a, 0.45);
+      g.lineStyle(1, 0x676767, 0.8);
+      for (let ty = oy; ty < y1; ty++) {
+        const row = ty * WORLD_W;
+        for (let tx = ox; tx < x1; tx++) {
+          if (!cells[row + tx]) continue;
+          any = true;
+          g.drawRect(tx * TILE - originX + 0.5, ty * TILE - originY + 0.5, TILE - 1, TILE - 1);
+        }
       }
-      for (let y = startY; y <= endY; y += TILE) {
-        ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.stroke();
+      g.endFill();
+      if (!any) {
+        g.destroy(true);
+        swapTexture(chunk.tiles, chunk, 'tileTex', null);
+        chunk.tiles.position.set(originX, originY);
+        return;
+      }
+      const tex = bakeGraphics(g, cw * TILE, ch * TILE, 0, 0);
+      swapTexture(chunk.tiles, chunk, 'tileTex', tex);
+      chunk.tiles.position.set(originX, originY);
+    }
+
+    function flushTerrain() {
+      times.blur = 0;
+      times.field = 0;
+      times.msRebuild = 0;
+      times.chunksDirty = 0;
+      times.cellsRebuilt = 0;
+      times.msCells = 0;
+      if (!dirtyBits && !msDirtyAll) return;
+
+      const r = blurRadius;
+      const rebuildTiles = dirtyTiles;
+
+      if (dirtyBits) {
+        const fx0 = Math.max(0, dirtyBits.x0 - r);
+        const fy0 = Math.max(0, dirtyBits.y0 - r);
+        const fx1 = Math.min(WORLD_W - 1, dirtyBits.x1 + r);
+        const fy1 = Math.min(WORLD_H - 1, dirtyBits.y1 + r);
+        let t0 = performance.now();
+        times.cellsRebuilt = blurRect(fx0, fy0, fx1, fy1);
+        times.blur = performance.now() - t0;
+        t0 = performance.now();
+        uploadFieldRect(fx0, fy0, fx1, fy1);
+        times.field = performance.now() - t0;
       }
 
-      const field = computeField();
-      if (showTiles) renderCollisionTiles(W, H);
-      marchingSquares(field);
+      let cx0 = 0, cy0 = 0, cx1 = CHUNKS_X - 1, cy1 = CHUNKS_Y - 1;
+      if (!msDirtyAll && dirtyBits) {
+        const pad = r + 1;
+        const mx0 = Math.max(0, dirtyBits.x0 - pad);
+        const my0 = Math.max(0, dirtyBits.y0 - pad);
+        const mx1 = Math.min(WORLD_W - 1, dirtyBits.x1 + pad);
+        const my1 = Math.min(WORLD_H - 1, dirtyBits.y1 + pad);
+        cx0 = Math.floor(mx0 / CHUNK);
+        cy0 = Math.floor(my0 / CHUNK);
+        cx1 = Math.floor(mx1 / CHUNK);
+        cy1 = Math.floor(my1 / CHUNK);
+      }
 
-      ctx.fillStyle = '#f28c28';
-      ctx.fillRect(player.x, player.y, player.w, player.h);
-      ctx.strokeStyle = '#fff';
-      ctx.strokeRect(player.x + 0.5, player.y + 0.5, player.w - 1, player.h - 1);
-      ctx.strokeStyle = '#ffeb3b';
-      ctx.beginPath();
-      ctx.moveTo(player.x, player.y + player.h);
-      ctx.lineTo(player.x + player.w, player.y + player.h);
-      ctx.stroke();
+      const t1 = performance.now();
+      for (let cy = cy0; cy <= cy1; cy++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const chunk = chunks[cy * CHUNKS_X + cx];
+          times.msCells += rebuildMSChunk(chunk);
+          if (rebuildTiles) rebuildTileChunk(chunk);
+          times.chunksDirty++;
+        }
+      }
+      times.msRebuild = performance.now() - t1;
 
-      ctx.restore();
+      dirtyBits = null;
+      msDirtyAll = false;
+      dirtyTiles = false;
+    }
 
+    function redrawPlayer() {
+      if (playerGfxDirty || player.w !== lastPlayerW || player.h !== lastPlayerH) {
+        playerGfx.clear();
+        playerGfx.beginFill(0xf28c28);
+        playerGfx.drawRect(0, 0, player.w, player.h);
+        playerGfx.endFill();
+        if (showStep && stepHeight > 0) {
+          const band = Math.min(stepHeight, player.h);
+          playerGfx.beginFill(0x50dcff, 0.35);
+          playerGfx.drawRect(0, player.h - band, player.w, band);
+          playerGfx.endFill();
+        }
+        playerGfx.lineStyle(1, 0xffffff, 1);
+        playerGfx.drawRect(0.5, 0.5, player.w - 1, player.h - 1);
+        playerGfx.lineStyle(1, 0xffeb3b, 1);
+        playerGfx.moveTo(0, player.h);
+        playerGfx.lineTo(player.w, player.h);
+        lastPlayerW = player.w;
+        lastPlayerH = player.h;
+        playerGfxDirty = false;
+      }
+      playerGfx.position.set(player.x, player.y);
+    }
+
+    function clampCamera(W, H) {
+      const maxX = Math.max(0, WORLD_W * TILE - W);
+      const maxY = Math.max(0, WORLD_H * TILE - H);
+      return {
+        x: Math.max(0, Math.min(maxX, player.x - W * 0.5)),
+        y: Math.max(0, Math.min(maxY, player.y - H * 0.55))
+      };
+    }
+
+    function updateCamera(W, H, dt) {
+      const target = clampCamera(W, H);
+      if (!cameraReady || cameraLerp >= 1) {
+        cameraX = target.x;
+        cameraY = target.y;
+        cameraReady = true;
+      } else if (cameraLerp > 0) {
+        const a = 1 - Math.pow(1 - cameraLerp, dt * 60);
+        cameraX += (target.x - cameraX) * a;
+        cameraY += (target.y - cameraY) * a;
+      }
+      world.position.set(-cameraX, -cameraY);
+    }
+
+    function fmtMs(v) {
+      return v < 0.05 ? '0.00' : v.toFixed(2);
+    }
+
+    function hot(v, warn) {
+      return v >= warn ? 'hot' : '';
+    }
+
+    function writeHud() {
+      times.liveTextures = liveTextureCount();
       stats.innerHTML =
         `x ${player.x.toFixed(1)} y ${player.y.toFixed(1)}<br>` +
         `vx ${player.vx.toFixed(1)} vy ${player.vy.toFixed(1)}<br>` +
         `en suelo ${player.onGround}<br>` +
+        `escalón ${stepHeight} px · ${(stepHeight / TILE).toFixed(2)} celdas<br>` +
         `celda ${Math.floor((player.x + player.w / 2) / TILE)}, ${Math.floor((player.y + player.h / 2) / TILE)}<br>` +
         `grilla ${WORLD_W}×${WORLD_H} · ${CELL_COUNT} bits · ${bits.length} bytes`;
+      perfEl.innerHTML =
+        `fps ${ema.fps.toFixed(0)} · frame_ms ${fmtMs(ema.frame)}<br>` +
+        `<span class="${hot(ema.physics, 1)}">physics_ms ${fmtMs(ema.physics)}</span><br>` +
+        `<span class="${hot(ema.blur, 2)}">blur_ms ${fmtMs(ema.blur)}</span><br>` +
+        `<span class="${hot(ema.field, 1)}">field_ms ${fmtMs(ema.field)}</span><br>` +
+        `<span class="${hot(ema.msRebuild, 2)}">ms_rebuild_ms ${fmtMs(ema.msRebuild)}</span><br>` +
+        `<span class="${hot(ema.pixi, 4)}">pixi_ms ${fmtMs(ema.pixi)}</span><br>` +
+        `hud_ms ${fmtMs(ema.hud)}<br>` +
+        `chunks_dirty ${times.chunksDirty} / ${CHUNK_COUNT}<br>` +
+        `cells_rebuilt ${times.cellsRebuilt} · ms_cells ${times.msCells}<br>` +
+        `texturas ${times.liveTextures} · chunks ${CHUNK}×${CHUNK}`;
+    }
+
+    function ease(prev, x) {
+      return prev + (x - prev) * 0.25;
     }
 
     function startPaint(e) {
@@ -673,17 +1173,53 @@
     });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
+    function placeTooltip(btn) {
+      const tip = btn.querySelector('.tooltip');
+      if (!tip) return;
+      const r = btn.getBoundingClientRect();
+      const th = tip.offsetHeight || 80;
+      let left = r.left - 244;
+      if (left < 8) left = Math.min(innerWidth - 244, r.right + 8);
+      let top = r.top + r.height / 2 - th / 2;
+      top = Math.max(8, Math.min(innerHeight - th - 8, top));
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+    }
+
+    for (const btn of document.querySelectorAll('.help')) {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      btn.addEventListener('mouseenter', () => placeTooltip(btn));
+      btn.addEventListener('focus', () => placeTooltip(btn));
+    }
+
     document.getElementById('blur').addEventListener('input', e => {
       blurRadius = parseInt(e.target.value, 10);
       document.getElementById('blur-val').textContent = blurRadius;
+      rebuildKernel();
+      markAllDirty();
+    });
+    document.getElementById('field').addEventListener('input', e => {
+      fieldOpacity = parseFloat(e.target.value);
+      document.getElementById('field-val').textContent = fieldOpacity.toFixed(2);
+      fieldSprite.alpha = fieldOpacity;
+      fieldSprite.visible = fieldOpacity > 0;
+    });
+    document.getElementById('cam-lerp').addEventListener('input', e => {
+      cameraLerp = parseFloat(e.target.value);
+      document.getElementById('cam-val').textContent = cameraLerp.toFixed(2);
     });
     document.getElementById('iso').addEventListener('input', e => {
       iso = parseFloat(e.target.value);
       document.getElementById('iso-val').textContent = iso.toFixed(2);
+      msDirtyAll = true;
     });
     document.getElementById('fill').addEventListener('input', e => {
       fillOpacity = parseFloat(e.target.value);
       document.getElementById('fill-val').textContent = fillOpacity.toFixed(2);
+      msDirtyAll = true;
     });
     document.getElementById('brush').addEventListener('input', e => {
       brushSize = parseInt(e.target.value, 10);
@@ -696,18 +1232,63 @@
     });
     document.getElementById('show-tiles').addEventListener('change', e => {
       showTiles = e.target.checked;
+      tilesLayer.visible = showTiles;
+    });
+    document.getElementById('step').addEventListener('input', e => {
+      stepHeight = parseInt(e.target.value, 10);
+      document.getElementById('step-val').textContent =
+        stepHeight + ' px · ' + (stepHeight / TILE).toFixed(2) + ' celdas';
+      playerGfxDirty = true;
+    });
+    document.getElementById('step-ground').addEventListener('change', e => {
+      stepOnlyGround = e.target.checked;
+    });
+    document.getElementById('show-step').addEventListener('change', e => {
+      showStep = e.target.checked;
+      playerGfxDirty = true;
     });
 
+    rebuildKernel();
     clearWorld();
     player.reset(spawn.x, spawn.y);
 
     let last = performance.now();
     function frame(now) {
+      const tFrame = now;
       let dt = (now - last) / 1000;
       last = now;
       dt = Math.min(dt, 0.033);
+
+      let t0 = performance.now();
       player.update(dt);
-      render();
+      times.physics = performance.now() - t0;
+
+      flushTerrain();
+      updateCamera(app.screen.width, app.screen.height, dt);
+      redrawPlayer();
+
+      t0 = performance.now();
+      app.renderer.render(app.stage);
+      times.pixi = performance.now() - t0;
+
+      times.frame = performance.now() - tFrame;
+      ema.frame = ease(ema.frame, times.frame);
+      ema.physics = ease(ema.physics, times.physics);
+      ema.blur = ease(ema.blur, times.blur);
+      ema.field = ease(ema.field, times.field);
+      ema.msRebuild = ease(ema.msRebuild, times.msRebuild);
+      ema.pixi = ease(ema.pixi, times.pixi);
+      ema.fps = ease(ema.fps, times.frame > 0 ? 1000 / times.frame : 60);
+
+      hudAcc += dt;
+      if (hudAcc >= 0.125) {
+        hudAcc = 0;
+        t0 = performance.now();
+        writeHud();
+        times.hud = performance.now() - t0;
+        ema.hud = ease(ema.hud, times.hud);
+      }
+
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
