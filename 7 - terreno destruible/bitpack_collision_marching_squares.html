@@ -349,7 +349,7 @@
       <div class="mem-row">
         <span class="name">Sprite tiles
           <button type="button" class="help" aria-label="Ayuda de textura tiles">?
-            <span class="tooltip">Igual que el campo: un píxel por celda, NEAREST, estirado × TILE. Gris = bit sólido. Se edita el ImageData en setSolid. El checkbox solo oculta el sprite.</span>
+            <span class="tooltip">Igual que el campo: un píxel por celda, NEAREST, estirado × TILE. Gris = bit sólido. Se edita el ImageData en setSolid. El slider de Render solo cambia el alpha.</span>
           </button>
         </span>
         <span id="mem-tiles" class="mem-val"></span>
@@ -445,8 +445,8 @@
             <button type="button" class="help" aria-label="Ayuda de chunks">?
               <span class="tooltip">El mundo se parte en bloques de 16×16 celdas. Al pintar se marca un AABB expandido
                 por blurRadius+1 (el +1 es porque MS usa 2×2). Solo esos chunks rehace Graphics → textura → sprite. Idle
-                = 0 rebuild. Cambiar blur ensucia el campo y el MS; iso/relleno solo el MS; opacidad del campo solo el
-                alpha.</span>
+                = 0 rebuild. Cambiar blur ensucia el campo y el MS; iso/relleno solo el MS. Los sliders de Render
+                solo tocan alpha.</span>
             </button>
           </span>
           <span class="explain">16×16. Rebuild solo lo que cambió.</span>
@@ -468,22 +468,6 @@
       </label>
       <input id="blur" type="range" min="0" max="8" step="1" value="1" title="Radio del desenfoque visual, en celdas">
       <p class="explain">Radio del kernel. 0 = bits crudos.</p>
-    </div>
-    <div class="ctrl">
-      <label>
-        <span class="name">Campo blur
-          <button type="button" class="help" aria-label="Ayuda de campo blur">?
-            <span class="tooltip">Heatmap del campo: un píxel por celda, alineado con el tile de colisión (mismo
-              cuadrado). El color es el valor 0..1 después del blur. Marching squares usa exactamente estos números. El
-              sample “oficial” está en el centro de cada celda; el contorno se interpola entre centros, no en el borde
-              del tile. 0 oculta el sprite (solo alpha, sin rebuild).</span>
-          </button>
-        </span>
-        <span id="field-val">0.40</span>
-      </label>
-      <input id="field" type="range" min="0" max="1" step="0.05" value="0.4"
-        title="Opacidad de la grilla del campo desenfocado">
-      <p class="explain">Valor por celda, alineado al tile. Input de MS.</p>
     </div>
     <div class="ctrl">
       <label>
@@ -528,6 +512,64 @@
       <p class="explain">Radio del sello sobre los bits.</p>
     </div>
 
+    <h3>Render
+      <button type="button" class="help" aria-label="Ayuda de render">?
+        <span class="tooltip">Alpha de cada layer de Pixi. 0 oculta el sprite (visible=false). No recalcula blur ni
+          marching squares. El relleno del iso-contorno está en Dibujo: ese sí rehace las texturas MS.</span>
+      </button>
+    </h3>
+    <div class="ctrl">
+      <label>
+        <span class="name">Campo
+          <button type="button" class="help" aria-label="Ayuda de campo">?
+            <span class="tooltip">Heatmap del blur: un píxel por celda, alineado al tile. Color = valor 0..1. Marching
+              squares usa esos números. 0 oculta el sprite (solo alpha, sin rebuild).</span>
+          </button>
+        </span>
+        <span id="field-val">0.40</span>
+      </label>
+      <input id="field" type="range" min="0" max="1" step="0.05" value="0.4"
+        title="Opacidad del sprite del campo">
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Tiles
+          <button type="button" class="help" aria-label="Ayuda de tiles">?
+            <span class="tooltip">Textura WORLD_W×WORLD_H, un píxel gris por bit sólido, NEAREST × TILE. setSolid ya
+              escribió el píxel. Este slider solo cambia el alpha.</span>
+          </button>
+        </span>
+        <span id="tiles-val">0.00</span>
+      </label>
+      <input id="tiles-alpha" type="range" min="0" max="1" step="0.05" value="0"
+        title="Opacidad del sprite de tiles de colisión">
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Marching squares
+          <button type="button" class="help" aria-label="Ayuda de layer MS">?
+            <span class="tooltip">Alpha del container chunksLayer (todos los sprites MS). No rehace texturas. El
+              relleno interior se controla en Dibujo → Opacidad de relleno.</span>
+          </button>
+        </span>
+        <span id="ms-val">1.00</span>
+      </label>
+      <input id="ms-alpha" type="range" min="0" max="1" step="0.05" value="1"
+        title="Opacidad del layer de marching squares">
+    </div>
+    <div class="ctrl">
+      <label>
+        <span class="name">Personaje
+          <button type="button" class="help" aria-label="Ayuda de opacidad del personaje">?
+            <span class="tooltip">Alpha del Graphics del AABB. 0 lo oculta. La física sigue igual.</span>
+          </button>
+        </span>
+        <span id="player-alpha-val">1.00</span>
+      </label>
+      <input id="player-alpha" type="range" min="0" max="1" step="0.05" value="1"
+        title="Opacidad del personaje">
+    </div>
+
     <h3>Personaje</h3>
     <div class="ctrl">
       <label>
@@ -558,17 +600,6 @@
         title="Factor de lerp de la cámara hacia el personaje">
       <p class="explain">1 = instantánea. Más bajo = más suave.</p>
     </div>
-    <label class="check">
-      <input id="show-tiles" type="checkbox" title="Dibuja las celdas sólidas de la grilla de bits">
-      <span>
-        <span class="name">Mostrar tiles de colisión
-          <button type="button" class="help" aria-label="Ayuda de tiles">?
-            <span class="tooltip">Una textura WORLD_W×WORLD_H, un píxel gris por bit sólido, NEAREST × TILE. Calza con el campo. El checkbox solo oculta el sprite; setSolid ya escribió el píxel.</span>
-          </button>
-        </span>
-        <span class="explain">Muestra la grilla de bits, la colisión real.</span>
-      </span>
-    </label>
 
     <h3>Escalones</h3>
     <div class="ctrl">
@@ -653,9 +684,11 @@
     let iso = 0.5;
     let fillOpacity = 0.35;
     let fieldOpacity = 0.4;
+    let tilesOpacity = 0;
+    let msOpacity = 1;
+    let playerOpacity = 1;
     let cameraLerp = 0.18;
     let cameraReady = false;
-    let showTiles = false;
     let brushSize = 2;
     let stepHeight = TILE;
     let stepOnlyGround = true;
@@ -1152,15 +1185,20 @@
     tilesSprite.name = 'tiles';
     tilesSprite.position.set(0, 0);
     tilesSprite.scale.set(TILE);
-    tilesSprite.visible = showTiles;
+    tilesSprite.alpha = tilesOpacity;
+    tilesSprite.visible = tilesOpacity > 0;
     world.addChild(tilesSprite);
 
     const chunksLayer = new PIXI.Container();
     chunksLayer.name = 'chunksLayer';
+    chunksLayer.alpha = msOpacity;
+    chunksLayer.visible = msOpacity > 0;
     world.addChild(chunksLayer);
 
     const playerGfx = new PIXI.Graphics();
     playerGfx.name = 'player';
+    playerGfx.alpha = playerOpacity;
+    playerGfx.visible = playerOpacity > 0;
     world.addChild(playerGfx);
     let playerGfxDirty = true;
     let lastPlayerW = 0;
@@ -1606,11 +1644,29 @@
       rebuildKernel();
       markAllDirty();
     });
+    function setLayerAlpha(obj, a) {
+      obj.alpha = a;
+      obj.visible = a > 0;
+    }
     document.getElementById('field').addEventListener('input', e => {
       fieldOpacity = parseFloat(e.target.value);
       document.getElementById('field-val').textContent = fieldOpacity.toFixed(2);
-      fieldSprite.alpha = fieldOpacity;
-      fieldSprite.visible = fieldOpacity > 0;
+      setLayerAlpha(fieldSprite, fieldOpacity);
+    });
+    document.getElementById('tiles-alpha').addEventListener('input', e => {
+      tilesOpacity = parseFloat(e.target.value);
+      document.getElementById('tiles-val').textContent = tilesOpacity.toFixed(2);
+      setLayerAlpha(tilesSprite, tilesOpacity);
+    });
+    document.getElementById('ms-alpha').addEventListener('input', e => {
+      msOpacity = parseFloat(e.target.value);
+      document.getElementById('ms-val').textContent = msOpacity.toFixed(2);
+      setLayerAlpha(chunksLayer, msOpacity);
+    });
+    document.getElementById('player-alpha').addEventListener('input', e => {
+      playerOpacity = parseFloat(e.target.value);
+      document.getElementById('player-alpha-val').textContent = playerOpacity.toFixed(2);
+      setLayerAlpha(playerGfx, playerOpacity);
     });
     document.getElementById('cam-lerp').addEventListener('input', e => {
       cameraLerp = parseFloat(e.target.value);
@@ -1634,10 +1690,6 @@
       const scale = parseInt(e.target.value, 10) / 100;
       document.getElementById('scale-val').textContent = scale.toFixed(2) + '×';
       applyPlayerScale(scale);
-    });
-    document.getElementById('show-tiles').addEventListener('change', e => {
-      showTiles = e.target.checked;
-      tilesSprite.visible = showTiles;
     });
     document.getElementById('step').addEventListener('input', e => {
       stepHeight = parseInt(e.target.value, 10);
