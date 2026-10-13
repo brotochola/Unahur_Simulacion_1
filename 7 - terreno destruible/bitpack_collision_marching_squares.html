@@ -266,7 +266,7 @@
       image-rendering: crisp-edges;
     }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.21.0/dist/pixi.min.js"></script>
 </head>
 <body>
   <canvas id="canvas"></canvas>
@@ -563,6 +563,18 @@
       <input id="ms-alpha" type="range" min="0" max="1" step="0.05" value="1"
         title="Opacidad del layer de marching squares">
     </div>
+    <label class="check">
+      <input id="show-chunks" type="checkbox" checked title="Dibuja los bordes de los chunks de 16×16 celdas">
+      <span>
+        <span class="name">Mostrar chunks
+          <button type="button" class="help" aria-label="Ayuda de mostrar chunks">?
+            <span class="tooltip">Líneas cada 16×16 celdas (160 px). Es el corte del rebuild de marching squares. No
+              cambia la física ni ensucia chunks.</span>
+          </button>
+        </span>
+        <span class="explain">Bordes de los bloques 16×16.</span>
+      </span>
+    </label>
     <div class="ctrl">
       <label>
         <span class="name">Personaje
@@ -650,7 +662,7 @@
     <p class="hint">Campo y tiles comparten la misma celda. El contorno MS se traza entre centros (dual grid), por eso
       no pega al borde. En idle, blur_ms y ms_rebuild_ms van a ~0.</p>
   </div>
-  <script>
+  <script type="module">
     'use strict';
 
     const canvas = document.getElementById('canvas');
@@ -699,6 +711,7 @@
     let stepHeight = TILE;
     let stepOnlyGround = true;
     let showStep = false;
+    let showChunks = true;
     const PLAYER_BASE_W = 18;
     const PLAYER_BASE_H = 36;
     let playerScale = 1;
@@ -716,6 +729,8 @@
       frame: 0, physics: 0, blur: 0, field: 0, msRebuild: 0, pixi: 0, hud: 0,
       chunksDirty: 0, cellsRebuilt: 0, msCells: 0, liveTextures: 0, draws: 0
     };
+
+    window.times = times
     const ema = {
       frame: 0, physics: 0, blur: 0, field: 0, msRebuild: 0, pixi: 0, hud: 0, fps: 60
     };
@@ -795,7 +810,7 @@
 
     function uploadTilesRect(x0, y0, x1, y1) {
       tilesCtx.putImageData(tilesImg, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
-      if (tilesTexture) tilesTexture.update();
+      if (tilesTexture) tilesTexture.source.update();
     }
 
     function stampMini(tx, ty, nv) {
@@ -1119,37 +1134,39 @@
     let cameraX = 0;
     let cameraY = 0;
 
-    const app = new PIXI.Application({
-      view: canvas,
+    const app = new PIXI.Application();
+    await app.init({
+      canvas,
       resizeTo: window,
       background: 0x06090a,
       resolution: Math.min(devicePixelRatio || 1, 2),
       autoDensity: true,
-      antialias: true
+      antialias: true,
+      autoStart: false,
+      preference: 'webgl'
     });
     window.__PIXI_APP__ = app;
     app.ticker.stop();
-    app.stage.interactive = false;
-    app.stage.interactiveChildren = false;
+    app.stage.eventMode = 'none';
 
     let drawCalls = 0;
     const gl = app.renderer.gl;
-    const glDrawArrays = gl.drawArrays.bind(gl);
-    const glDrawElements = gl.drawElements.bind(gl);
-    gl.drawArrays = function () { drawCalls++; return glDrawArrays.apply(this, arguments); };
-    gl.drawElements = function () { drawCalls++; return glDrawElements.apply(this, arguments); };
+    if (gl) {
+      const glDrawArrays = gl.drawArrays.bind(gl);
+      const glDrawElements = gl.drawElements.bind(gl);
+      gl.drawArrays = function () { drawCalls++; return glDrawArrays.apply(this, arguments); };
+      gl.drawElements = function () { drawCalls++; return glDrawElements.apply(this, arguments); };
+    }
 
-    app.stage.name = 'stage';
+    app.stage.label = 'stage';
 
     const world = new PIXI.Container();
-    world.name = 'world';
+    world.label = 'world';
     app.stage.addChild(world);
 
     const worldBg = new PIXI.Graphics();
-    worldBg.name = 'worldBg';
-    worldBg.beginFill(0x050807);
-    worldBg.drawRect(0, 0, WORLD_W * TILE, WORLD_H * TILE);
-    worldBg.endFill();
+    worldBg.label = 'worldBg';
+    worldBg.rect(0, 0, WORLD_W * TILE, WORLD_H * TILE).fill(0x050807);
     world.addChild(worldBg);
 
     function bakeGraphics(g, width, height, ox, oy) {
@@ -1157,14 +1174,20 @@
         width: Math.max(1, width),
         height: Math.max(1, height),
         resolution: 1,
-        scaleMode: PIXI.SCALE_MODES.NEAREST
+        scaleMode: 'nearest',
+        antialias: false
       });
       const wrap = new PIXI.Container();
-      wrap.name = 'bakeWrap';
-      if (!g.name) g.name = 'bakeGfx';
+      wrap.label = 'bakeWrap';
+      if (!g.label) g.label = 'bakeGfx';
       g.position.set(ox, oy);
       wrap.addChild(g);
-      app.renderer.render(wrap, { renderTexture: rt, clear: true });
+      app.renderer.render({
+        container: wrap,
+        target: rt,
+        clear: true,
+        clearColor: [0, 0, 0, 0]
+      });
       wrap.removeChild(g);
       g.destroy(true);
       wrap.destroy();
@@ -1177,9 +1200,10 @@
     const fieldCtx = fieldCanvas.getContext('2d');
     const fieldImg = fieldCtx.createImageData(WORLD_W, WORLD_H);
     const fieldTexture = PIXI.Texture.from(fieldCanvas);
-    fieldTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    fieldTexture.source.scaleMode = 'nearest';
+    fieldTexture.source.style.update();
     const fieldSprite = new PIXI.Sprite(fieldTexture);
-    fieldSprite.name = 'field';
+    fieldSprite.label = 'field';
     fieldSprite.position.set(0, 0);
     fieldSprite.scale.set(TILE);
     fieldSprite.alpha = fieldOpacity;
@@ -1187,9 +1211,10 @@
     world.addChild(fieldSprite);
 
     tilesTexture = PIXI.Texture.from(tilesCanvas);
-    tilesTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    tilesTexture.source.scaleMode = 'nearest';
+    tilesTexture.source.style.update();
     const tilesSprite = new PIXI.Sprite(tilesTexture);
-    tilesSprite.name = 'tiles';
+    tilesSprite.label = 'tiles';
     tilesSprite.position.set(0, 0);
     tilesSprite.scale.set(TILE);
     tilesSprite.alpha = tilesOpacity;
@@ -1197,13 +1222,30 @@
     world.addChild(tilesSprite);
 
     const chunksLayer = new PIXI.Container();
-    chunksLayer.name = 'chunksLayer';
+    chunksLayer.label = 'chunksLayer';
     chunksLayer.alpha = msOpacity;
     chunksLayer.visible = msOpacity > 0;
     world.addChild(chunksLayer);
 
+    const chunkGrid = new PIXI.Graphics();
+    chunkGrid.label = 'chunkGrid';
+    const chunkPx = CHUNK * TILE;
+    const worldPxW = WORLD_W * TILE;
+    const worldPxH = WORLD_H * TILE;
+    for (let cx = 0; cx <= CHUNKS_X; cx++) {
+      const x = Math.min(cx * chunkPx, worldPxW);
+      chunkGrid.moveTo(x, 0).lineTo(x, worldPxH);
+    }
+    for (let cy = 0; cy <= CHUNKS_Y; cy++) {
+      const y = Math.min(cy * chunkPx, worldPxH);
+      chunkGrid.moveTo(0, y).lineTo(worldPxW, y);
+    }
+    chunkGrid.stroke({ width: 1, color: 0xffeb3b, alpha: 0.7, pixelLine: true });
+    chunkGrid.visible = showChunks;
+    world.addChild(chunkGrid);
+
     const playerGfx = new PIXI.Graphics();
-    playerGfx.name = 'player';
+    playerGfx.label = 'player';
     playerGfx.alpha = playerOpacity;
     playerGfx.visible = playerOpacity > 0;
     world.addChild(playerGfx);
@@ -1215,7 +1257,7 @@
     for (let cy = 0; cy < CHUNKS_Y; cy++) {
       for (let cx = 0; cx < CHUNKS_X; cx++) {
         const ms = new PIXI.Sprite(PIXI.Texture.EMPTY);
-        ms.name = 'ms_' + cx + '_' + cy;
+        ms.label = 'ms_' + cx + '_' + cy;
         chunksLayer.addChild(ms);
         chunks.push({ cx, cy, ms, msTex: null });
       }
@@ -1229,12 +1271,9 @@
 
     function textureBytes(tex) {
       if (!tex || tex === PIXI.Texture.EMPTY) return 0;
-      const bt = tex.baseTexture;
-      if (!bt || !bt.valid) return 0;
-      const w = bt.realWidth || tex.width || 0;
-      const h = bt.realHeight || tex.height || 0;
-      const res = bt.resolution || 1;
-      return (w * res) * (h * res) * 4;
+      const src = tex.source;
+      if (!src || src.destroyed) return 0;
+      return (src.pixelWidth || 0) * (src.pixelHeight || 0) * 4;
     }
 
     function memSprites() {
@@ -1288,7 +1327,7 @@
         }
       }
       fieldCtx.putImageData(fieldImg, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
-      fieldTexture.update();
+      fieldTexture.source.update();
     }
 
     function rebuildMSChunk(chunk) {
@@ -1301,7 +1340,7 @@
       const originX = ox * TILE;
       const originY = oy * TILE;
       const g = new PIXI.Graphics();
-      g.name = 'msBake_' + chunk.cx + '_' + chunk.cy;
+      g.label = 'msBake_' + chunk.cx + '_' + chunk.cy;
       const doFill = fillOpacity > 0;
       const fillColor = phosphorHex(0.7);
       const strokeColor = phosphorHex(Math.min(1, iso + 0.2));
@@ -1365,7 +1404,6 @@
       }
 
       if (doFill && polys.length) {
-        g.beginFill(fillColor, fillOpacity);
         for (let i = 0; i < polys.length; i++) {
           const pts = polys[i];
           const flat = new Array(pts.length * 2);
@@ -1373,22 +1411,22 @@
             flat[p * 2] = pts[p][0] - originX;
             flat[p * 2 + 1] = pts[p][1] - originY;
           }
-          g.drawPolygon(flat);
+          g.poly(flat);
         }
-        g.endFill();
+        g.fill({ color: fillColor, alpha: fillOpacity });
       }
       if (segs.length) {
-        g.lineStyle({
-          width: 2,
-          color: strokeColor,
-          alpha: 0.95,
-          cap: PIXI.LINE_CAP.ROUND,
-          join: PIXI.LINE_JOIN.ROUND
-        });
         for (let i = 0; i < segs.length; i += 2) {
           g.moveTo(segs[i][0] - originX, segs[i][1] - originY);
           g.lineTo(segs[i + 1][0] - originX, segs[i + 1][1] - originY);
         }
+        g.stroke({
+          width: 2,
+          color: strokeColor,
+          alpha: 0.95,
+          cap: 'round',
+          join: 'round'
+        });
       }
 
       if (!polys.length && !segs.length) {
@@ -1461,20 +1499,13 @@
     function redrawPlayer() {
       if (playerGfxDirty || player.w !== lastPlayerW || player.h !== lastPlayerH) {
         playerGfx.clear();
-        playerGfx.beginFill(0xf28c28);
-        playerGfx.drawRect(0, 0, player.w, player.h);
-        playerGfx.endFill();
+        playerGfx.rect(0, 0, player.w, player.h).fill(0xf28c28);
         if (showStep && stepHeight > 0) {
           const band = Math.min(stepHeight, player.h);
-          playerGfx.beginFill(0x50dcff, 0.35);
-          playerGfx.drawRect(0, player.h - band, player.w, band);
-          playerGfx.endFill();
+          playerGfx.rect(0, player.h - band, player.w, band).fill({ color: 0x50dcff, alpha: 0.35 });
         }
-        playerGfx.lineStyle(1, 0xffffff, 1);
-        playerGfx.drawRect(0.5, 0.5, player.w - 1, player.h - 1);
-        playerGfx.lineStyle(1, 0xffeb3b, 1);
-        playerGfx.moveTo(0, player.h);
-        playerGfx.lineTo(player.w, player.h);
+        playerGfx.rect(0.5, 0.5, player.w - 1, player.h - 1).stroke({ width: 1, color: 0xffffff });
+        playerGfx.moveTo(0, player.h).lineTo(player.w, player.h).stroke({ width: 1, color: 0xffeb3b });
         lastPlayerW = player.w;
         lastPlayerH = player.h;
         playerGfxDirty = false;
@@ -1568,7 +1599,7 @@
         `vx ${pad(player.vx.toFixed(1), 7)} vy ${pad(player.vy.toFixed(1), 7)}<br>` +
         `en suelo ${pad(player.onGround, 5)}<br>` +
         `escalón ${pad(stepHeight, 2)} px · ${pad((stepHeight / TILE).toFixed(2), 4)} celdas<br>` +
-        `celda ${pad(cx, 4)}, ${pad(cy, 4)}<br>` +
+        `celda ${pad(cx, 4)}, ${pad(cy, 4)} · chunk ${pad((cx / CHUNK) | 0, 3)}, ${pad((cy / CHUNK) | 0, 3)}<br>` +
         `grilla ${WORLD_W}×${WORLD_H} · ${CELL_COUNT} celdas`;
       perfEl.innerHTML =
         `<span title="Frames por segundo y duración total del frame (EMA).">fps ${pad(ema.fps.toFixed(0), 4)} · frame_ms ${pad(fmtMs(ema.frame), 6)}</span><br>` +
@@ -1711,6 +1742,10 @@
       showStep = e.target.checked;
       playerGfxDirty = true;
     });
+    document.getElementById('show-chunks').addEventListener('change', e => {
+      showChunks = e.target.checked;
+      chunkGrid.visible = showChunks;
+    });
 
     rebuildKernel();
     clearWorld();
@@ -1756,6 +1791,10 @@
         times.hud = performance.now() - t0;
         ema.hud = ease(ema.hud, times.hud);
       }
+
+
+      //
+
 
       requestAnimationFrame(frame);
     }
