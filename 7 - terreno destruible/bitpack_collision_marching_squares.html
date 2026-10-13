@@ -15,7 +15,7 @@
       font-family: system-ui, sans-serif;
     }
 
-    canvas {
+    #canvas {
       display: block;
       width: 100vw;
       height: 100vh;
@@ -37,8 +37,12 @@
       left: 12px;
       top: 12px;
       pointer-events: none;
-      max-height: calc(100vh - 24px);
+      max-height: calc(100vh - 24px - 77px - 16px);
       overflow: auto;
+    }
+
+    .hud .help {
+      pointer-events: auto;
     }
 
     .hud b,
@@ -49,7 +53,7 @@
     .panel {
       right: 12px;
       top: 12px;
-      width: 280px;
+      width: 300px;
       max-height: calc(100vh - 24px);
       overflow: auto;
       pointer-events: auto;
@@ -103,7 +107,7 @@
     .help .tooltip {
       display: none;
       position: fixed;
-      width: 236px;
+      width: 260px;
       padding: 8px 10px;
       background: #0b1612;
       border: 1px solid #1e6b48;
@@ -146,22 +150,89 @@
       line-height: 1.35;
     }
 
+    .algo {
+      margin: 8px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .algo li {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin: 6px 0;
+      font-size: 12px;
+    }
+
+    .algo .n {
+      flex: 0 0 16px;
+      color: #4bffa0;
+      font-weight: 700;
+    }
+
     .hint {
       color: #6f8a80;
       font-size: 11px;
       margin-top: 10px;
     }
 
-    #perf {
+    #perf-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
       margin-top: 8px;
+    }
+
+    #perf {
       font-family: ui-monospace, Consolas, monospace;
       font-size: 11px;
       line-height: 1.4;
       color: #9ecfb8;
+      pointer-events: auto;
+    }
+
+    #step-graph {
+      flex: 0 0 auto;
+      width: 100px;
+      height: 66px;
+      border: 1px solid #1e6b48;
+      border-radius: 3px;
+      background: #050807;
+      image-rendering: pixelated;
+      pointer-events: auto;
     }
 
     #perf .hot {
       color: #ffb020;
+    }
+
+    #minimap-wrap {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      width: 102px;
+      height: 77px;
+      border: 1px solid #1e6b48;
+      border-radius: 4px;
+      background: #050807;
+      z-index: 5;
+      pointer-events: none;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
+    }
+
+    #minimap-wrap .help {
+      position: absolute;
+      right: 2px;
+      top: 2px;
+      pointer-events: auto;
+    }
+
+    #minimap {
+      display: block;
+      width: 102px;
+      height: 77px;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
@@ -169,88 +240,160 @@
 <body>
   <canvas id="canvas"></canvas>
   <div class="hud">
-    <b>Colisión en bits · dibujo con marching squares</b><br>
+    <b>Colisión en bits · dibujo con marching squares</b>
+    <button type="button" class="help" aria-label="Ayuda del demo">?
+      <span class="tooltip">Hay dos mundos: la grilla de bits (colisión real del personaje) y el campo desenfocado + marching squares (solo dibujo). Pintás bits; el blur arma un campo escalar; el umbral corta ese campo; marching squares traza el contorno. La física nunca mira el contorno.</span>
+    </button><br>
     A / D o flechas: mover<br>
     W / flecha arriba / espacio: saltar<br>
     R: reiniciar personaje<br>
     Arrastrar: dibujar · Shift o click derecho: borrar<br>
     <div id="stats"></div>
-    <h3>Performance</h3>
-    <div id="perf"></div>
+    <h3>Performance
+      <button type="button" class="help" aria-label="Ayuda de performance">?
+        <span class="tooltip">Tiempos en milisegundos, suavizados (EMA) y el HUD se refresca 8 veces por segundo para no pagar reflow a 60 Hz. En idle blur_ms y ms_rebuild_ms tienen que estar en ~0: el terreno cacheado no se recalcula. Al pintar solo se ensucian 1–9 chunks. Amarillo = esa etapa se está comiendo el frame.</span>
+      </button>
+    </h3>
+    <div id="perf-wrap">
+      <div id="perf"></div>
+      <canvas id="step-graph" width="100" height="66"
+        title="step_ms total de los últimos 100 steps: física, blur, campo, marching squares, minimapa y render. Un pixel = un step. La escala llega al menos a 10 ms; si hay un pico más alto, se estira. Amarillo = 4 ms o más."></canvas>
+    </div>
+  </div>
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="102" height="77"></canvas>
+    <button type="button" class="help" aria-label="Ayuda del minimapa">?
+      <span class="tooltip">Mapa 102×77 de la grilla de bits (1024×768 celdas ≈ 10×10 por píxel). Un ImageData se actualiza en setSolid: cada píxel tiene un contador de celdas sólidas; si hay ≥1 se pinta. El rectángulo es la cámara; el punto naranja el personaje. No usa blur ni marching squares.</span>
+    </button>
   </div>
   <div class="panel">
     <b>Dibujo y personaje</b>
+
+    <h3>Algoritmo
+      <button type="button" class="help" aria-label="Ayuda del algoritmo">?
+        <span class="tooltip">Pipeline: pintás bits (0/1 por celda). Un blur circular con kernel smoothstep arma un campo 0..1 (un sample por celda, dibujado encima de esa misma celda). Marching squares mira cada 2×2 de samples: si un vértice está sobre el umbral y el vecino no, interpola el cruce y traza un segmento. Eso es solo visual. El AABB del personaje choca contra los bits, no contra esas líneas.</span>
+      </button>
+    </h3>
+    <ol class="algo">
+      <li>
+        <span class="n">1</span>
+        <span>
+          <span class="name">Bits
+            <button type="button" class="help" aria-label="Ayuda de bits">?
+              <span class="tooltip">Uint8Array bit-packed: 1 bit por celda. setSolid escribe el bit y una copia cells[] 0/1. Si el valor no cambia, no-op (no ensucia). Fuera del mapa cuenta como sólido. Esto es la colisión.</span>
+            </button>
+          </span>
+          <span class="explain">1 bit por celda. La colisión real.</span>
+        </span>
+      </li>
+      <li>
+        <span class="n">2</span>
+        <span>
+          <span class="name">Blur
+            <button type="button" class="help" aria-label="Ayuda de paso blur">?
+              <span class="tooltip">Cada celda del campo es un promedio ponderado de las celdas vecinas dentro del radio. El peso es smoothstep(1 − dist/r): más al centro, cero en el borde del disco. No es un box blur. El kernel se precalcula al mover el slider. Solo se recalcula el rectángulo sucio (pintura expandida por el radio).</span>
+            </button>
+          </span>
+          <span class="explain">Disco smoothstep → campo 0..1 por celda.</span>
+        </span>
+      </li>
+      <li>
+        <span class="n">3</span>
+        <span>
+          <span class="name">Umbral
+            <button type="button" class="help" aria-label="Ayuda de paso umbral">?
+              <span class="tooltip">Cada sample del campo se clasifica: ≥ iso = “dentro”, &lt; iso = “fuera”. Los 4 bits de un cuadrado 2×2 arman un código 0..15. Ese código elige qué segmentos dibujar. El punto exacto del cruce se interpola: t = (iso − v1) / (v2 − v1).</span>
+            </button>
+          </span>
+          <span class="explain">Clasifica cada sample y arma el código 0–15.</span>
+        </span>
+      </li>
+      <li>
+        <span class="n">4</span>
+        <span>
+          <span class="name">Marching squares
+            <button type="button" class="help" aria-label="Ayuda de marching squares">?
+              <span class="tooltip">Los 4 samples de celdas vecinas son los vértices de un cuadrado cuyo centro cae en la esquina compartida. El contorno se interpola entre centros de celda, por eso no pega al borde del tile: no es un error, es el dual grid. Casos 5 y 10 (silla de montar) se resuelven con el promedio de los 4 valores.</span>
+            </button>
+          </span>
+          <span class="explain">Traza el iso-contorno entre centros de celda.</span>
+        </span>
+      </li>
+      <li>
+        <span class="n">5</span>
+        <span>
+          <span class="name">Chunks sucios
+            <button type="button" class="help" aria-label="Ayuda de chunks">?
+              <span class="tooltip">El mundo se parte en bloques de 16×16 celdas. Al pintar se marca un AABB expandido por blurRadius+1 (el +1 es porque MS usa 2×2). Solo esos chunks rehace Graphics → textura → sprite. Idle = 0 rebuild. Cambiar blur ensucia el campo y el MS; iso/relleno solo el MS; opacidad del campo solo el alpha.</span>
+            </button>
+          </span>
+          <span class="explain">16×16. Rebuild solo lo que cambió.</span>
+        </span>
+      </li>
+    </ol>
 
     <h3>Dibujo</h3>
     <div class="ctrl">
       <label>
         <span class="name">Blur
           <button type="button" class="help" aria-label="Ayuda de blur">?
-            <span class="tooltip">Radio en celdas del desenfoque del campo visual. El kernel da más peso al centro
-              (smoothstep), no un promedio plano. Solo cambia el dibujo: la colisión sigue siendo la grilla de
-              bits.</span>
+            <span class="tooltip">Radio en celdas del disco de desenfoque. 0 = el campo es una copia de los bits (cuadraditos). Más radio = más celdas vecinas entran al promedio y el contorno se redondea. No toca la colisión. Rebuild de campo + MS en todo el mundo.</span>
           </button>
         </span>
         <span id="blur-val">1</span>
       </label>
       <input id="blur" type="range" min="0" max="8" step="1" value="1" title="Radio del desenfoque visual, en celdas">
-      <p class="explain">Suaviza el contorno. No afecta la colisión.</p>
+      <p class="explain">Radio del kernel. 0 = bits crudos.</p>
     </div>
     <div class="ctrl">
       <label>
         <span class="name">Campo blur
           <button type="button" class="help" aria-label="Ayuda de campo blur">?
-            <span class="tooltip">Dibuja la grilla del campo escalar después del blur: un valor por celda, pixelado,
-              corrido medio tile para coincidir con los vértices de marching squares. Es el input del algoritmo. 0 lo
-              oculta. Solo cambia el alpha del sprite, no rebuild.</span>
+            <span class="tooltip">Heatmap del campo: un píxel por celda, alineado con el tile de colisión (mismo cuadrado). El color es el valor 0..1 después del blur. Marching squares usa exactamente estos números. El sample “oficial” está en el centro de cada celda; el contorno se interpola entre centros, no en el borde del tile. 0 oculta el sprite (solo alpha, sin rebuild).</span>
           </button>
         </span>
         <span id="field-val">0.40</span>
       </label>
       <input id="field" type="range" min="0" max="1" step="0.05" value="0.4"
         title="Opacidad de la grilla del campo desenfocado">
-      <p class="explain">Heatmap de la grilla blureada, el input de MS.</p>
+      <p class="explain">Valor por celda, alineado al tile. Input de MS.</p>
     </div>
     <div class="ctrl">
       <label>
         <span class="name">Umbral
           <button type="button" class="help" aria-label="Ayuda de umbral">?
-            <span class="tooltip">Valor a partir del cual marching squares dibuja el contorno y el relleno. Más alto =
-              la forma se encoge; más bajo = se agranda y redondea más. Rebuild de chunks MS, el campo no se
-              toca.</span>
+            <span class="tooltip">Iso-valor. Sample ≥ umbral cuenta como sólido para el contorno. Más alto = la forma se encoge (hace falta más “materia blureada”). Más bajo = se agranda y redondea. No recalcula el blur, solo vuelve a marchar los chunks.</span>
           </button>
         </span>
         <span id="iso-val">0.50</span>
       </label>
       <input id="iso" type="range" min="0.05" max="0.95" step="0.05" value="0.5"
         title="Umbral del contorno de marching squares">
-      <p class="explain">Corta el campo desenfocado para armar el trazo.</p>
+      <p class="explain">Corte del campo. Más alto = forma más chica.</p>
     </div>
     <div class="ctrl">
       <label>
         <span class="name">Opacidad de relleno
           <button type="button" class="help" aria-label="Ayuda de opacidad">?
-            <span class="tooltip">Transparencia del polígono que rellena el interior del contorno. En 0 solo se ve la
-              línea; en 1 el relleno es opaco. Rebuild de chunks MS.</span>
+            <span class="tooltip">Alpha de los polígonos “dentro” del iso-contorno (los casos MS que rellenan). En 0 solo queda la polilínea. Rebuild de texturas MS, el campo no se toca.</span>
           </button>
         </span>
         <span id="fill-val">0.35</span>
       </label>
       <input id="fill" type="range" min="0" max="1" step="0.05" value="0.35" title="Opacidad del relleno del contorno">
-      <p class="explain">Qué tan visible es el interior de la forma.</p>
+      <p class="explain">Relleno del interior del iso-contorno.</p>
     </div>
     <div class="ctrl">
       <label>
         <span class="name">Grosor del pincel
           <button type="button" class="help" aria-label="Ayuda de pincel">?
-            <span class="tooltip">Radio del pincel al pintar o borrar celdas sólidas. 1 pinta una sola celda; valores
-              más altos pintan un círculo de bits. Click izquierdo pinta, Shift o click derecho borra.</span>
+            <span class="tooltip">Radio en celdas del sello circular al pintar bits. 1 = una celda. Click izquierdo pone sólido; Shift o click derecho borra. Cada bit que cambia ensucia un AABB expandido por el radio de blur + 1 (vecinos de MS).</span>
           </button>
         </span>
         <span id="brush-val">2</span>
       </label>
       <input id="brush" type="range" min="1" max="10" step="1" value="2" title="Radio del pincel en celdas">
-      <p class="explain">Tamaño del sello al dibujar o borrar terreno.</p>
+      <p class="explain">Radio del sello sobre los bits.</p>
     </div>
 
     <h3>Personaje</h3>
@@ -258,8 +401,7 @@
       <label>
         <span class="name">Tamaño
           <button type="button" class="help" aria-label="Ayuda de tamaño">?
-            <span class="tooltip">Escala del rectángulo de colisión del personaje. La física usa este AABB contra los
-              bits, no contra el contorno suave.</span>
+            <span class="tooltip">Escala del AABB. moveX/moveY recorren las celdas que pisa el rectángulo y preguntan getSolid (bits). El contorno de marching squares no participa. Si choca de costado y el obstáculo es más bajo que la altura de escalón, tryStepUp lo levanta.</span>
           </button>
         </span>
         <span id="scale-val">1.00×</span>
@@ -271,8 +413,7 @@
       <label>
         <span class="name">Lerp de cámara
           <button type="button" class="help" aria-label="Ayuda de lerp de cámara">?
-            <span class="tooltip">Qué tan rápido la cámara alcanza al personaje. 1 = pegada, sin retraso. Valores bajos
-              = persigue con suavizado (lerp exponencial independiente del FPS). 0 deja la cámara quieta.</span>
+            <span class="tooltip">Mezcla exponencial independiente del FPS: a = 1 − (1 − lerp)^60dt. 1 = la cámara salta al target. Valores bajos = persigue. 0 = quieta. world.position = (−camX, −camY); los sprites de terreno no se recalculan al mover la cámara.</span>
           </button>
         </span>
         <span id="cam-val">0.18</span>
@@ -286,8 +427,7 @@
       <span>
         <span class="name">Mostrar tiles de colisión
           <button type="button" class="help" aria-label="Ayuda de tiles">?
-            <span class="tooltip">Pinta las celdas sólidas de la grilla de bits. Eso es lo que realmente bloquea al
-              personaje; el blur y marching squares son solo visuales. Solo toggle de layer, sin blur/MS.</span>
+            <span class="tooltip">Dibuja cada bit sólido en su celda exacta (tx×TILE, ty×TILE), la misma caja que usa getSolid. Debería calzar con el heatmap del campo (un píxel por celda). El contorno MS no calza con el borde del tile: interpola entre centros. Toggle de layer, sin rebuild de blur/MS.</span>
           </button>
         </span>
         <span class="explain">Muestra la grilla de bits, la colisión real.</span>
@@ -299,9 +439,7 @@
       <label>
         <span class="name">Altura de escalón
           <button type="button" class="help" aria-label="Ayuda de altura de escalón">?
-            <span class="tooltip">Máximo desnivel que el personaje puede subir solo caminando, sin saltar (step-up). Si
-              choca de costado contra un obstáculo más bajo que este valor y hay espacio arriba, se lo levanta y sigue.
-              0 desactiva el trepar. 12 px = 1 celda, alcanza para la escalera de ejemplo.</span>
+            <span class="tooltip">Step-up: si moveX pega contra un sólido, mide rise = pies − techo de esa celda. Si 0 &lt; rise ≤ este valor y hay espacio para el AABB arriba, se acepta el lift y no se frena vx. 0 = off. 12 px = 1 celda de esta grilla.</span>
           </button>
         </span>
         <span id="step-val">12 px · 1.00 celdas</span>
@@ -315,9 +453,7 @@
       <span>
         <span class="name">Solo en el suelo
           <button type="button" class="help" aria-label="Ayuda de solo en el suelo">?
-            <span class="tooltip">Si está activo, el step-up solo funciona apoyado en el piso. Evita que al saltar
-              contra una cornisa el personaje se “magnetice” y suba. Desactivalo si querés que también trepe escalones
-              en el aire o al caer.</span>
+            <span class="tooltip">tryStepUp exige onGround. Si no, un salto contra una cornisa de 1 celda te sube como si fuera un escalón. Desactivalo para trepar también en el aire o al caer.</span>
           </button>
         </span>
         <span class="explain">No trepa paredes ni cornisas en el aire.</span>
@@ -328,15 +464,13 @@
       <span>
         <span class="name">Mostrar tolerancia
           <button type="button" class="help" aria-label="Ayuda de mostrar tolerancia">?
-            <span class="tooltip">Dibuja una franja en los pies del personaje con la altura de escalón actual. Cualquier
-              celda sólida que no pase de esa franja se puede subir caminando.</span>
+            <span class="tooltip">Franja en los pies = altura de escalón. Un sólido cuyo techo cae dentro de esa franja se puede step-upear. Es debug visual, no cambia la física.</span>
           </button>
         </span>
         <span class="explain">Marca en el personaje hasta dónde llega el step-up.</span>
       </span>
     </label>
-    <p class="hint">El personaje choca contra los bits; el contorno sale del campo desenfocado. Blur y marching squares
-      solo se recalculan en chunks sucios. Pixi cachea cada chunk como textura.</p>
+    <p class="hint">Campo y tiles comparten la misma celda. El contorno MS se traza entre centros (dual grid), por eso no pega al borde. En idle, blur_ms y ms_rebuild_ms van a ~0.</p>
   </div>
   <script>
     'use strict';
@@ -344,10 +478,14 @@
     const canvas = document.getElementById('canvas');
     const stats = document.getElementById('stats');
     const perfEl = document.getElementById('perf');
+    const miniCanvas = document.getElementById('minimap');
+    const miniCtx = miniCanvas.getContext('2d');
 
-    const TILE = 12;
-    const WORLD_W = 170;
-    const WORLD_H = 132;
+    const TILE = 10;
+    const WORLD_W = 1024;
+    const WORLD_H = 768;
+    const MINI_W = 102;
+    const MINI_H = 77;
     const CELL_COUNT = WORLD_W * WORLD_H;
     const CHUNK = 16;
     const CHUNKS_X = Math.ceil(WORLD_W / CHUNK);
@@ -358,6 +496,9 @@
     const bits = new Uint8Array(Math.ceil(CELL_COUNT / 8));
     const cells = new Uint8Array(CELL_COUNT);
     const blurredField = new Float32Array(CELL_COUNT);
+    const miniCount = new Uint16Array(MINI_W * MINI_H);
+    const miniImg = miniCtx.createImageData(MINI_W, MINI_H);
+    const miniPix = miniImg.data;
 
     let blurRadius = 1;
     let iso = 0.5;
@@ -393,6 +534,12 @@
     };
     let hudAcc = 0;
 
+    const STEP_HIST = 100;
+    const stepHist = new Float32Array(STEP_HIST);
+    let stepHistN = 0;
+    const stepGraph = document.getElementById('step-graph');
+    const stepGraphCtx = stepGraph.getContext('2d', { alpha: false });
+
     function bitIndex(tx, ty) {
       return ty * WORLD_W + tx;
     }
@@ -418,6 +565,41 @@
       msDirtyAll = true;
     }
 
+    function miniIndex(tx, ty) {
+      const mx = Math.min(MINI_W - 1, (tx * MINI_W / WORLD_W) | 0);
+      const my = Math.min(MINI_H - 1, (ty * MINI_H / WORLD_H) | 0);
+      return my * MINI_W + mx;
+    }
+
+    function paintMiniPixel(mi, solid) {
+      const o = mi * 4;
+      if (solid) {
+        miniPix[o] = 75;
+        miniPix[o + 1] = 200;
+        miniPix[o + 2] = 140;
+        miniPix[o + 3] = 255;
+      } else {
+        miniPix[o] = 8;
+        miniPix[o + 1] = 14;
+        miniPix[o + 2] = 12;
+        miniPix[o + 3] = 255;
+      }
+    }
+
+    function resetMini() {
+      miniCount.fill(0);
+      for (let i = 0; i < MINI_W * MINI_H; i++) paintMiniPixel(i, false);
+    }
+
+    function stampMini(tx, ty, nv) {
+      const mi = miniIndex(tx, ty);
+      if (nv) {
+        if (miniCount[mi]++ === 0) paintMiniPixel(mi, true);
+      } else if (--miniCount[mi] === 0) {
+        paintMiniPixel(mi, false);
+      }
+    }
+
     function setSolid(tx, ty, v) {
       if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return;
       const i = bitIndex(tx, ty);
@@ -429,6 +611,7 @@
       else bits[i >> 3] &= ~mask;
       markCell(tx, ty);
       dirtyTiles = true;
+      stampMini(tx, ty, nv);
     }
 
     function smoothstep01(t) {
@@ -542,6 +725,7 @@
     function clearWorld() {
       bits.fill(0);
       cells.fill(0);
+      resetMini();
       dirtyBits = null;
       for (let x = 0; x < WORLD_W; x++) {
         setSolid(x, WORLD_H - 2, true);
@@ -783,7 +967,7 @@
     const fieldTexture = PIXI.Texture.from(fieldCanvas);
     fieldTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
     const fieldSprite = new PIXI.Sprite(fieldTexture);
-    fieldSprite.position.set(TILE * 0.5, TILE * 0.5);
+    fieldSprite.position.set(0, 0);
     fieldSprite.scale.set(TILE);
     fieldSprite.alpha = fieldOpacity;
     fieldSprite.visible = fieldOpacity > 0;
@@ -1110,8 +1294,48 @@
       world.position.set(-cameraX, -cameraY);
     }
 
+    function drawMinimap() {
+      miniCtx.putImageData(miniImg, 0, 0);
+      const worldPxW = WORLD_W * TILE;
+      const worldPxH = WORLD_H * TILE;
+      const vx = cameraX / worldPxW * MINI_W;
+      const vy = cameraY / worldPxH * MINI_H;
+      const vw = Math.max(1, app.screen.width / worldPxW * MINI_W);
+      const vh = Math.max(1, app.screen.height / worldPxH * MINI_H);
+      miniCtx.strokeStyle = 'rgba(255, 235, 59, 0.9)';
+      miniCtx.lineWidth = 1;
+      miniCtx.strokeRect(vx + 0.5, vy + 0.5, vw, vh);
+      const px = (player.x + player.w * 0.5) / worldPxW * MINI_W;
+      const py = (player.y + player.h * 0.5) / worldPxH * MINI_H;
+      miniCtx.fillStyle = '#f28c28';
+      miniCtx.fillRect(px - 1, py - 1, 3, 3);
+    }
+
     function fmtMs(v) {
       return v < 0.05 ? '0.00' : v.toFixed(2);
+    }
+
+    function drawStepGraph(ms) {
+      stepHist[stepHistN % STEP_HIST] = ms;
+      stepHistN++;
+      const n = Math.min(stepHistN, STEP_HIST);
+      const start = stepHistN - n;
+      let scale = 10;
+      for (let i = 0; i < n; i++) {
+        const v = stepHist[(start + i) % STEP_HIST];
+        if (v > scale) scale = v;
+      }
+      const ctx = stepGraphCtx;
+      const w = STEP_HIST;
+      const h = 66;
+      ctx.fillStyle = '#050807';
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < n; i++) {
+        const v = stepHist[(start + i) % STEP_HIST];
+        const bh = Math.min(h, Math.max(1, (v / scale) * h));
+        ctx.fillStyle = v >= 4 ? '#ffb020' : '#4bffa0';
+        ctx.fillRect(w - n + i, h - bh, 1, bh);
+      }
     }
 
     function hot(v, warn) {
@@ -1128,16 +1352,16 @@
         `celda ${Math.floor((player.x + player.w / 2) / TILE)}, ${Math.floor((player.y + player.h / 2) / TILE)}<br>` +
         `grilla ${WORLD_W}×${WORLD_H} · ${CELL_COUNT} bits · ${bits.length} bytes`;
       perfEl.innerHTML =
-        `fps ${ema.fps.toFixed(0)} · frame_ms ${fmtMs(ema.frame)}<br>` +
-        `<span class="${hot(ema.physics, 1)}">physics_ms ${fmtMs(ema.physics)}</span><br>` +
-        `<span class="${hot(ema.blur, 2)}">blur_ms ${fmtMs(ema.blur)}</span><br>` +
-        `<span class="${hot(ema.field, 1)}">field_ms ${fmtMs(ema.field)}</span><br>` +
-        `<span class="${hot(ema.msRebuild, 2)}">ms_rebuild_ms ${fmtMs(ema.msRebuild)}</span><br>` +
-        `<span class="${hot(ema.pixi, 4)}">pixi_ms ${fmtMs(ema.pixi)}</span><br>` +
-        `hud_ms ${fmtMs(ema.hud)}<br>` +
-        `chunks_dirty ${times.chunksDirty} / ${CHUNK_COUNT}<br>` +
-        `cells_rebuilt ${times.cellsRebuilt} · ms_cells ${times.msCells}<br>` +
-        `texturas ${times.liveTextures} · chunks ${CHUNK}×${CHUNK}`;
+        `<span title="Frames por segundo y duración total del frame (EMA).">fps ${ema.fps.toFixed(0)} · frame_ms ${fmtMs(ema.frame)}</span><br>` +
+        `<span class="${hot(ema.physics, 1)}" title="AABB vs bits: moveX, moveY, step-up. No mira el campo ni el contorno.">physics_ms ${fmtMs(ema.physics)}</span><br>` +
+        `<span class="${hot(ema.blur, 2)}" title="Promedio ponderado del rectángulo sucio. 0 si nadie pintó ni cambió el radio.">blur_ms ${fmtMs(ema.blur)}</span><br>` +
+        `<span class="${hot(ema.field, 1)}" title="Upload del heatmap (ImageData → textura). 0 si el campo no cambió.">field_ms ${fmtMs(ema.field)}</span><br>` +
+        `<span class="${hot(ema.msRebuild, 2)}" title="Graphics de marching squares horneados a textura por chunk sucio.">ms_rebuild_ms ${fmtMs(ema.msRebuild)}</span><br>` +
+        `<span class="${hot(ema.pixi, 4)}" title="Blit de sprites cacheados + jugador. Esto corre todos los frames.">pixi_ms ${fmtMs(ema.pixi)}</span><br>` +
+        `<span title="Escritura del DOM, a 8 Hz.">hud_ms ${fmtMs(ema.hud)}</span><br>` +
+        `<span title="Chunks 16×16 que se regeneraron este frame / total.">chunks_dirty ${times.chunksDirty} / ${CHUNK_COUNT}</span><br>` +
+        `<span title="Celdas reblureadas y celdas 2×2 recorridas por MS en el rebuild.">cells_rebuilt ${times.cellsRebuilt} · ms_cells ${times.msCells}</span><br>` +
+        `<span title="Texturas GPU vivas (campo, grilla, MS y tiles por chunk).">texturas ${times.liveTextures} · chunks ${CHUNK}×${CHUNK}</span>`;
     }
 
     function ease(prev, x) {
@@ -1178,8 +1402,8 @@
       if (!tip) return;
       const r = btn.getBoundingClientRect();
       const th = tip.offsetHeight || 80;
-      let left = r.left - 244;
-      if (left < 8) left = Math.min(innerWidth - 244, r.right + 8);
+      let left = r.left - 268;
+      if (left < 8) left = Math.min(innerWidth - 268, r.right + 8);
       let top = r.top + r.height / 2 - th / 2;
       top = Math.max(8, Math.min(innerHeight - th - 8, top));
       tip.style.left = left + 'px';
@@ -1266,12 +1490,14 @@
       flushTerrain();
       updateCamera(app.screen.width, app.screen.height, dt);
       redrawPlayer();
+      drawMinimap();
 
       t0 = performance.now();
       app.renderer.render(app.stage);
       times.pixi = performance.now() - t0;
 
       times.frame = performance.now() - tFrame;
+      drawStepGraph(times.frame);
       ema.frame = ease(ema.frame, times.frame);
       ema.physics = ease(ema.physics, times.physics);
       ema.blur = ease(ema.blur, times.blur);
