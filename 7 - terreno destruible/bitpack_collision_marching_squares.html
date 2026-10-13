@@ -48,34 +48,108 @@
     .panel {
       right: 12px;
       top: 12px;
-      width: 250px;
+      width: 280px;
+      max-height: calc(100vh - 24px);
+      overflow: auto;
       pointer-events: auto;
     }
 
-    .panel label {
+    .panel h3 {
+      margin: 12px 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #4bffa0;
+    }
+
+    .panel h3:first-of-type {
+      margin-top: 8px;
+    }
+
+    .ctrl {
+      margin-top: 8px;
+    }
+
+    .ctrl label,
+    .ctrl .row {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       gap: 8px;
-      margin: 8px 0 2px;
       font-size: 12px;
+    }
+
+    .ctrl .name {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .help {
+      position: relative;
+      flex: 0 0 auto;
+      width: 15px;
+      height: 15px;
+      padding: 0;
+      border: 1px solid #1e6b48;
+      border-radius: 50%;
+      background: transparent;
+      color: #4bffa0;
+      font: 700 10px/15px system-ui, sans-serif;
+      cursor: help;
+    }
+
+    .help .tooltip {
+      display: none;
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 7px);
+      width: 236px;
+      padding: 8px 10px;
+      background: #0b1612;
+      border: 1px solid #1e6b48;
+      border-radius: 6px;
+      color: #cfe8dc;
+      font: 400 11px/1.4 system-ui, sans-serif;
+      text-align: left;
+      white-space: normal;
+      z-index: 3;
+      pointer-events: none;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+    }
+
+    .help:hover .tooltip,
+    .help:focus .tooltip {
+      display: block;
     }
 
     .panel input[type="range"] {
       width: 100%;
+      margin: 2px 0 0;
     }
 
     .panel .check {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
       margin-top: 10px;
       font-size: 12px;
     }
 
+    .panel .check input {
+      margin-top: 2px;
+    }
+
+    .explain {
+      color: #6f8a80;
+      font-size: 11px;
+      margin: 2px 0 0;
+      line-height: 1.35;
+    }
+
     .hint {
       color: #6f8a80;
       font-size: 11px;
-      margin-top: 8px;
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -420,28 +494,6 @@
       return `rgba(${75 + t * 60 | 0},${255 * Math.min(1, 0.3 + t * 0.9) | 0},${140 + t * 80 | 0},${a})`;
     }
 
-    let imgData = null;
-    const offscreen = document.createElement('canvas');
-    function renderField(field, alpha) {
-      if (!imgData || imgData.width !== WORLD_W || imgData.height !== WORLD_H) {
-        imgData = ctx.createImageData(WORLD_W, WORLD_H);
-        offscreen.width = WORLD_W;
-        offscreen.height = WORLD_H;
-      }
-      const d = imgData.data;
-      for (let i = 0; i < CELL_COUNT; i++) {
-        const t = field[i];
-        const o = i * 4;
-        d[o] = 75 + t * 60;
-        d[o + 1] = 255 * Math.min(1, 0.25 + t * 0.9);
-        d[o + 2] = 140 + t * 80;
-        d[o + 3] = alpha * 255;
-      }
-      offscreen.getContext('2d').putImageData(imgData, 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(offscreen, 0, 0, WORLD_W, WORLD_H, 0, 0, WORLD_W * TILE, WORLD_H * TILE);
-    }
-
     function edgePoint(v1, v2, x1, y1, x2, y2) {
       let t = (iso - v1) / (v2 - v1);
       if (!isFinite(t)) t = 0.5;
@@ -449,12 +501,24 @@
       return [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t];
     }
 
+    function addPoly(pts) {
+      if (!pts || pts.length < 3) return;
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+    }
+
     function marchingSquares(field) {
+      const c = TILE;
+      const doFill = fillOpacity > 0;
+      if (doFill) {
+        ctx.fillStyle = phosphor(0.7, fillOpacity);
+        ctx.beginPath();
+      }
       ctx.strokeStyle = phosphor(Math.min(1, iso + 0.2), 0.95);
       ctx.lineWidth = 2;
       ctx.lineCap = 'round';
-      ctx.beginPath();
-      const c = TILE;
+      const strokePath = new Path2D();
       for (let y = 0; y < WORLD_H - 1; y++) {
         const rowOff = y * WORLD_W;
         const rowOff2 = (y + 1) * WORLD_W;
@@ -462,42 +526,52 @@
           const tl = field[rowOff + x], tr = field[rowOff + x + 1];
           const bl = field[rowOff2 + x], br = field[rowOff2 + x + 1];
           const state = (tl >= iso ? 8 : 0) | (tr >= iso ? 4 : 0) | (br >= iso ? 2 : 0) | (bl >= iso ? 1 : 0);
-          if (state === 0 || state === 15) continue;
-          const px = x * c, py = y * c;
-          const T = () => edgePoint(tl, tr, px, py, px + c, py);
-          const R = () => edgePoint(tr, br, px + c, py, px + c, py + c);
-          const B = () => edgePoint(bl, br, px, py + c, px + c, py + c);
-          const L = () => edgePoint(tl, bl, px, py, px, py + c);
-          const seg = (a, b) => { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); };
+          if (state === 0) continue;
+          const px = (x + 0.5) * c, py = (y + 0.5) * c;
+          const TL = [px, py], TR = [px + c, py], BR = [px + c, py + c], BL = [px, py + c];
+          const T = edgePoint(tl, tr, px, py, px + c, py);
+          const R = edgePoint(tr, br, px + c, py, px + c, py + c);
+          const B = edgePoint(bl, br, px, py + c, px + c, py + c);
+          const L = edgePoint(tl, bl, px, py, px, py + c);
+          const avg = (tl + tr + br + bl) / 4;
+          const seg = (a, b) => { strokePath.moveTo(a[0], a[1]); strokePath.lineTo(b[0], b[1]); };
           switch (state) {
-            case 1: seg(L(), B()); break;
-            case 2: seg(R(), B()); break;
-            case 3: seg(L(), R()); break;
-            case 4: seg(T(), R()); break;
-            case 5: {
-              const avg = (tl + tr + br + bl) / 4;
-              if (avg >= iso) { seg(T(), L()); seg(R(), B()); }
-              else { seg(T(), R()); seg(L(), B()); }
+            case 1: if (doFill) addPoly([BL, B, L]); seg(L, B); break;
+            case 2: if (doFill) addPoly([BR, R, B]); seg(R, B); break;
+            case 3: if (doFill) addPoly([BL, BR, R, L]); seg(L, R); break;
+            case 4: if (doFill) addPoly([TR, R, T]); seg(T, R); break;
+            case 5:
+              if (avg >= iso) {
+                if (doFill) addPoly([T, TR, R, B, BL, L]);
+                seg(T, L); seg(R, B);
+              } else {
+                if (doFill) { addPoly([TR, R, T]); addPoly([BL, B, L]); }
+                seg(T, R); seg(L, B);
+              }
               break;
-            }
-            case 6: seg(T(), B()); break;
-            case 7: seg(T(), L()); break;
-            case 8: seg(T(), L()); break;
-            case 9: seg(T(), B()); break;
-            case 10: {
-              const avg = (tl + tr + br + bl) / 4;
-              if (avg >= iso) { seg(T(), R()); seg(L(), B()); }
-              else { seg(T(), L()); seg(R(), B()); }
+            case 6: if (doFill) addPoly([TR, BR, B, T]); seg(T, B); break;
+            case 7: if (doFill) addPoly([TR, BR, BL, L, T]); seg(T, L); break;
+            case 8: if (doFill) addPoly([TL, T, L]); seg(T, L); break;
+            case 9: if (doFill) addPoly([TL, T, B, BL]); seg(T, B); break;
+            case 10:
+              if (avg >= iso) {
+                if (doFill) addPoly([T, R, BR, B, L, TL]);
+                seg(T, R); seg(L, B);
+              } else {
+                if (doFill) { addPoly([TL, T, L]); addPoly([BR, R, B]); }
+                seg(T, L); seg(R, B);
+              }
               break;
-            }
-            case 11: seg(T(), R()); break;
-            case 12: seg(L(), R()); break;
-            case 13: seg(R(), B()); break;
-            case 14: seg(L(), B()); break;
+            case 11: if (doFill) addPoly([TL, T, R, BR, BL]); seg(T, R); break;
+            case 12: if (doFill) addPoly([TL, TR, R, L]); seg(L, R); break;
+            case 13: if (doFill) addPoly([TL, TR, R, B, BL]); seg(R, B); break;
+            case 14: if (doFill) addPoly([TL, TR, BR, B, L]); seg(L, B); break;
+            case 15: if (doFill) addPoly([TL, TR, BR, BL]); break;
           }
         }
       }
-      ctx.stroke();
+      if (doFill) ctx.fill();
+      ctx.stroke(strokePath);
     }
 
     function renderCollisionTiles(W, H) {
@@ -547,7 +621,6 @@
       }
 
       const field = computeField();
-      if (fillOpacity > 0) renderField(field, fillOpacity);
       if (showTiles) renderCollisionTiles(W, H);
       marchingSquares(field);
 
