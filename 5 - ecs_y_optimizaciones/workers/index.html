@@ -1,0 +1,87 @@
+<html>
+
+
+
+
+
+
+
+<script>
+
+
+
+    /*
+    
+    
+    struct Persona {
+    
+    nombre: uint8[12]
+    edad: uint8
+    x:float32,
+    y:float32
+    vx:float32
+    vy:float32
+    
+    }
+    
+    
+    
+    
+    const cantidadMaxDePersonas=1000
+    
+    let x=new Float32Array(cantidadMaxDePersonas)
+    let y=new Float32Array(cantidadMaxDePersonas)
+    let vx=new Float32Array(cantidadMaxDePersonas)
+    let vy=new Float32Array(cantidadMaxDePersonas)
+    let nombre=new Uint8Array(cantidadMaxDePersonas)
+    let edad=new Uint8Array(cantidadMaxDePersonas)
+    
+    
+    
+    */
+
+
+
+
+    const myWorker = new Worker("worker.js");
+
+
+
+    let counter = 0
+
+    myWorker.onmessage = (oEvent) => {
+        console.log(oEvent.data);
+
+        gameLoop();
+
+    };
+
+    var uInt8Array = new Uint8Array(1024 * 1024 * 32); // 32MB
+    for (var i = 0; i < uInt8Array.length; ++i) {
+        uInt8Array[i] = i;
+    }
+
+
+
+
+    console.log("uint8Array", uInt8Array);
+
+    myWorker.postMessage(uInt8Array.buffer, [uInt8Array.buffer]);
+    console.log("uint8Array2", uInt8Array);
+
+    const numbersMainThread = [7, 6, 5, 4, 3];
+
+
+    function gameLoop() {
+        counter++
+        if (counter == 100) return
+        console.log("main", counter);
+
+        requestAnimationFrame(gameLoop);
+    }
+
+
+
+
+</script>
+</html>
