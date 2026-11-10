@@ -141,9 +141,17 @@
 ## Unidad 8 — Simulación de sonido
 
 - Fundamentos del audio digital: frecuencia de muestreo y profundidad de bits como discretización de una señal continua.
+- Pitch y Tempo.
+- Ruido blanco y otros tipos de ruido.
 - Filtros digitales (pasa bajos, pasa altos, pasa banda).
+- Efectos clásicos: Phaser, flanger, chorus, distorsion, delay, ring modulator
 - Espacialización sonora: sonido estéreo y sonido 3D.
+- Tipos de sintesis: Aditiva, FM, AM, granular, modular.
+- Introduccion a los sintetizadores modulares.
 - Procesamiento en tiempo real con Web Audio API (AudioContext, AudioWorklet) y automatización de parámetros.
+- Compresión MP3
+- Sinte modular colaborativo web: https://modular-web-synth-rosy.vercel.app/
+
 
 ## Unidad 9 — Simulación de eventos discretos y método Montecarlo
 
