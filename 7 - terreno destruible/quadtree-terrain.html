@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quadtree compacto: mundos grandes, raycast y AABB</title>
+<style>
+  html,body{margin:0;background:#0e0f13;color:#cfd3dc;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;overflow-x:hidden}
+  .bar{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center;padding:5px 12px;background:#161820}
+  #top{position:sticky;top:0;z-index:2}
+  .bar b{color:#fff}
+  canvas#c{display:block;margin:0 auto;image-rendering:pixelated;touch-action:none;cursor:none;background:#000}
+  #mini{position:fixed;right:8px;bottom:8px;width:160px;height:160px;image-rendering:pixelated;border:1px solid #556;background:#000;opacity:.92;pointer-events:none}
+  button,select{background:#2a2d3a;color:#fff;border:1px solid #444;border-radius:4px;padding:3px 10px;font:inherit;cursor:pointer}
+  label{cursor:pointer}
+  #bench{color:#9fe870}
+</style>
+<script>
+  // Tamaño del mundo: 2^log píxeles de lado (?log=14 → 16384 x 16384)
+  window.QT_LOG = Math.min(16, Math.max(6, +new URLSearchParams(location.search).get("log") || 14));
+</script>
+</head>
+<body>
+<div id="top">
+  <div class="bar">
+    <span><b>Izq</b> borrar · <b>Der</b> construir · <b>Rueda</b> radio · <b>A/D</b> mover · <b>W/Espacio</b> saltar · <b>B</b> caja · <b>F</b> volar (<b>Shift</b> rápido) · <b>+/-</b> zoom</span>
+  </div>
+  <div class="bar">
+    <label>Mundo <select id="size">
+      <option value="10">1.024²</option><option value="12">4.096²</option><option value="14">16.384²</option>
+      <option value="15">32.768²</option><option value="16">65.536²</option></select></label>
+    <button id="mode">Modo: borrar</button>
+    <label><input type="checkbox" id="dbg"> quadtree</label>
+    <label><input type="checkbox" id="rayOn" checked> rayo</label>
+    <label><input type="checkbox" id="rayCells" checked> celdas del rayo</label>
+    <button id="reset">Mundo nuevo</button>
+    <button id="benchBtn">Benchmark raycast</button>
+  </div>
+  <div class="bar"><span id="stats"></span></div>
+  <div class="bar"><span id="bench"></span></div>
+</div>
+<canvas id="c"></canvas>
+<canvas id="mini" width="160" height="160"></canvas>
+
+<script>
+"use strict";
+// ===CORE-START===
+// ───────────────── Quadtree binario compacto (bitpacking) ─────────────────
+// Un nodo interno es UNA palabra Uint32:
+//    bits 0-3  M : hijo i es "mixto" (no uniforme) → su palabra/bitmap está en la lista compactada
+//    bits 4-7  F : hijo i es todo sólido           (M=0 y F=0 → hijo todo aire)
+//    bits 8-31 ptr : inicio de la lista de hijos mixtos (POP(M) entradas; el hijo c está en ptr + popcount(M & ((1<<c)-1)))
+// · Si los hijos miden > 8: cada entrada es la palabra de nodo del hijo (en `nodes`).
+// · Si los hijos miden 8 (hojas): cada entrada es un bitmap 8x8 = 2 Uint32 (en `leaves`), sin indirección extra.
+// Aire y sólido uniformes no ocupan memoria: viven como un bit en el padre.
+// Uniforme: (palabra & 0xFF) === 0 → aire, === 0xF0 → sólido. Posición y tamaño se derivan al bajar.
+// Memoria: listas de 1..4 entradas con un free-list intrusivo por tamaño (sin allocations en el hot path).
+const LOG = (globalThis.QT_LOG | 0) || 14, SIZE = 1 << LOG;       // mundo de 2^LOG píxeles de lado (5..20)
+const POP = new Uint8Array([0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4]);
+
+let nodes = new Uint32Array(1 << 16), leaves = new Uint32Array(1 << 17);
+let nUsed = 1, lUsed = 1, nFreeW = 0, lFreeU = 0;                 // índice 0 reservado como "nulo"
+const headN = new Int32Array(5), headL = new Int32Array(5);       // cabeza del free-list por tamaño (1..4)
+let root = 0;                                                     // palabra de nodo raíz (0 = todo aire, 0xF0 = todo sólido)
+
+function resetPools(){ nUsed = 1; lUsed = 1; nFreeW = 0; lFreeU = 0; headN.fill(0); headL.fill(0); }
+function growN(){ const a = new Uint32Array(nodes.length * 2); a.set(nodes); nodes = a; }
+function growL(){ const a = new Uint32Array(leaves.length * 2); a.set(leaves); leaves = a; }
+function allocNodes(c){
+  let p = headN[c];
+  if (p){ headN[c] = nodes[p]; nFreeW -= c; return p; }
+  p = nUsed; nUsed += c;
+  if (nUsed > 0xFFFFFF) throw new Error("pool de nodos agotado (puntero de 24 bits)");
+  while (nUsed > nodes.length) growN();
+  return p;
+}
+function allocLeaves(c){
+  let p = headL[c];
+  if (p){ headL[c] = leaves[p << 1]; lFreeU -= c; return p; }
+  p = lUsed; lUsed += c;
+  if (lUsed > 0xFFFFFF) throw new Error("pool de hojas agotado (puntero de 24 bits)");
+  while ((lUsed << 1) > leaves.length) growL();
+  return p;
+}
+function freeList(p, c, isLeaf){
+  if (isLeaf){ leaves[p << 1] = headL[c]; headL[c] = p; lFreeU += c; }
+  else { nodes[p] = headN[c]; headN[c] = p; nFreeW += c; }
+}
+function freeNode(w, s){            // libera la lista de un nodo de tamaño s y todo lo que cuelga
+  const m = w & 15;
+  if (!m) return;
+  const p = w >>> 8, cnt = POP[m];
+  if (s > 16){
+    const h = s >> 1;
+    for (let i = 0; i < cnt; i++) freeNode(nodes[p + i], h);
+    freeList(p, cnt, false);
+  } else freeList(p, cnt, true);
+}
+
+// Escritura de la lista de un nodo a partir del scratch por nivel `sw` (8 slots por nivel)
+const sw = new Uint32Array((LOG + 2) * 8);
+function finish(M, p, nM, nF, base, leafLvl){
+  const oc = POP[M], nc = POP[nM];
+  let np = p;
+  if (nc !== oc){
+    if (oc) freeList(p, oc, leafLvl);
+    np = nc ? (leafLvl ? allocLeaves(nc) : allocNodes(nc)) : 0;
+  }
+  if (nc){
+    let i = np;
+    if (leafLvl){
+      for (let c = 0; c < 4; c++) if (nM & (1 << c)){ leaves[i << 1] = sw[base + 2*c]; leaves[(i << 1) + 1] = sw[base + 2*c + 1]; i++; }
+    } else {
+      for (let c = 0; c < 4; c++) if (nM & (1 << c)) nodes[i++] = sw[base + c];
+    }
+  }
+  return ((np << 8) | (nF << 4) | nM) >>> 0;
+}
+
+// ── Consulta puntual: 1 = sólido ──
+function getPx(px, py){
+  let w = root, k = 0;
+  for (;;){
+    const sb = LOG - 1 - k, bit = 1 << (((px >> sb) & 1) | (((py >> sb) & 1) << 1));
+    if (!(w & bit)) return ((w >>> 4) & bit) ? 1 : 0;
+    const idx = (w >>> 8) + POP[w & (bit - 1)];
+    if (sb === 3){
+      const b = ((py & 7) << 3) | (px & 7);
+      return (leaves[(idx << 1) + (b >>> 5)] >>> (b & 31)) & 1;
+    }
+    w = nodes[idx]; k++;
+  }
+}
+
+// ── Construcción desde un heightmap ──
+const H = new Int32Array(SIZE);
+function build(x, y, k){
+  const h = 1 << (LOG - k - 1), base = k << 3;
+  let nM = 0, nF = 0;
+  for (let c = 0; c < 4; c++){
+    const bit = 1 << c, cxx = x + ((c & 1) ? h : 0), cyy = y + ((c & 2) ? h : 0);
+    if (h === 8){
+      let lo = 0, hi = 0;
+      for (let r = 0; r < 8; r++) for (let q = 0; q < 8; q++) if (cyy + r >= H[cxx + q]){
+        if (r < 4) lo |= 1 << ((r << 3) | q); else hi |= 1 << (((r - 4) << 3) | q);
+      }
+      if (lo === 0 && hi === 0){}
+      else if (lo === -1 && hi === -1) nF |= bit;
+      else { nM |= bit; sw[base + 2*c] = lo; sw[base + 2*c + 1] = hi; }
+    } else {
+      let mn = 1e9, mx = -1;
+      for (let i = cxx; i < cxx + h; i++){ const v = H[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+      if (cyy + h <= mn){}                                    // todo aire
+      else if (cyy >= mx) nF |= bit;                          // todo sólido
+      else {
+        const ncw = build(cxx, cyy, k + 1), u = ncw & 0xFF;
+        if (u === 0){} else if (u === 0xF0) nF |= bit; else { nM |= bit; sw[base + c] = ncw; }
+      }
+    }
+  }
+  return finish(0, 0, nM, nF, base, h === 8);
+}
+function buildRoot(){
+  let mn = 1e9, mx = -1;
+  for (let i = 0; i < SIZE; i++){ const v = H[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+  root = SIZE <= mn ? 0 : (0 >= mx ? 0xF0 : build(0, 0, 0));
+}
+
+// ── Carve / paint de un círculo ──
+let cx = 0, cy = 0, r2 = 0, MODE = 0;   // MODE: 0 = borrar (aire), 1 = construir (sólido)
+function carve(W, x, y, k){
+  const M = W & 15, F = (W >>> 4) & 15;
+  if (M === 0 && F === (MODE ? 15 : 0)) return W;            // ya es uniforme del material deseado
+  const s = 1 << (LOG - k);
+  const dx = Math.max(x - cx, 0, cx - (x + s)), dy = Math.max(y - cy, 0, cy - (y + s));
+  if (dx*dx + dy*dy >= r2) return W;                         // fuera del círculo
+  const fx = Math.max(Math.abs(cx - x), Math.abs(cx - x - s)), fy = Math.max(Math.abs(cy - y), Math.abs(cy - y - s));
+  if (fx*fx + fy*fy <= r2){ freeNode(W, s); return MODE ? 0xF0 : 0; }   // nodo entero dentro
+
+  const h = s >> 1, p = W >>> 8, base = k << 3;
+  let nM = 0, nF = 0;
+  for (let c = 0; c < 4; c++){
+    const bit = 1 << c, cxx = x + ((c & 1) ? h : 0), cyy = y + ((c & 2) ? h : 0);
+    const isM = M & bit, isF = F & bit, j = p + POP[M & (bit - 1)];
+    if (h === 8){                                            // hijo = hoja bitmap 8x8
+      let lo, hi;
+      if (isM){ lo = leaves[j << 1] | 0; hi = leaves[(j << 1) + 1] | 0; } else lo = hi = isF ? -1 : 0;
+      if (isM || (isF ? 1 : 0) !== MODE){
+        const ddx = Math.max(cxx - cx, 0, cx - (cxx + 8)), ddy = Math.max(cyy - cy, 0, cy - (cyy + 8));
+        if (ddx*ddx + ddy*ddy < r2){
+          const ffx = Math.max(Math.abs(cx - cxx), Math.abs(cx - cxx - 8)), ffy = Math.max(Math.abs(cy - cyy), Math.abs(cy - cyy - 8));
+          if (ffx*ffx + ffy*ffy <= r2) lo = hi = MODE ? -1 : 0;
+          else {
+            for (let r = 0; r < 8; r++){                     // una fila por operación
+              const ey = cyy + r + 0.5 - cy, t = r2 - ey*ey;
+              if (t <= 0) continue;
+              const half = Math.sqrt(t);
+              let a0 = Math.ceil(cx - half - cxx - 0.5), a1 = Math.floor(cx + half - cxx - 0.5);
+              if (a0 < 0) a0 = 0; if (a1 > 7) a1 = 7;
+              if (a0 > a1) continue;
+              const m = ((1 << (a1 - a0 + 1)) - 1) << a0;
+              if (r < 4){ const mm = m << (r << 3); if (MODE) lo |= mm; else lo &= ~mm; }
+              else { const mm = m << ((r - 4) << 3); if (MODE) hi |= mm; else hi &= ~mm; }
+            }
+          }
+        }
+      }
+      if (lo === 0 && hi === 0){}
+      else if (lo === -1 && hi === -1) nF |= bit;
+      else { nM |= bit; sw[base + 2*c] = lo; sw[base + 2*c + 1] = hi; }
+    } else {
+      const cw = isM ? nodes[j] : (isF ? 0xF0 : 0);
+      const ncw = carve(cw, cxx, cyy, k + 1), u = ncw & 0xFF;
+      if (u === 0){} else if (u === 0xF0) nF |= bit; else { nM |= bit; sw[base + c] = ncw; }
+    }
+  }
+  return finish(M, p, nM, nF, base, h === 8);                // fusiona solo: si todo quedó uniforme devuelve 0 / 0xF0
+}
+function circle(x, y, r, mode){
+  cx = x; cy = y; r2 = r*r; MODE = mode;
+  root = carve(root, 0, 0, 0);
+}
+
+// ── Generación del mundo (determinista por semilla) ──
+let rs = 1;
+function rrand(){ rs ^= rs << 13; rs ^= rs >>> 17; rs ^= rs << 5; return (rs >>> 0) / 4294967296; }
+function generateWorld(seed){
+  rs = (seed | 0) || 1; for (let i = 0; i < 4; i++) rrand();
+  resetPools();
+  const ph = [0,1,2,3,4].map(() => rrand() * 6.2832);
+  const a4 = Math.min(260, SIZE * 0.04), a5 = Math.min(700, SIZE * 0.05);
+  for (let x = 0; x < SIZE; x++){
+    const v = SIZE*0.5 + 90*Math.sin(x*0.006 + ph[0]) + 40*Math.sin(x*0.017 + ph[1]) + 14*Math.sin(x*0.05 + ph[2])
+            + a4*Math.sin(x*0.0007 + ph[3]) + a5*Math.sin(x*0.00011 + ph[4]);
+    H[x] = Math.max(32, Math.min(SIZE - 32, Math.floor(v)));
+  }
+  buildRoot();
+  const n = Math.min(40000, Math.round(14 * (SIZE / 1024) ** 2));        // cuevas: densidad constante
+  for (let i = 0; i < n; i++)
+    circle(60 + rrand()*(SIZE - 120), SIZE*0.5 + 120 + rrand()*(SIZE*0.5 - 180), 25 + rrand()*45, 0);
+}
+
+// ───────────────── RAYCAST ─────────────────
+// Salta celdas enteras de aire (una celda de 4096x4096 vacía cuesta lo mismo que una de 8x8).
+// Mantiene la pila de ancestros: al salir de una celda, el nivel del ancestro común sale de
+//   clz32((px^opx)|(py^opy))  → se sube hasta ahí y solo se baja lo que falta (sin re-bajar desde la raíz).
+// Solo las hojas 8x8 mixtas se recorren píxel a píxel (DDA sobre bits).
+// Devuelve t del impacto (punto = o + d*t) o -1. Deja la normal en hitNX/hitNY.
+let hitNX = 0, hitNY = 0, rayCells = 0, rayPix = 0, traceOn = false, traceN = 0;
+const rayStack = new Uint32Array(LOG + 2);
+const rayTr = new Int32Array(3 * 2048);
+
+function raycast(ox, oy, dx, dy, maxT){
+  rayCells = 0; rayPix = 0; hitNX = 0; hitNY = 0; traceN = 0;
+  let px = Math.floor(ox), py = Math.floor(oy);
+  if (px < 0 || py < 0 || px >= SIZE || py >= SIZE) return -1;
+  const stX = dx > 0 ? 1 : -1, stY = dy > 0 ? 1 : -1;
+  const invX = dx !== 0 ? 1 / dx : Infinity, invY = dy !== 0 ? 1 / dy : Infinity;
+  const st = rayStack;
+  st[0] = root;
+  let t = 0, kc = 0, opx = px, opy = py;
+
+  for (;;){
+    // 1) bajar desde el ancestro común (nivel kc) hasta la celda terminal que contiene (px,py)
+    let w = st[kc], k = kc, sb, bit, idx;
+    for (;;){
+      sb = LOG - 1 - k;
+      bit = 1 << (((px >> sb) & 1) | (((py >> sb) & 1) << 1));
+      if (!(w & bit)){ idx = -1; break; }                       // hijo uniforme (aire o sólido)
+      idx = (w >>> 8) + POP[w & (bit - 1)];
+      if (sb === 3) break;                                      // hijo = hoja bitmap
+      w = nodes[idx]; st[++k] = w;
+    }
+    rayCells++;
+    const s = 1 << sb, x0 = px & -s, y0 = py & -s;
+    if (traceOn && traceN < 2048){ const i = traceN++ * 3; rayTr[i] = x0; rayTr[i+1] = y0; rayTr[i+2] = s; }
+
+    if (idx < 0){
+      if ((w >>> 4) & bit) return t;                            // celda sólida
+      // 2) aire: salto directo a la salida de la celda
+      const tx = dx > 0 ? (x0 + s - ox) * invX : dx < 0 ? (x0 - ox) * invX : Infinity;
+      const ty = dy > 0 ? (y0 + s - oy) * invY : dy < 0 ? (y0 - oy) * invY : Infinity;
+      const te = tx < ty ? tx : ty;
+      if (!(te <= maxT)) return -1;
+      let nx, ny;
+      if (tx <= te){ nx = dx > 0 ? x0 + s : x0 - 1; hitNX = -stX; }
+      else {                                                    // píxel "justo después" del punto, en el sentido de avance
+        const v = ox + dx * te; nx = dx > 0 ? Math.floor(v) : Math.ceil(v) - 1;
+        if (nx < x0) nx = x0; else if (nx >= x0 + s) nx = x0 + s - 1; hitNX = 0;
+      }
+      if (ty <= te){ ny = dy > 0 ? y0 + s : y0 - 1; hitNY = -stY; }
+      else {
+        const v = oy + dy * te; ny = dy > 0 ? Math.floor(v) : Math.ceil(v) - 1;
+        if (ny < y0) ny = y0; else if (ny >= y0 + s) ny = y0 + s - 1; hitNY = 0;
+      }
+      t = te; opx = px; opy = py; px = nx; py = ny;
+    } else {
+      // 3) hoja 8x8 mixta: DDA píxel a píxel sobre el bitmap
+      const li = idx << 1;
+      for (;;){
+        rayPix++;
+        const b = ((py & 7) << 3) | (px & 7);
+        if ((leaves[li + (b >>> 5)] >>> (b & 31)) & 1) return t;
+        const tx = dx > 0 ? (px + 1 - ox) * invX : dx < 0 ? (px - ox) * invX : Infinity;
+        const ty = dy > 0 ? (py + 1 - oy) * invY : dy < 0 ? (py - oy) * invY : Infinity;
+        opx = px; opy = py;
+        if (tx < ty)      { t = tx; px += stX; hitNX = -stX; hitNY = 0; }
+        else if (ty < tx) { t = ty; py += stY; hitNX = 0; hitNY = -stY; }
+        else              { t = tx; px += stX; py += stY; hitNX = -stX; hitNY = -stY; }
+        if (!(t <= maxT)) return -1;
+        if (((px ^ x0) | (py ^ y0)) & ~7) break;                // salió de la hoja
+      }
+    }
+    if (px < 0 || py < 0 || px >= SIZE || py >= SIZE) return -1;
+    kc = LOG - 1 - (31 - Math.clz32((px ^ opx) | (py ^ opy)));   // nivel del nodo ancestro común
+    if (kc > k) kc = k;
+  }
+}
+
+// Referencia ingenua (un píxel a la vez, bajando desde la raíz): para benchmark y validación
+function rayNaive(ox, oy, dx, dy, maxT){
+  let px = Math.floor(ox), py = Math.floor(oy), t = 0;
+  const stX = dx > 0 ? 1 : -1, stY = dy > 0 ? 1 : -1;
+  const invX = dx !== 0 ? 1 / dx : Infinity, invY = dy !== 0 ? 1 / dy : Infinity;
+  for (;;){
+    if (px < 0 || py < 0 || px >= SIZE || py >= SIZE) return -1;
+    if (getPx(px, py)) return t;
+    const tx = dx > 0 ? (px + 1 - ox) * invX : dx < 0 ? (px - ox) * invX : Infinity;
+    const ty = dy > 0 ? (py + 1 - oy) * invY : dy < 0 ? (py - oy) * invY : Infinity;
+    if (tx < ty) { t = tx; px += stX; }
+    else if (ty < tx) { t = ty; py += stY; }
+    else { t = tx; px += stX; py += stY; }
+    if (!(t <= maxT)) return -1;
+  }
+}
+
+// ───────────────── AABB vs terreno ─────────────────
+// Rect entero [ax0,ax1) x [ay0,ay1). Pila explícita en typed array, sin recursión.
+// Un hijo sólido que solapa corta al instante (máscara F & solape); los de aire ni se miran.
+// Fuera del mundo: sólido a izquierda/derecha/abajo, aire arriba.
+let aabbQ = 0;
+const qStack = new Int32Array(4 * (3 * LOG + 8));
+const BAND = new Int32Array(25);                                // BAND[a*5+b]: filas a..b-1 de una palabra de 4 filas
+for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++){
+  let m = 0; for (let r = a; r < b; r++) m |= 0xFF << (r * 8);
+  BAND[a * 5 + b] = m;
+}
+
+function aabbHit(ax0, ay0, ax1, ay1){
+  aabbQ++;
+  if (ax0 >= ax1 || ay0 >= ay1) return false;
+  if (ax0 < 0 || ax1 > SIZE || ay1 > SIZE) return true;
+  if (ay0 < 0){ ay0 = 0; if (ay1 <= 0) return false; }
+
+  let w = root, x = 0, y = 0, s = SIZE, sp = 0;
+  const q = qStack;
+  for (;;){
+    const h = s >> 1, mx = x + h, my = y + h;
+    const l = ax0 < mx, r = ax1 > mx, tp = ay0 < my, bt = ay1 > my;
+    const ov = (l && tp ? 1 : 0) | (r && tp ? 2 : 0) | (l && bt ? 4 : 0) | (r && bt ? 8 : 0);   // hijos que solapan
+    if ((w >>> 4) & ov) return true;                              // algún hijo sólido solapa
+    let mm = w & ov;                                              // hijos mixtos que solapan
+    if (mm){
+      const p = w >>> 8;
+      do {
+        const lb = mm & -mm, c = 31 - Math.clz32(lb);
+        mm ^= lb;
+        const idx = p + POP[w & (lb - 1)];
+        const ox = (c & 1) ? mx : x, oy = (c & 2) ? my : y;
+        if (h === 8){                                             // hoja bitmap: test con máscara
+          const cx0 = ax0 > ox ? ax0 - ox : 0, cx1 = ax1 < ox + 8 ? ax1 - ox : 8;
+          const cy0 = ay0 > oy ? ay0 - oy : 0, cy1 = ay1 < oy + 8 ? ay1 - oy : 8;
+          const rm = Math.imul(((1 << (cx1 - cx0)) - 1) << cx0, 0x01010101);
+          const la = cy0 < 4 ? cy0 : 4, lb2 = cy1 < 4 ? cy1 : 4;
+          const ha = cy0 > 4 ? cy0 - 4 : 0, hb = cy1 > 4 ? cy1 - 4 : 0;
+          const li = idx << 1;
+          if (((leaves[li] & rm & BAND[la * 5 + lb2]) | (leaves[li+1] & rm & BAND[ha * 5 + hb])) !== 0) return true;
+        } else { q[sp++] = nodes[idx]; q[sp++] = ox; q[sp++] = oy; q[sp++] = h; }
+      } while (mm);
+    }
+    if (sp === 0) return false;
+    s = q[--sp]; y = q[--sp]; x = q[--sp]; w = q[--sp];
+  }
+}
+
+// ───────────────── Cuerpos (AABB + terreno) ─────────────────
+// El movimiento por eje es un barrido: se consulta el rect "barrido" [x, x+w+m) y se busca por
+// bisección el mayor m libre (el barrido es monótono en m). ~log2(velocidad) queries por eje.
+const GRAV = 1000;
+function sweepFree(x, y, w, h, horiz, s, m){
+  if (horiz) return s > 0 ? !aabbHit(x, y, x + w + m, y + h) : !aabbHit(x - m, y, x + w, y + h);
+  return s > 0 ? !aabbHit(x, y, x + w, y + h + m) : !aabbHit(x, y - m, x + w, y + h);
+}
+function freeDist(x, y, w, h, horiz, s, n){
+  if (sweepFree(x, y, w, h, horiz, s, n)) return n;
+  let lo = 0, hi = n;                                          // lo libre, hi bloqueado
+  while (hi - lo > 1){
+    const mid = (lo + hi) >> 1;
+    if (sweepFree(x, y, w, h, horiz, s, mid)) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+
+class Body {
+  constructor(x, y, w, h, step){
+    this.x = x | 0; this.y = y | 0; this.w = w; this.h = h; this.step = step;
+    this.vx = 0; this.vy = 0; this.rx = 0; this.ry = 0; this.grounded = false;
+  }
+  moveX(d){
+    const s = d > 0 ? 1 : -1, n = d * s;
+    const m = freeDist(this.x, this.y, this.w, this.h, true, s, n);
+    this.x += s * m;
+    if (m === n) return;
+    const rem = n - m;                                         // bloqueado: probar subir escalones chicos
+    for (let k = 1; k <= this.step; k++){
+      const m2 = freeDist(this.x, this.y - k, this.w, this.h, true, s, rem);
+      if (m2 > 0){ this.y -= k; this.x += s * m2; return; }
+    }
+    this.vx = 0; this.rx = 0;
+  }
+  moveY(d){
+    const s = d > 0 ? 1 : -1, n = d * s;
+    const m = freeDist(this.x, this.y, this.w, this.h, false, s, n);
+    this.y += s * m;
+    if (m < n){ this.vy = 0; this.ry = 0; }
+  }
+  update(dt){
+    if (aabbHit(this.x, this.y, this.x + this.w, this.y + this.h)){      // enterrado: subir hasta salir
+      for (let k = 1; k <= 48; k++)
+        if (!aabbHit(this.x, this.y - k, this.x + this.w, this.y - k + this.h)){ this.y -= k; break; }
+    }
+    this.vy += GRAV * dt; if (this.vy > 1200) this.vy = 1200;
+    this.rx += this.vx * dt; this.ry += this.vy * dt;
+    const ix = Math.trunc(this.rx), iy = Math.trunc(this.ry);
+    this.rx -= ix; this.ry -= iy;
+    if (ix) this.moveX(ix);
+    if (iy) this.moveY(iy);
+    this.grounded = aabbHit(this.x, this.y + this.h, this.x + this.w, this.y + this.h + 1);
+    if (this.grounded && this.vy > 0){ this.vy = 0; this.ry = 0; }
+  }
+}
+// ===CORE-END===
+
+// ───────────────── Render con cámara (solo lo visible) ─────────────────
+const $ = id => document.getElementById(id);
+const cv = $("c"), ctx = cv.getContext("2d");
+const C_AIR = 0xFF281A14, C_SOL = 0xFF3C5A78, C_MID = 0xFF2E4258;
+const C_UNI = 0xFF406040, C_MIX = 0xFF3030C0, C_LEAF = 0xFF904090;
+let zoom = 2, viewW = 0, viewH = 0, img, buf;
+let camX = 0, camY = 0, cxI = 0, cyI = 0;                    // cámara (float / entera)
+let vx0 = 0, vy0 = 0, vx1 = 0, vy1 = 0, debug = false;
+
+function resize(){
+  const availW = window.innerWidth, availH = Math.max(240, window.innerHeight - $("top").offsetHeight - 4);
+  viewW = Math.max(64, Math.floor(availW / zoom)); viewH = Math.max(64, Math.floor(availH / zoom));
+  cv.width = viewW; cv.height = viewH;
+  cv.style.width = viewW * zoom + "px"; cv.style.height = viewH * zoom + "px";
+  img = ctx.createImageData(viewW, viewH); buf = new Uint32Array(img.data.buffer);
+}
+
+function fillRectC(x, y, w, h, c){
+  const a = x < vx0 ? vx0 : x, b = y < vy0 ? vy0 : y, e = x + w > vx1 ? vx1 : x + w, f = y + h > vy1 ? vy1 : y + h;
+  if (a >= e || b >= f) return;
+  for (let r = b; r < f; r++){ const o = (r - vy0) * viewW - vx0; buf.fill(c, o + a, o + e); }
+}
+function boxC(x, y, s, c){                                    // borde superior e izquierdo, recortado a la vista
+  if (y >= vy0 && y < vy1){ const a = Math.max(x, vx0), e = Math.min(x + s, vx1); if (a < e){ const o = (y - vy0) * viewW - vx0; buf.fill(c, o + a, o + e); } }
+  if (x >= vx0 && x < vx1){ const b = Math.max(y, vy0), f = Math.min(y + s, vy1); for (let r = b; r < f; r++) buf[(r - vy0) * viewW + x - vx0] = c; }
+}
+function drawLeaf(j, x, y){
+  const li = j << 1;
+  for (let r = 0; r < 8; r++){
+    const wy = y + r; if (wy < vy0 || wy >= vy1) continue;
+    const bits = leaves[li + (r >> 2)] >>> ((r & 3) << 3), row = (wy - vy0) * viewW - vx0;
+    for (let c = 0; c < 8; c++){ const wx = x + c; if (wx >= vx0 && wx < vx1 && ((bits >> c) & 1)) buf[row + wx] = C_SOL; }
+  }
+}
+function drawNode(w, x, y, k){
+  const s = 1 << (LOG - k), h = s >> 1, M = w & 15, F = (w >>> 4) & 15, p = w >>> 8;
+  for (let c = 0; c < 4; c++){
+    const cxx = x + ((c & 1) ? h : 0), cyy = y + ((c & 2) ? h : 0);
+    if (cxx >= vx1 || cxx + h <= vx0 || cyy >= vy1 || cyy + h <= vy0) continue;
+    const bit = 1 << c;
+    if (M & bit){
+      const j = p + POP[M & (bit - 1)];
+      if (h === 8){ drawLeaf(j, cxx, cyy); if (debug) boxC(cxx, cyy, 8, C_LEAF); }
+      else drawNode(nodes[j], cxx, cyy, k + 1);
+    } else {
+      if (F & bit) fillRectC(cxx, cyy, h, h, C_SOL);
+      if (debug && h >= 8) boxC(cxx, cyy, h, C_UNI);
+    }
+  }
+  if (debug) boxC(x, y, s, C_MIX);
+}
+
+// ── Minimapa del mundo entero (recorre solo los nodos grandes) ──
+const MM = 160, mmCv = $("mini"), mmCtx = mmCv.getContext("2d");
+const mmImg = mmCtx.createImageData(MM, MM), mmBuf = new Uint32Array(mmImg.data.buffer);
+function mmRect(x, y, s, c){
+  const a = Math.floor(x * MM / SIZE), b = Math.floor(y * MM / SIZE);
+  const e = Math.max(a + 1, Math.ceil((x + s) * MM / SIZE)), f = Math.max(b + 1, Math.ceil((y + s) * MM / SIZE));
+  for (let r = b; r < f; r++) for (let q = a; q < e; q++) mmBuf[r * MM + q] = c;
+}
+function mmNode(w, x, y, k){
+  const h = 1 << (LOG - k - 1), M = w & 15, F = (w >>> 4) & 15, p = w >>> 8;
+  for (let c = 0; c < 4; c++){
+    const bit = 1 << c, cxx = x + ((c & 1) ? h : 0), cyy = y + ((c & 2) ? h : 0);
+    if (M & bit){
+      if (h === 8 || h * MM / SIZE < 1) mmRect(cxx, cyy, h, C_MID);
+      else mmNode(nodes[p + POP[M & (bit - 1)]], cxx, cyy, k + 1);
+    } else if (F & bit) mmRect(cxx, cyy, h, C_SOL);
+  }
+}
+function paintMini(){ mmBuf.fill(0xFF1A110C); mmNode(root, 0, 0, 0); mmCtx.putImageData(mmImg, 0, 0); }
+
+// ───────────────── Estado / UI ─────────────────
+let radius = 28, mode = 0, mx = -1, my = -1, mouseIn = false, lastOp = 0, genMs = 0;
+let player, boxes = [], rayOnFlag = true, rayCellsFlag = true, fly = false, fx = 0, fy = 0;
+let rayInfo = "", qFrame = 0, frameN = 0, miniDirty = true;
+const stats = $("stats");
+const fmt = b => b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : (b / 1024).toFixed(1) + " KB";
+
+function spawnPlayer(){
+  player = new Body(SIZE / 2, H[SIZE >> 1] - 60, 10, 20, 4);
+  camX = player.x - viewW / 2; camY = player.y - viewH / 2;
+}
+function resetAll(seed){
+  const t0 = performance.now();
+  generateWorld(seed || ((Math.random() * 2 ** 31) | 0) || 1);
+  genMs = performance.now() - t0;
+  boxes = []; spawnPlayer(); miniDirty = true;
+}
+
+function refreshStats(){
+  const live = (nUsed - 1 - nFreeW) * 4 + (lUsed - 1 - lFreeU) * 8, alloc = nodes.length * 4 + leaves.length * 4;
+  const flat = SIZE * SIZE / 8;
+  stats.innerHTML = `mundo <b>${SIZE.toLocaleString()}²</b> · plano 1 bit/px: <b>${fmt(flat)}</b> · quadtree: <b>${fmt(live)}</b> `
+    + `(<b>${(flat / live).toFixed(0)}x</b> menor; pools reservados ${fmt(alloc)}) · palabras nodo <b>${nUsed - 1 - nFreeW}</b> · hojas <b>${lUsed - 1 - lFreeU}</b> `
+    + `· carve <b>${lastOp.toFixed(3)} ms</b> · cuerpos <b>${boxes.length + 1}</b> · AABB/frame <b>${qFrame}</b>${rayInfo}`;
+}
+
+function apply(x, y){
+  const t0 = performance.now();
+  circle(x, y, radius, mode);
+  lastOp = performance.now() - t0; miniDirty = true;
+}
+function stroke(x0, y0, x1, y1){
+  const d = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.ceil(d / (radius * 0.5)));
+  for (let i = 1; i <= n; i++) apply(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n);
+}
+
+let down = false, px = 0, py = 0;
+function pos(e){ const r = cv.getBoundingClientRect(); return [cxI + (e.clientX - r.left) / zoom, cyI + (e.clientY - r.top) / zoom]; }
+cv.addEventListener("contextmenu", e => e.preventDefault());
+cv.addEventListener("pointerdown", e => {
+  cv.setPointerCapture(e.pointerId);
+  down = true; mode = e.button === 2 ? 1 : (modeBtn.dataset.m | 0);
+  [px, py] = pos(e); mx = px; my = py; mouseIn = true; apply(px, py);
+});
+cv.addEventListener("pointermove", e => {
+  const [x, y] = pos(e); mx = x; my = y; mouseIn = true;
+  if (down){ stroke(px, py, x, y); px = x; py = y; }
+});
+cv.addEventListener("pointerup", () => down = false);
+cv.addEventListener("pointerleave", () => { mouseIn = false; });
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  radius = Math.max(4, Math.min(400, radius * (e.deltaY < 0 ? 1.1 : 0.9)));
+}, { passive: false });
+
+const keys = Object.create(null);
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase(); keys[k] = true;
+  if (k === " " || k.startsWith("arrow")) e.preventDefault();
+  if (e.repeat) return;
+  if (k === "b" && mouseIn && boxes.length < 400){
+    const s = 6 + (Math.random() * 10 | 0);
+    boxes.push(new Body(mx - s / 2, my - s / 2, s, s, 2));
+  }
+  if (k === "f"){ fly = !fly; fx = fy = 0; player.vx = player.vy = 0; }
+  if (k === "+" || k === "=") { zoom = Math.min(4, zoom + 1); resize(); }
+  if (k === "-" || k === "_") { zoom = Math.max(1, zoom - 1); resize(); }
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("resize", resize);
+
+const modeBtn = $("mode");
+modeBtn.dataset.m = 0;
+modeBtn.onclick = () => {
+  modeBtn.dataset.m = modeBtn.dataset.m === "0" ? 1 : 0;
+  modeBtn.textContent = "Modo: " + (modeBtn.dataset.m === "0" ? "borrar" : "construir");
+};
+$("dbg").onchange = e => { debug = e.target.checked; };
+$("rayOn").onchange = e => { rayOnFlag = e.target.checked; };
+$("rayCells").onchange = e => { rayCellsFlag = e.target.checked; };
+$("reset").onclick = () => resetAll();
+$("size").value = String(LOG);
+$("size").onchange = e => { location.search = "?log=" + e.target.value; };
+
+// ── Benchmark: raycast con saltos vs. pixel a pixel, y validación cruzada ──
+$("benchBtn").onclick = () => {
+  const out = $("bench"); out.textContent = "corriendo…";
+  setTimeout(() => {
+    const N = 10000; let seed = 12345;
+    const rnd = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+    const R = new Float64Array(N * 4);
+    for (let i = 0; i < N; i++){
+      let x, y; do { x = rnd() * SIZE; y = rnd() * SIZE; } while (getPx(x | 0, y | 0));
+      const a = rnd() * Math.PI * 2;
+      R[i*4] = x; R[i*4+1] = y; R[i*4+2] = Math.cos(a); R[i*4+3] = Math.sin(a);
+    }
+    const A = new Float64Array(N), B = new Float64Array(N);
+    for (let i = 0; i < 2000; i++) raycast(R[i*4], R[i*4+1], R[i*4+2], R[i*4+3], 1500);   // warm-up
+    let cells = 0, pix = 0;
+    let tA = performance.now();
+    for (let i = 0; i < N; i++){ A[i] = raycast(R[i*4], R[i*4+1], R[i*4+2], R[i*4+3], 1500); cells += rayCells; pix += rayPix; }
+    tA = performance.now() - tA;
+    let tB = performance.now();
+    for (let i = 0; i < N; i++) B[i] = rayNaive(R[i*4], R[i*4+1], R[i*4+2], R[i*4+3], 1500);
+    tB = performance.now() - tB;
+    let bad = 0, hits = 0;
+    for (let i = 0; i < N; i++){ if (A[i] >= 0) hits++; if (Math.abs(A[i] - B[i]) > 1e-6) bad++; }
+    out.innerHTML = `${N} rayos (${hits} impactan) · <b>salto por celdas: ${tA.toFixed(1)} ms</b> (${(N / tA * 1000 | 0).toLocaleString()} rayos/s, `
+      + `${(cells / N).toFixed(1)} celdas + ${(pix / N).toFixed(1)} px por rayo) · pixel a pixel: ${tB.toFixed(1)} ms `
+      + `→ <b>${(tB / tA).toFixed(1)}x</b> más rápido · discrepancias vs. referencia: <b>${bad}</b>`;
+  }, 30);
+};
+
+// ── Loop ──
+let last = performance.now();
+function frame(now){
+  const dt = Math.min((now - last) / 1000, 1 / 30); last = now;
+
+  aabbQ = 0;
+  const kL = keys.a || keys.arrowleft, kR = keys.d || keys.arrowright;
+  const kU = keys.w || keys.arrowup, kD = keys.s || keys.arrowdown, jump = kU || keys[" "];
+  const dirX = (kR ? 1 : 0) - (kL ? 1 : 0);
+  if (fly){                                                  // volar sin colisión, para recorrer el mundo
+    const sp = keys.shift ? 4000 : 700, dirY = (kD ? 1 : 0) - (kU ? 1 : 0);
+    fx += dirX * sp * dt; fy += dirY * sp * dt;
+    const ix = Math.trunc(fx), iy = Math.trunc(fy); fx -= ix; fy -= iy;
+    player.x = Math.max(0, Math.min(SIZE - player.w, player.x + ix));
+    player.y = Math.max(0, Math.min(SIZE - player.h, player.y + iy));
+    player.vx = player.vy = 0;
+  } else {
+    player.vx += (dirX * 170 - player.vx) * Math.min(1, (player.grounded ? 14 : 5) * dt);
+    if (jump && player.grounded) player.vy = -380;
+    player.update(dt);
+  }
+  for (const b of boxes){
+    b.vx -= b.vx * Math.min(1, (b.grounded ? 8 : 0.3) * dt);
+    b.update(dt);
+  }
+  qFrame = aabbQ;
+
+  // cámara que sigue al jugador
+  const tx = player.x + player.w / 2 - viewW / 2, ty = player.y + player.h / 2 - viewH / 2;
+  const kf = fly ? 1 : Math.min(1, 8 * dt);
+  camX += (tx - camX) * kf; camY += (ty - camY) * kf;
+  camX = Math.max(0, Math.min(Math.max(0, SIZE - viewW), camX)); camY = Math.max(0, Math.min(Math.max(0, SIZE - viewH), camY));
+  cxI = Math.round(camX); cyI = Math.round(camY);
+  vx0 = cxI; vy0 = cyI; vx1 = cxI + viewW; vy1 = cyI + viewH;
+
+  buf.fill(C_AIR);
+  drawNode(root, 0, 0, 0);
+  ctx.putImageData(img, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, -cxI, -cyI);                  // desde acá se dibuja en coordenadas de mundo
+
+  ctx.fillStyle = "#e0a040";
+  for (const b of boxes) ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.fillStyle = fly ? "#a0c0ff" : (player.grounded ? "#7CFC9A" : "#ffffff");
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+
+  // rayo desde el centro del jugador hacia el cursor
+  rayInfo = "";
+  if (rayOnFlag && mouseIn){
+    const ox = player.x + player.w / 2, oy = player.y + player.h / 2;
+    let dx = mx - ox, dy = my - oy; const len = Math.hypot(dx, dy);
+    if (len > 1){
+      dx /= len; dy /= len;
+      traceOn = rayCellsFlag;
+      const t = raycast(ox, oy, dx, dy, 4000);
+      traceOn = false;
+      if (rayCellsFlag){
+        for (let i = 0; i < traceN; i++){
+          const x = rayTr[i*3], y = rayTr[i*3+1], s = rayTr[i*3+2];
+          if (x + s < vx0 || x > vx1 || y + s < vy0 || y > vy1) continue;
+          ctx.fillStyle = s === 8 ? "rgba(255,160,0,.35)" : "rgba(0,200,255,.14)";
+          ctx.fillRect(x, y, s, s);
+          ctx.strokeStyle = s === 8 ? "rgba(255,160,0,.8)" : "rgba(0,200,255,.5)";
+          ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, s - 1, s - 1);
+        }
+      }
+      const te = t >= 0 ? t : 4000;
+      ctx.strokeStyle = "#ff4060"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + dx * te, oy + dy * te); ctx.stroke();
+      if (t >= 0){
+        const hx = ox + dx * t, hy = oy + dy * t;
+        ctx.fillStyle = "#ff4060"; ctx.beginPath(); ctx.arc(hx, hy, 2.5, 0, 7); ctx.fill();
+        ctx.strokeStyle = "#7CFC9A"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + hitNX * 12, hy + hitNY * 12); ctx.stroke();
+      }
+      rayInfo = ` · rayo: <b>${rayCells}</b> celdas + <b>${rayPix}</b> px · ${t >= 0 ? "t=" + t.toFixed(0) : "sin impacto"}`;
+    }
+  }
+  if (mouseIn){
+    ctx.beginPath(); ctx.arc(mx, my, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.stroke();
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // minimapa
+  if (miniDirty && (frameN % 6 === 0)){ paintMini(); miniDirty = false; }
+  if (frameN % 3 === 0){
+    mmCtx.putImageData(mmImg, 0, 0);
+    mmCtx.strokeStyle = "#fff"; mmCtx.lineWidth = 1;
+    mmCtx.strokeRect(cxI * MM / SIZE, cyI * MM / SIZE, Math.max(2, viewW * MM / SIZE), Math.max(2, viewH * MM / SIZE));
+    mmCtx.fillStyle = "#7CFC9A"; mmCtx.fillRect(player.x * MM / SIZE - 1, player.y * MM / SIZE - 1, 3, 3);
+  }
+  if ((frameN++ % 6) === 0) refreshStats();
+  requestAnimationFrame(frame);
+}
+resize();
+resetAll(1337);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

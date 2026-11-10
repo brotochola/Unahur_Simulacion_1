@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Planeta bitgrid</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#070b17;touch-action:none;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:system-ui,sans-serif;color:#cde}
+  canvas{display:block;touch-action:none}
+  [hidden]{display:none!important}
+  button{font-size:22px;border:0;border-radius:14px;background:rgba(255,255,255,.16);color:#fff;
+    min-width:64px;min-height:64px;touch-action:none;-webkit-tap-highlight-color:transparent}
+  button:active,button.on{background:rgba(255,255,255,.36)}
+  .row{position:fixed;top:max(8px,env(safe-area-inset-top));left:8px;right:64px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .row button,#gear{min-width:48px;min-height:48px;font-size:18px;padding:0 10px}
+  #gear{position:fixed;top:max(8px,env(safe-area-inset-top));right:8px;font-size:22px}
+  #bs{min-width:24px;text-align:center;font-size:18px}
+  .pad{position:fixed;bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:10px}
+  .pad button{min-width:80px;min-height:80px;font-size:30px}
+  .left{left:12px}.right{right:12px}
+  #dbg{position:fixed;left:8px;bottom:2px;font:11px monospace;opacity:.6;pointer-events:none;white-space:pre}
+  #err{position:fixed;left:8px;right:8px;bottom:20px;font:12px monospace;color:#f88;pointer-events:none;white-space:pre-wrap}
+  #panel{position:fixed;z-index:5;right:8px;top:calc(max(8px,env(safe-area-inset-top)) + 58px);width:min(92vw,340px);
+    max-height:calc(100% - 190px);overflow:auto;box-sizing:border-box;padding:12px;border-radius:14px;
+    background:rgba(8,12,26,.9);font-size:13px;touch-action:pan-y;-webkit-user-select:text;user-select:text}
+  #panel label{display:block;margin:0 0 10px}
+  #panel select,#panel input{width:100%;box-sizing:border-box;font-size:16px;margin-top:4px}
+  #panel select{padding:8px;border-radius:8px;border:0;background:#1d2540;color:#fff}
+  #panel small{opacity:.65}
+  #mon{margin:8px 0 6px;font:11.5px/1.5 monospace;white-space:pre-wrap}
+  #graph{width:100%;height:70px;background:#0b1226;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="row">
+  <button id="tool">✏️ Llenar</button>
+  <button id="bm">−</button><span id="bs">5</span><button id="bp">+</button>
+  <button id="zm">🔍−</button><button id="zp">🔍+</button>
+</div>
+<button id="gear">⚙</button>
+<div id="panel" hidden>
+  <label>Grilla total (celdas por lado)
+    <select id="kgrid"><option>256</option><option>512</option><option>1024</option><option>2048</option><option>4096</option></select>
+    <small id="kgridinfo"></small>
+  </label>
+  <label>Radio del planeta (celdas): <b id="krv"></b>
+    <input id="kr" type="range" min="16" max="508" step="2">
+    <small id="krinfo"></small>
+  </label>
+  <pre id="mon"></pre>
+  <canvas id="graph" width="640" height="140"></canvas>
+</div>
+<div class="pad left"><button id="bl">◀</button><button id="br">▶</button></div>
+<div class="pad right"><button id="bj">⤒</button></div>
+<div id="err"></div>
+<div id="dbg"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+<script>
+(async () => {
+  const dbg = document.getElementById('dbg'), errEl = document.getElementById('err');
+  const showErr = m => { errEl.textContent = 'ERROR: ' + m; };
+  addEventListener('error', e => showErr(e.message));
+  addEventListener('unhandledrejection', e => showErr((e.reason && e.reason.message) || e.reason));
+
+  /*PHYS-START*/
+  // ============ datos + fisica (sin Pixi) ============
+  const C = 4;               // px de mundo por celda
+  const CH = 8;              // celdas por chunk (lado)
+  const INV = 1 / C;
+  const MINR = 16;           // radio minimo del planeta (celdas)
+
+  const G = 1300, SPEED = 240, JUMP = 560, VMAX = 1800;
+  const PW = 12, PH = 24;    // medio ancho / medio alto del personaje (px): 6x12 celdas
+  const STEP = 8 * C;        // escalon maximo que sube solo (px): 8 celdas
+
+  // configurable (ver configure): grilla cuadrada de W x H celdas, 1 bit por celda, i = y*W + x
+  let W = 0, H = 0, CW = 0, TW = 0, R = 0, PCX = 0, PCY = 0;
+  let bits = new Uint8Array(0);
+  let dirty = new Uint8Array(0);          // flag por chunk
+  let dirtyList = new Int32Array(0);      // chunks sucios (sin repetir)
+  let dirtyN = 0;
+  const pc = { x: 0, y: 0 };              // centro del planeta (px)
+
+  function get(x, y) {
+    if (x < 0 || y < 0 || x >= W || y >= H) return 0;
+    const i = y * W + x;
+    return (bits[i >> 3] >> (i & 7)) & 1;
+  }
+  function set(x, y, v) {
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    const i = y * W + x, b = i >> 3, m = 1 << (i & 7);
+    if (((bits[b] & m) !== 0) === !!v) return;
+    if (v) bits[b] |= m; else bits[b] &= ~m;
+    const ci = (y >> 3) * CW + (x >> 3);
+    if (!dirty[ci]) { dirty[ci] = 1; dirtyList[dirtyN++] = ci; }
+  }
+  // llena la fila y entre x0..x1 (inclusive) escribiendo bytes enteros en el medio
+  function fillRow(y, x0, x1) {
+    let i = y * W + x0;
+    const end = y * W + x1 + 1;
+    while (i < end && (i & 7)) { bits[i >> 3] |= 1 << (i & 7); i++; }
+    while (i + 8 <= end) { bits[i >> 3] = 0xFF; i += 8; }
+    while (i < end) { bits[i >> 3] |= 1 << (i & 7); i++; }
+  }
+
+  // jugador
+  const P = { x: 0, y: 0 };
+  let VX = 0, VY = 0, grounded = false, facing = 1;
+  let ux = 0, uy = -1, rx = 1, ry = 0;
+  let vis = 0;                 // desfase visual a lo largo de "arriba" (suaviza escalones)
+
+  // (re)crea el mundo: size = celdas por lado (multiplo de 8), radius = radio del planeta en celdas
+  function configure(size, radius) {
+    const same = size === W;
+    W = H = size; CW = W / CH; TW = W >> 3;
+    R = Math.max(MINR, Math.min(Math.round(radius), (W >> 1) - 4));
+    if (!same) {
+      bits = new Uint8Array((W * H) >> 3);
+      dirty = new Uint8Array(CW * CW);
+      dirtyList = new Int32Array(CW * CW);
+    } else bits.fill(0);
+    dirty.fill(0); dirtyN = 0;
+    PCX = W / 2; PCY = H / 2;
+    pc.x = PCX * C; pc.y = PCY * C;
+    for (let y = PCY - R; y < PCY + R; y++) {          // planeta: celdas cuyo centro cae dentro del circulo
+      const dy = y + 0.5 - PCY, w = Math.sqrt(R * R - dy * dy);
+      const x0 = Math.ceil(PCX - 0.5 - w), x1 = Math.floor(PCX - 0.5 + w);
+      if (x1 >= x0) fillRow(y, x0, x1);
+    }
+    dirty.fill(0); dirtyN = 0;                         // la subida completa de la textura se hace aparte
+    P.x = pc.x; P.y = pc.y - R * C - 120;
+    VX = VY = 0; grounded = false; ux = 0; uy = -1; rx = 1; ry = 0; vis = 0;
+  }
+
+  // puntos de colision: perimetro + cruz central, separados <= 1 celda
+  const lxs = [], lys = [];
+  const nxs = Math.ceil(2 * PW / C), nys = Math.ceil(2 * PH / C);
+  for (let i = 0; i <= nxs; i++) { const l = -PW + i * 2 * PW / nxs; lxs.push(l, l); lys.push(PH, -PH); }
+  for (let j = 1; j < nys; j++) { const l = -PH + j * 2 * PH / nys; lxs.push(-PW, PW); lys.push(l, l); }
+  for (let j = 1; j < nys; j++) { lxs.push(0); lys.push(-PH + j * 2 * PH / nys); }
+  for (let i = 1; i < nxs; i++) { lxs.push(-PW + i * 2 * PW / nxs); lys.push(0); }
+  const NP = lxs.length, LX = new Float32Array(lxs), LY = new Float32Array(lys);
+
+  function hit(x, y) {
+    for (let i = 0; i < NP; i++) {
+      const wx = x + rx * LX[i] + ux * LY[i], wy = y + ry * LX[i] + uy * LY[i];
+      const cx = Math.floor(wx * INV), cy = Math.floor(wy * INV);
+      if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
+      const k = cy * W + cx;
+      if ((bits[k >> 3] >> (k & 7)) & 1) return true;
+    }
+    return false;
+  }
+
+  const inp = { l: 0, r: 0, j: 0 };
+
+  function step(dt) {
+    const dx = P.x - pc.x, dy = P.y - pc.y, d = Math.hypot(dx, dy);
+    if (d > 1) { ux = dx / d; uy = dy / d; }   // arriba = alejarse del centro
+    rx = -uy; ry = ux;                          // derecha local
+
+    // si quedo adentro (dibujaron encima), empujar hacia arriba
+    for (let k = 0; k < 120 && hit(P.x, P.y); k++) { P.x += ux * 2; P.y += uy * 2; }
+
+    let vr = VX * rx + VY * ry;
+    let vu = VX * ux + VY * uy;
+
+    vu -= G * dt;                               // gravedad hacia el centro
+    const mv = inp.r - inp.l;
+    if (mv) facing = mv;
+    const tg = mv * SPEED;
+    if (grounded) vr = tg; else vr += (tg - vr) * Math.min(1, 5 * dt);
+    if (inp.j && grounded) { vu = JUMP; grounded = false; }
+    if (vu < -VMAX) vu = -VMAX;
+
+    const wasG = grounded;
+    const n = Math.max(1, Math.ceil(Math.max(Math.abs(vu), Math.abs(vr)) * dt / 3));
+    const sdt = dt / n;
+    for (let i = 0; i < n; i++) {
+      // eje vertical
+      let nx = P.x + ux * vu * sdt, ny = P.y + uy * vu * sdt;
+      if (!hit(nx, ny)) { P.x = nx; P.y = ny; } else vu = 0;
+      // eje horizontal, con escalon
+      nx = P.x + rx * vr * sdt; ny = P.y + ry * vr * sdt;
+      if (!hit(nx, ny)) { P.x = nx; P.y = ny; }
+      else {
+        let ok = false;
+        if (wasG) {
+          for (let s = 2; s <= STEP; s += 2) {
+            if (!hit(nx + ux * s, ny + uy * s)) { P.x = nx + ux * s; P.y = ny + uy * s; vis -= s; ok = true; break; }
+          }
+        }
+        if (!ok) vr = 0;
+      }
+    }
+
+    // suelo; si veniamos pisando y el piso bajo, "pegarse" al escalon de abajo
+    let g = vu <= 0.01 && hit(P.x - ux * 3, P.y - uy * 3);
+    if (!g && wasG && vu <= 0.01) {
+      for (let s = 1; s <= STEP; s++) {
+        if (hit(P.x - ux * (s + 1), P.y - uy * (s + 1))) { P.x -= ux * s; P.y -= uy * s; vis += s; vu = 0; g = true; break; }
+      }
+    }
+    grounded = g;
+    VX = rx * vr + ux * vu;
+    VY = ry * vr + uy * vu;
+    vis *= Math.exp(-dt * 16);
+  }
+  /*PHYS-END*/
+
+  // ---------- parametros iniciales (?grid=2048&r=600) ----------
+  const SIZES = [256, 512, 1024, 2048, 4096];
+  const qs = new URLSearchParams(location.search);
+  let size0 = +qs.get('grid'); if (!SIZES.includes(size0)) size0 = 1024;
+  let r0 = +qs.get('r'); if (!(r0 > 0)) r0 = 400;
+  let genMs = 0;
+  { const t0 = performance.now(); configure(size0, r0); genMs = performance.now() - t0; }
+
+  // ============ pixi ============
+  const app = new PIXI.Application();
+  await app.init({
+    preference: 'webgl', resizeTo: window, background: '#070b17', antialias: false,
+    resolution: Math.min(window.devicePixelRatio || 1, 2), autoDensity: true
+  });
+  document.body.insertBefore(app.canvas, document.body.firstChild);
+  const gl = app.renderer.gl;
+
+  const main = new PIXI.Container();   // camara: se mueve y rota este container
+  const world = new PIXI.Container();
+  main.addChild(world);
+  app.stage.addChild(main);
+
+  const vertex = `#version 300 es
+precision highp float;
+in vec2 aPosition;
+uniform mat3 uProjectionMatrix;
+uniform mat3 uWorldTransformMatrix;
+uniform mat3 uTransformMatrix;
+out vec2 vWorld;
+void main() {
+  mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
+  gl_Position = vec4((mvp * vec3(aPosition, 1.0)).xy, 0.0, 1.0);
+  vWorld = aPosition;
+}`;
+
+  // marching squares en el fragment shader: cada pixel cae en un cuadrado formado por 4 centros
+  // de celda; se evalua la distancia con signo al contorno y se usa para el antialias.
+  // Las constantes de tamano se inyectan al compilar (cambiar la grilla recompila).
+  function makeFragment() {
+    return `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+in vec2 vWorld;
+out vec4 finalColor;
+uniform sampler2D uGrid;
+
+const float CELL = ${C}.0;
+const int GW = ${W};
+const vec2 PC = vec2(${PCX}.0, ${PCY}.0);
+const float PR = ${R}.0;
+const float K = 0.70710678;
+
+int cell(ivec2 p) {
+  if (p.x < 0 || p.y < 0 || p.x >= GW || p.y >= GW) return 0;
+  int b = int(texelFetch(uGrid, ivec2(p.x >> 3, p.y), 0).r * 255.0 + 0.5);
+  return (b >> (p.x & 7)) & 1;
+}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+void main() {
+  vec2 cp = vWorld / CELL;                       // coordenadas en celdas
+  float cpp = max(length(dFdx(cp)), 1e-6);       // celdas por pixel de pantalla
+
+  vec2 q = cp - 0.5;                             // esquinas = centros de celda
+  ivec2 b0 = ivec2(floor(q));
+  vec2 f = q - vec2(b0);
+  int a = cell(b0);
+  int b = cell(b0 + ivec2(1, 0));
+  int c = cell(b0 + ivec2(0, 1));
+  int d = cell(b0 + ivec2(1, 1));
+  int n = a + b + c + d;
+
+  float s;                                       // distancia con signo al contorno (celdas), + adentro
+  if (n == 0) s = -1.0;
+  else if (n == 4) s = 1.0;
+  else if (n == 1) {
+    float t = a == 1 ? f.x + f.y : b == 1 ? (1.0 - f.x) + f.y : c == 1 ? f.x + (1.0 - f.y) : (1.0 - f.x) + (1.0 - f.y);
+    s = (0.5 - t) * K;
+  } else if (n == 3) {
+    float t = a == 0 ? f.x + f.y : b == 0 ? (1.0 - f.x) + f.y : c == 0 ? f.x + (1.0 - f.y) : (1.0 - f.x) + (1.0 - f.y);
+    s = (t - 0.5) * K;
+  } else if (a == b) {                           // n == 2, par horizontal
+    s = a == 1 ? 0.5 - f.y : f.y - 0.5;
+  } else if (a == c) {                           // n == 2, par vertical
+    s = a == 1 ? 0.5 - f.x : f.x - 0.5;
+  } else {                                       // n == 2, diagonal (se conecta)
+    float t1 = a == 1 ? (1.0 - f.x) + f.y : f.x + f.y;
+    float t2 = a == 1 ? f.x + (1.0 - f.y) : (1.0 - f.x) + (1.0 - f.y);
+    s = min(t1 - 0.5, t2 - 0.5) * K;
+  }
+
+  float ep = s / cpp;                            // distancia al borde en pixeles
+  float alpha = clamp(ep + 0.5, 0.0, 1.0);
+  if (alpha <= 0.0) discard;
+
+  vec2 id = floor(cp);
+  float nz = hash(id);
+  float depth = PR - length(id + 0.5 - PC) + (nz - 0.5) * 3.0;
+  vec3 col = depth < 5.0 ? vec3(0.42, 0.62, 0.28) : (depth < 26.0 ? vec3(0.48, 0.34, 0.21) : vec3(0.40, 0.42, 0.47));
+  col *= 0.9 + 0.1 * nz;
+  col *= mix(0.68, 1.0, smoothstep(0.0, 2.5, ep));
+  finalColor = vec4(col * alpha, alpha);
+}`;
+  }
+
+  let frames = 0, readyFrame = 3;
+  let terrain = null, gridSource = null;
+  // textura R8 de TW x H sobre el MISMO Uint8Array del bitgrid + un Mesh que cubre el mundo
+  function buildTerrain() {
+    try {
+      if (terrain) {
+        const geo = terrain.geometry, sh = terrain.shader;
+        world.removeChild(terrain); terrain.destroy();
+        geo.destroy(); sh.destroy();
+      }
+      if (gridSource) gridSource.destroy();
+    } catch (e) { /* limpieza best-effort */ }
+    gridSource = new PIXI.BufferImageSource({
+      resource: bits, width: TW, height: H, format: 'r8unorm', scaleMode: 'nearest'
+    });
+    const shader = new PIXI.Shader({
+      glProgram: PIXI.GlProgram.from({ vertex, fragment: makeFragment() }),
+      resources: { uGrid: gridSource, uSampler: gridSource.style }
+    });
+    const WP = W * C;
+    terrain = new PIXI.Mesh({
+      geometry: new PIXI.Geometry({
+        attributes: { aPosition: [0, 0, WP, 0, WP, WP, 0, WP] },
+        indexBuffer: [0, 1, 2, 0, 2, 3]
+      }),
+      shader
+    });
+    world.addChildAt(terrain, 0);
+    readyFrame = frames + 3;
+  }
+  buildTerrain();
+
+  // personaje
+  const pg = new PIXI.Graphics();
+  pg.rect(-PW, -PH, PW * 2, PH * 2).fill(0xffcc33);
+  pg.rect(-PW, PH - 8, PW * 2, 8).fill(0xd9a21f);
+  pg.rect(2, -PH + 8, 9, 8).fill(0x1b1b1b);
+  world.addChild(pg);
+
+  // subida a la GPU: solo el rectangulo que cubren los chunks sucios (cada chunk = 1 texel x 8 filas)
+  let lastUp = '-';
+  function flushGrid() {
+    if (!dirtyN) return;
+    let x0 = CW, y0 = CW, x1 = -1, y1 = -1;
+    for (let i = 0; i < dirtyN; i++) {
+      const ci = dirtyList[i];
+      dirty[ci] = 0;
+      const cx = ci % CW, cy = (ci / CW) | 0;
+      if (cx < x0) x0 = cx; if (cx > x1) x1 = cx;
+      if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
+    }
+    const nChunks = dirtyN;
+    dirtyN = 0;
+    const tx = x0, ty = y0 * CH, tw = x1 - x0 + 1, th = (y1 - y0 + 1) * CH;
+    let done = false;
+    if (frames >= readyFrame) {                  // despues de la 1ra subida completa de Pixi
+      try {
+        const gs = app.renderer.texture.getGlSource(gridSource);
+        if (gs && gs.texture) {
+          const prev = gl.getParameter(gl.TEXTURE_BINDING_2D);
+          gl.bindTexture(gl.TEXTURE_2D, gs.texture);
+          gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+          gl.pixelStorei(gl.UNPACK_ROW_LENGTH, TW);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, tx, ty, tw, th, gl.RED, gl.UNSIGNED_BYTE, bits, ty * TW + tx);
+          gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+          gl.bindTexture(gl.TEXTURE_2D, prev);
+          done = true;
+        }
+      } catch (e) { done = false; }
+    }
+    if (!done) gridSource.update();              // plan B: subida completa
+    lastUp = `${nChunks} chunks · ${tw}x${th} texels${done ? '' : ' (full)'}`;
+  }
+
+  // ============ monitor ============
+  const HIST = 160;
+  const mk = () => ({ v: 0, ema: 0, wmax: 0, max: 0, h: new Float32Array(HIST) });
+  const S = { frame: mk(), step: mk(), edit: mk(), render: mk(), gpu: mk(), ns: mk() };
+  const rec = (s, v) => { s.v = v; s.ema += (v - s.ema) * 0.08; if (v > s.wmax) s.wmax = v; };
+  let hi = 0;
+
+  // render_ms: tiempo de CPU de renderer.render (recorre el scene graph y manda los comandos GL)
+  const rr = app.renderer, origRender = rr.render.bind(rr);
+  const gpuExt = (() => { try { return gl.getExtension('EXT_disjoint_timer_query_webgl2'); } catch (e) { return null; } })();
+  const gpuQ = [];
+  rr.render = function (...args) {
+    const t0 = performance.now();
+    let q = null;
+    if (gpuExt) { try { q = gl.createQuery(); gl.beginQuery(gpuExt.TIME_ELAPSED_EXT, q); } catch (e) { q = null; } }
+    origRender(...args);
+    if (q) { try { gl.endQuery(gpuExt.TIME_ELAPSED_EXT); gpuQ.push(q); } catch (e) { /* nada */ } }
+    rec(S.render, performance.now() - t0);
+  };
+  // gpu_ms: tiempo real en la GPU, solo si el navegador expone EXT_disjoint_timer_query_webgl2
+  function pollGpu() {
+    while (gpuQ.length) {
+      const q = gpuQ[0];
+      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+      if (!gl.getParameter(gpuExt.GPU_DISJOINT_EXT)) rec(S.gpu, gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6);
+      gl.deleteQuery(q); gpuQ.shift();
+    }
+    while (gpuQ.length > 6) gl.deleteQuery(gpuQ.shift());
+  }
+
+  const panel = document.getElementById('panel'), mon = document.getElementById('mon');
+  const graph = document.getElementById('graph'), gctx = graph.getContext('2d');
+  const SERIES = [['frame', '#8899aa'], ['step', '#5fd35f'], ['render', '#ffa13d'], ['edit', '#5aa9ff'], ['gpu', '#e06bff']];
+
+  function drawGraph() {
+    const w = graph.width, h = graph.height;
+    gctx.clearRect(0, 0, w, h);
+    let mx = 20;
+    for (const [k] of SERIES) { if (k === 'gpu' && !gpuExt) continue; for (let i = 0; i < HIST; i++) if (S[k].h[i] > mx) mx = S[k].h[i]; }
+    mx *= 1.1;
+    gctx.strokeStyle = 'rgba(255,255,255,.25)'; gctx.setLineDash([6, 6]); gctx.lineWidth = 1;
+    const y60 = h - 16.67 / mx * h;
+    gctx.beginPath(); gctx.moveTo(0, y60); gctx.lineTo(w, y60); gctx.stroke(); gctx.setLineDash([]);
+    gctx.lineWidth = 2;
+    for (const [k, col] of SERIES) {
+      if (k === 'gpu' && !gpuExt) continue;
+      gctx.strokeStyle = col; gctx.beginPath();
+      for (let i = 0; i < HIST; i++) {
+        const v = S[k].h[(hi + i) % HIST], x = i / (HIST - 1) * w, y = h - Math.min(v / mx, 1) * h;
+        if (i) gctx.lineTo(x, y); else gctx.moveTo(x, y);
+      }
+      gctx.stroke();
+    }
+    gctx.fillStyle = 'rgba(255,255,255,.6)'; gctx.font = '20px monospace';
+    gctx.fillText(mx.toFixed(0) + ' ms  (linea: 60 fps)', 6, 20);
+  }
+
+  const f2 = v => v.toFixed(2);
+  function refreshMon() {
+    for (const k in S) { S[k].max = S[k].wmax; S[k].wmax = 0; }
+    const fps = S.frame.ema > 0 ? 1000 / S.frame.ema : 0;
+    dbg.textContent = `${fps.toFixed(0)} fps · step ${f2(S.step.ema)}ms · edit ${f2(S.edit.ema)}ms · render ${f2(S.render.ema)}ms` +
+      (gpuExt ? ` · gpu ${f2(S.gpu.ema)}ms` : '') + ` · ${grounded ? 'suelo' : 'aire'}`;
+    if (panel.hidden) return;
+    const c = k => SERIES.find(s => s[0] === k)[1];
+    mon.innerHTML =
+      `<span style="color:${c('frame')}">frame_ms </span>${f2(S.frame.ema)} · ${fps.toFixed(0)} fps (max ${f2(S.frame.max)})\n` +
+      `<span style="color:${c('step')}">step_ms  </span>${f2(S.step.ema)} por paso fisico · ${S.ns.ema.toFixed(1)} pasos/frame (max ${f2(S.step.max)})\n` +
+      `<span style="color:${c('edit')}">edit_ms  </span>${f2(S.edit.ema)} dibujo + subida (max ${f2(S.edit.max)})\n` +
+      `<span style="color:${c('render')}">render_ms</span> ${f2(S.render.ema)} CPU (max ${f2(S.render.max)})\n` +
+      `<span style="color:${c('gpu')}">gpu_ms   </span>${gpuExt ? f2(S.gpu.ema) + ' (max ' + f2(S.gpu.max) + ')' : 'no disponible en este navegador'}\n` +
+      `subida: ${lastUp}`;
+    drawGraph();
+  }
+
+  // ============ knobs ============
+  const kgrid = document.getElementById('kgrid'), kr = document.getElementById('kr'), krv = document.getElementById('krv');
+  function syncPanel() {
+    kgrid.value = String(W);
+    kr.max = (W >> 1) - 4; kr.value = R; krv.textContent = R;
+    document.getElementById('kgridinfo').textContent =
+      `${W}x${W} = ${(W * W / 1e6).toFixed(2)} M celdas · bits ${(W * W / 8 / 1024).toFixed(0)} KB · mundo ${W * C} px`;
+    document.getElementById('krinfo').textContent =
+      `diametro ${2 * R} celdas (${2 * R * C} px) · ultima generacion ${genMs.toFixed(1)} ms`;
+  }
+  function applyConfig(size, radius) {
+    const t0 = performance.now();
+    configure(size, radius);
+    genMs = performance.now() - t0;
+    buildTerrain();                              // nueva textura + shader (el tamano y el radio van como constantes)
+    cam = -Math.PI / 2 - Math.atan2(uy, ux); camPX = P.x; camPY = P.y;
+    lastUp = '-';
+    syncPanel();
+    try { history.replaceState(null, '', `?grid=${W}&r=${R}`); } catch (e) { /* file:// */ }
+  }
+  document.getElementById('gear').addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) refreshMon(); });
+  kgrid.addEventListener('change', () => applyConfig(+kgrid.value, R));
+  kr.addEventListener('input', () => { krv.textContent = kr.value; });
+  kr.addEventListener('change', () => applyConfig(W, +kr.value));
+
+  // ============ input ============
+  const keys = { ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r', ' ': 'j', ArrowUp: 'j', w: 'j', W: 'j' };
+  addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('#panel')) return;
+    if (keys[e.key]) { inp[keys[e.key]] = 1; e.preventDefault(); }
+    if (e.key === 'e' || e.key === 'E') toggleTool();
+    if (e.key === '[') setBrush(bi - 1);
+    if (e.key === ']') setBrush(bi + 1);
+  });
+  addEventListener('keyup', e => { if (keys[e.key]) inp[keys[e.key]] = 0; });
+  addEventListener('contextmenu', e => e.preventDefault());
+
+  function hold(id, k) {
+    const el = document.getElementById(id);
+    const on = e => { e.preventDefault(); el.setPointerCapture(e.pointerId); inp[k] = 1; el.classList.add('on'); };
+    const off = () => { inp[k] = 0; el.classList.remove('on'); };
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointercancel', off);
+    el.addEventListener('lostpointercapture', off);
+  }
+  hold('bl', 'l'); hold('br', 'r'); hold('bj', 'j');
+
+  const BRUSHES = [1, 2, 3, 5, 8, 12, 18, 26];
+  let tool = 1, bi = 3, zoom = 1.5;
+  const toolBtn = document.getElementById('tool');
+  function toggleTool() { tool = tool ? 0 : 1; toolBtn.textContent = tool ? '✏️ Llenar' : '🧽 Vaciar'; }
+  function setBrush(i) { bi = Math.max(0, Math.min(BRUSHES.length - 1, i)); document.getElementById('bs').textContent = BRUSHES[bi]; }
+  function setZoom(z) { zoom = Math.max(0.1, Math.min(5, z)); }
+  const tap = (id, f) => document.getElementById(id).addEventListener('click', f);
+  tap('tool', toggleTool);
+  tap('bm', () => setBrush(bi - 1)); tap('bp', () => setBrush(bi + 1));
+  tap('zm', () => setZoom(zoom / 1.25)); tap('zp', () => setZoom(zoom * 1.25));
+  addEventListener('wheel', e => {
+    if (e.target.closest && e.target.closest('#panel')) return;
+    setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+  }, { passive: true });
+
+  // dibujo con puntero (un dedo / mouse)
+  const draw = { id: null, sx: 0, sy: 0, val: 1, lx: 0, ly: 0, has: false };
+  const cv = app.canvas;
+  cv.addEventListener('pointerdown', e => {
+    if (draw.id !== null) return;
+    draw.id = e.pointerId; draw.sx = e.clientX; draw.sy = e.clientY;
+    draw.val = (e.button === 2) ? (tool ? 0 : 1) : tool;
+    draw.has = false;
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('pointermove', e => {
+    if (e.pointerId === draw.id) { draw.sx = e.clientX; draw.sy = e.clientY; }
+  });
+  const endDraw = e => { if (e.pointerId === draw.id) { draw.id = null; draw.has = false; } };
+  cv.addEventListener('pointerup', endDraw);
+  cv.addEventListener('pointercancel', endDraw);
+
+  function brush(cx, cy, v) {
+    const r = BRUSHES[bi], lim = r * r + r;
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++)
+        if (dx * dx + dy * dy <= lim) set(cx + dx, cy + dy, v);
+  }
+  function line(x0, y0, x1, y1, v) {
+    const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (;;) {
+      brush(x0, y0, v);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  // ============ camara ============
+  let cam = 0, camX = 0, camY = 0, camPX = P.x, camPY = P.y;
+  function screenToCell(sx, sy, out) {
+    const s = 1 / zoom, c = Math.cos(-cam), n = Math.sin(-cam);
+    const ax = (sx - camX) * s, ay = (sy - camY) * s;
+    out.x = Math.floor((camPX + ax * c - ay * n) * INV);
+    out.y = Math.floor((camPY + ax * n + ay * c) * INV);
+  }
+
+  syncPanel();
+
+  // ============ loop ============
+  const cellTmp = { x: 0, y: 0 };
+  let acc = 0, lastT = performance.now(), monT = 0;
+  app.ticker.add(() => {
+    const now = performance.now();
+    const fdt = now - lastT; lastT = now;
+    rec(S.frame, fdt);
+    frames++;
+    if (gpuExt) pollGpu();
+    const frame = Math.min(0.05, fdt / 1000);
+
+    // fisica (pasos fijos de 1/60 s)
+    const ts = performance.now();
+    acc += frame;
+    let ns = 0;
+    while (acc >= 1 / 60) { step(1 / 60); acc -= 1 / 60; ns++; }
+    if (ns) rec(S.step, (performance.now() - ts) / ns);
+    rec(S.ns, ns);
+
+    // posicion visual (con suavizado de escalones)
+    camPX = P.x + ux * vis; camPY = P.y + uy * vis;
+
+    // camara: el planeta gira para que "arriba" quede arriba
+    const a = Math.atan2(uy, ux);
+    const target = -Math.PI / 2 - a;
+    const diff = ((target - cam + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    cam += diff * (1 - Math.exp(-frame * 12));
+    camX = app.screen.width / 2; camY = app.screen.height * 0.68;
+    main.pivot.set(camPX, camPY);
+    main.position.set(camX, camY);
+    main.rotation = cam;
+    main.scale.set(zoom);
+
+    pg.position.set(camPX, camPY);
+    pg.rotation = a + Math.PI / 2;
+    pg.scale.x = facing;
+
+    // dibujar (cada frame: la camara se mueve aunque el dedo no) + subir lo sucio
+    const te = performance.now();
+    if (draw.id !== null) {
+      screenToCell(draw.sx, draw.sy, cellTmp);
+      if (draw.has) line(draw.lx, draw.ly, cellTmp.x, cellTmp.y, draw.val);
+      else brush(cellTmp.x, cellTmp.y, draw.val);
+      draw.lx = cellTmp.x; draw.ly = cellTmp.y; draw.has = true;
+    }
+    flushGrid();
+    rec(S.edit, performance.now() - te);
+
+    for (const k in S) S[k].h[hi] = S[k].v;
+    hi = (hi + 1) % HIST;
+    if (now - monT > 250) { monT = now; refreshMon(); }
+  });
+})();
+</script>
+</body>
+</html>
