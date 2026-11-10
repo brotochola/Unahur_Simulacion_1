@@ -190,7 +190,7 @@ p code,li code,td code{white-space:nowrap}
 <body>
 <main>
   <h1>La cola de eventos</h1>
-  <p class="lead">El loop de un simulador de eventos discretos hace siempre lo mismo: <strong>sacar el evento más próximo</strong> y agendar otros. Con 10 eventos cualquier lista sirve. En el simulador del pueblo hay miles agendados a la vez, y en un juego con física por eventos (capítulo 7) puede haber cientos de miles. Ahí la estructura de datos lo decide todo.</p>
+  <p class="lead">El loop de un simulador de eventos discretos hace siempre lo mismo: <strong>sacar el evento más próximo</strong> y agendar otros. Con 10 eventos cualquier lista sirve. En el <strong>Simulador de Comunidad 3000 AC</strong> de la carpeta de la unidad (una aldea prehistórica donde cada persona come, trabaja, se hace amiga de otras y forma pareja, todo manejado con eventos; lo vemos en el capítulo 7) hay miles agendados a la vez, y en un juego con física por eventos (capítulo 7) puede haber cientos de miles. Ahí la estructura de datos lo decide todo.</p>
 
   <h2>Tres candidatos</h2>
   <div style="overflow-x:auto"><table>
@@ -273,13 +273,14 @@ p code,li code,td code{white-space:nowrap}
 
   <h2>Empates: el detalle que rompe la reproducibilidad</h2>
   <div class="prose">
-    <p>¿Qué pasa si dos eventos tienen el mismo tiempo? Un heap <strong>no es estable</strong>: entre iguales, el orden de salida depende de cómo quedó armado el árbol, no del orden en que se agendaron. En un juego por turnos eso puede decidir quién actúa primero, y si cambia entre corridas, ya no podés reproducir un bug ni un replay. La solución es un contador de secuencia como segundo criterio. El simulador del pueblo lo hace así:</p>
+    <p>¿Qué pasa si dos eventos tienen el mismo tiempo? Un heap <strong>no es estable</strong>: entre iguales, el orden de salida depende de cómo quedó armado el árbol, no del orden en que se agendaron. En un juego por turnos eso puede decidir quién actúa primero, y si cambia entre corridas, ya no podés reproducir un bug ni un replay. La solución es un contador de secuencia como segundo criterio. Así lo hace el <strong>Simulador de Comunidad 3000 AC</strong> (carpeta <code style="white-space:normal">Discrete_event_sim/simulador de historia de pueblo</code>, archivo <code>src/Simulation.js</code>):</p>
   </div>
   <pre><code>this.eventQueue = new MinHeap((a, b) => {
   const d = a.time - b.time;
   return d !== 0 ? d : a.seq - b.seq;     // a igual tiempo, el que se agendó primero
 });
 scheduleEvent(ev) { ev.seq = this._eventSeq++; this.eventQueue.push(ev); }</code></pre>
+  <a class="demo" href="../Discrete_event_sim/simulador%20de%20historia%20de%20pueblo/index.html"><span class="ico">↗</span><span><b>Simulador de Comunidad 3000 AC</b><span>El simulador de aldea de la carpeta: personas, acciones, relaciones y una lista de "próximos eventos" que sale de este mismo MinHeap.</span></span></a>
   <div class="rig">
     <div class="rig-title">Diez eventos agendados en orden A…J <span class="muted">· todos con tiempo 10, mezclados con otros eventos</span></div>
     <div class="controls" id="tiectl"></div>
