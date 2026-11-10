@@ -190,7 +190,7 @@ p code,li code,td code{white-space:nowrap}
 <body>
 <main>
   <h1>Azar con forma</h1>
-  <p class="lead"><code>Math.random()</code> devuelve un número entre 0 y 1 donde todos los valores son igual de probables: una distribución <strong>uniforme</strong>. Casi nada en un juego es uniforme. El tiempo entre enemigos, la dispersión de una escopeta y la suma de dos dados tienen otra forma. Este capítulo trata de cómo fabricar esas formas a partir de la uniforme.</p>
+  <p class="lead"><code>Math.random()</code> devuelve un número entre 0 y 1, y cualquier valor tiene la misma chance de salir. Pero en un juego casi nada funciona así: la altura de los NPCs se junta alrededor de un promedio, el tiempo entre enemigos suele ser corto y a veces muy largo, la suma de dos dados da 7 mucho más que 2. Este capítulo trata de cómo describir esas "formas" del azar y cómo fabricarlas a partir de <code>Math.random()</code>.</p>
 
   <h2>Pseudoaleatorio: azar que se puede repetir</h2>
   <div class="prose">
@@ -222,52 +222,129 @@ rnd(); rnd(); rnd();   // siempre los mismos tres números</code></pre>
   </div>
   <div class="warn"><strong>Una semilla por sistema.</strong> Si el loot y la generación del mapa comparten el mismo generador, agregar una tirada de loot cambia el mapa. Lo prolijo es tener un generador para cada cosa (<code>rngMapa</code>, <code>rngLoot</code>, <code>rngIA</code>), todos derivados de la semilla principal.</div>
 
+  <h2>¿Qué es una distribución?</h2>
+  <div class="prose">
+    <p>Pedile a un generador 10.000 números y anotalos. Cada número por separado es impredecible, pero el conjunto no: hay valores que salen muy seguido y otros que casi nunca. La <strong>distribución</strong> es justamente eso: la descripción de <em>qué valores salen y con qué frecuencia</em>. No te dice qué va a salir en la próxima tirada; te dice cómo se ven muchas tiradas juntas.</p>
+    <p>La forma más fácil de verla es un <strong>histograma</strong>: se divide el rango de valores en franjas, se cuenta cuántos números cayeron en cada franja y se dibuja una barra con esa cantidad. Barra alta = valores que salen seguido.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Fábrica de histogramas <span class="muted">· elegí un generador y tirá · cada bolita cae en la franja de su valor</span></div>
+    <div class="screen"><canvas id="cvfab" style="height:330px"></canvas><span class="tag" id="fabtag"></span></div>
+    <div class="controls" id="fabgen"></div>
+    <div class="controls" id="fabctl"></div>
+    <div id="fabst"></div>
+  </div>
+  <div class="prose">
+    <p>Cosas para probar en clase:</p>
+    <ul>
+      <li><strong>Un dado</strong>: con pocas tiradas las barras salen desparejas; con miles, quedan todas iguales. Esa forma plana se llama <strong>uniforme</strong>: todos los valores con la misma chance. <code>Math.random()</code> también es uniforme, entre 0 y 1.</li>
+      <li><strong>Dos dados sumados</strong>: el 7 sale seis veces más que el 2. No es que los dados "prefieran" el 7: hay 6 combinaciones que suman 7 (1+6, 2+5, 3+4, 4+3, 5+2, 6+1) y una sola que suma 2 (1+1).</li>
+      <li><strong>Espera exponencial</strong> y <strong>normal</strong>: las dos formas que más vamos a usar. Las explicamos más abajo.</li>
+    </ul>
+    <p>Con pocas tiradas el histograma es ruidoso. Con muchas se estabiliza en una forma que ya no cambia: esa forma límite es la distribución.</p>
+  </div>
+
+  <h3>Dos números que resumen una distribución</h3>
+  <ul class="prose">
+    <li><strong>Media</strong> (el promedio): dónde está el centro. Se suman todos los valores y se divide por la cantidad. En el histograma de arriba es la línea vertical.</li>
+    <li><strong>Desvío estándar</strong>: cuánto se desparraman los valores alrededor de la media. Es, más o menos, la <em>distancia típica</em> entre un valor y el promedio. Desvío chico: casi todos cerca de la media. Desvío grande: valores muy desparramados. En el histograma es la franja sombreada, que va de media − desvío a media + desvío.</li>
+  </ul>
+  <pre><code>const media  = xs.reduce((a, x) => a + x, 0) / xs.length;
+// para cada valor: cuánto se aleja de la media, al cuadrado (así no se cancelan + y −);
+// se promedia y se saca la raíz para volver a las unidades originales
+const desvio = Math.sqrt(xs.reduce((a, x) => a + (x - media) ** 2, 0) / xs.length);
+// (el desvío al cuadrado se llama "varianza"; aparece en algunas fórmulas)</code></pre>
+  <div class="prose">
+    <p>Dos dados sumados tienen media 7 y desvío 2,4: la mayoría de las tiradas cae entre 4,6 y 9,4. Un dado solo tiene media 3,5 y desvío 1,7.</p>
+  </div>
+
+  <h3>Las tres distribuciones de hoy</h3>
+  <table>
+    <tr><th>Nombre</th><th>Forma</th><th>Qué describe</th><th>En un juego</th></tr>
+    <tr><td><strong>Uniforme</strong></td><td>Plana: todas las barras iguales.</td><td>Cualquier valor del rango tiene la misma chance.</td><td><code>Math.random()</code>, elegir una carta, una posición al azar.</td></tr>
+    <tr><td><strong>Normal</strong></td><td>Campana simétrica.</td><td>Valores que se juntan alrededor de un promedio; los extremos son raros.</td><td>Altura de NPCs, puntería, variación del daño.</td></tr>
+    <tr><td><strong>Exponencial</strong></td><td>Alta en 0 y cae rápido, con una cola larga.</td><td>Cuánto hay que esperar hasta que pase algo que ocurre al azar.</td><td>Tiempo entre spawns, llegada de clientes, eventos aleatorios.</td></tr>
+  </table>
+
+  <h2>La normal (campana de Gauss)</h2>
+  <div class="prose">
+    <p>La <strong>normal</strong> es la distribución con forma de campana: la mayoría de los valores cerca del promedio, cada vez menos a medida que te alejás, y simétrica para los dos lados. Toda normal queda definida con solo dos números: la <strong>media</strong> (dónde está el pico) y el <strong>desvío</strong> (qué tan ancha es la campana). Y cualquier normal cumple siempre la misma regla:</p>
+  </div>
+  <div class="formula">68% a menos de 1 desvío · 95% a menos de 2 · 99,7% a menos de 3 <small>&nbsp;// la regla 68-95-99,7</small></div>
+  <div class="rig">
+    <div class="rig-title">Altura de los NPCs de un pueblo <span class="muted">· normal con la media y el desvío que elijas · abajo, 40 NPCs generados con ella</span></div>
+    <div class="screen"><canvas id="cvbell" style="height:360px"></canvas><span class="tag" id="belltag"></span></div>
+    <div class="controls" id="bellctl"></div>
+  </div>
+  <div class="prose">
+    <p>Con media 170 cm y desvío 8 cm, 2 de cada 3 NPCs miden entre 162 y 178, y uno de cada 370 mide más de 194 o menos de 146. Si las alturas salieran de una uniforme entre 146 y 194, el pueblo tendría tantos gigantes como gente normal.</p>
+  </div>
+
+  <h3>¿Por qué aparece en todos lados? Sumar azar</h3>
+  <div class="prose">
+    <p>La altura de una persona es la suma de muchísimos efectos chicos (genes, alimentación, etc.). El error de un tirador, la suma de varias tiradas de dados, el tiempo total de varias tareas: todo eso son sumas de cosas al azar. Y pasa algo notable: <strong>si sumás varios números al azar, la suma tiene forma de campana</strong>, sin importar la forma de cada uno por separado. Se llama <strong>teorema central del límite</strong>. Con un dado la distribución es plana; con dos, un triángulo; con tres ya parece una campana.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Suma de dados <span class="muted">· 20.000 tiradas por configuración · curva celeste: la normal con la misma media y el mismo desvío</span></div>
+    <div class="screen"><canvas id="cvsum" style="height:280px"></canvas><span class="tag" id="sumtag"></span></div>
+    <div class="controls" id="sumctl"></div>
+  </div>
+
+  <h3>Cómo generar una normal</h3>
+  <div class="prose">
+    <p><code>Math.random()</code> es uniforme, no normal. La forma más simple de conseguir una normal usa lo que acabamos de ver: <strong>sumar 12 uniformes</strong>. Cada uniforme entre 0 y 1 tiene media 0,5, así que la suma tiene media 6; restándole 6 queda centrada en 0. Y con 12 justo da desvío 1 (por eso 12 y no otro número). A esa normal "estándar" (media 0, desvío 1) se la estira y se la corre para tener la media y el desvío que quieras:</p>
+  </div>
+  <pre><code>function normalAprox() {               // media 0, desvío 1 (aproximada)
+  let s = 0;
+  for (let i = 0; i &lt; 12; i++) s += Math.random();
+  return s - 6;
+}
+const altura = 170 + 8 * normalAprox();   // media 170 cm, desvío 8 cm</code></pre>
+  <p class="prose">Es una aproximación: nunca da valores más allá de ±6 desvíos y cuesta 12 llamadas a <code>Math.random()</code>, pero para un juego alcanza. Existe una receta exacta, <strong>Box-Muller</strong>, que vemos al final del capítulo porque usa un truco que todavía no presentamos.</p>
+  <div class="game"><strong>En juegos</strong>
+    Las <strong>stats con 3d6</strong> de Dungeons &amp; Dragons (sumar tres dados) hacen que los valores extremos (3 o 18) sean rarísimos, cosa que un dado de 16 caras no logra. En Catan, el 7 del ladrón sale 1 de cada 6 tiradas porque es la suma más probable de 2d6. Para la altura de NPCs, la puntería de la IA o la variación del daño, una normal se ve más natural que una uniforme: casi todos cerca del promedio y pocos raros.
+  </div>
+
   <h2>De uniforme a cualquier forma: la transformada inversa</h2>
   <div class="prose">
-    <p>Toda distribución tiene una <strong>función de distribución acumulada</strong> F(x): la probabilidad de que salga un valor menor o igual a x. Va de 0 a 1 y siempre sube. Si tirás un uniforme <em>u</em> en el eje vertical y buscás qué x tiene F(x) = u, ese x tiene la distribución que querías. En una fórmula: <code>x = F⁻¹(u)</code>.</p>
-    <p>El caso que más vamos a usar hoy es la <strong>exponencial</strong>: el tiempo entre eventos que ocurren "al azar a un ritmo constante" (clientes que llegan, meteoritos, llamadas). Su acumulada es <code>F(x) = 1 − e^(−x/media)</code>, y despejando:</p>
+    <p>Sumar uniformes da campanas, pero ¿y si querés otra forma, como la exponencial? Hay una técnica general que sirve para cualquier distribución. Antes hace falta una herramienta más.</p>
   </div>
-  <div class="formula">x = −media · ln(1 − u) <small>&nbsp;// u uniforme en [0, 1)</small></div>
+  <h3>La acumulada</h3>
+  <div class="prose">
+    <p>La <strong>función acumulada</strong> F(x) responde una sola pregunta: <em>¿qué fracción de los valores es menor o igual a x?</em> Con un dado, F(2) = 2/6, porque salen 1 o 2 en 2 de cada 6 tiradas, y F(6) = 1, porque siempre sale 6 o menos. Siempre arranca en 0, siempre sube y termina en 1. Donde se juntan muchos valores la acumulada sube empinada; donde hay pocos, sube despacio.</p>
+  </div>
+  <h3>La exponencial</h3>
+  <div class="prose">
+    <p>La <strong>exponencial</strong> describe <em>cuánto hay que esperar</em> hasta que pase algo que ocurre al azar a un ritmo constante: el próximo cliente, el próximo meteorito, la próxima llamada. Su único parámetro es la media, el tiempo de espera promedio. Su acumulada es:</p>
+  </div>
+  <div class="formula">F(x) = 1 − e^(−x / media)</div>
+  <div class="prose">
+    <p>Por ejemplo, con media 10 segundos, F(10) ≈ 0,63: el 63% de las esperas duran <em>menos</em> que el promedio. Suena raro, pero es porque hay muchas esperas cortas y unas pocas muy largas que tiran el promedio para arriba.</p>
+  </div>
+  <h3>La idea: usar la acumulada al revés</h3>
+  <div class="prose">
+    <p>Tirá un uniforme <em>u</em> entre 0 y 1 y buscá el x que tiene F(x) = u. Ese x sale con la distribución que querías. ¿Por qué? Supongamos que la acumulada dice que el 30% de los valores está por debajo de cierto x₃₀. El uniforme <em>u</em> cae por debajo de 0,3 exactamente el 30% de las veces, y en esos casos el x que encontramos queda por debajo de x₃₀. O sea, x cae por debajo de x₃₀ el 30% de las veces, que es lo que pide la distribución. Lo mismo vale para cualquier porcentaje.</p>
+    <p>Para la exponencial se puede despejar x de la fórmula de arriba, y queda una línea de código:</p>
+  </div>
+  <div class="formula">x = −media · ln(1 − u) <small>&nbsp;// u = Math.random()</small></div>
 
   <div class="rig">
-    <div class="rig-title">Transformada inversa, gota a gota <span class="muted">· el uniforme cae en el eje vertical, rebota en la curva y baja al histograma</span></div>
-    <div class="screen"><canvas id="cvinv" style="height:400px"></canvas><span class="tag">F(x) acumulada</span><span class="tag tag-b">histograma de x · curva: densidad teórica</span></div>
+    <div class="rig-title">Transformada inversa, gota a gota <span class="muted">· el uniforme cae en el eje vertical, rebota en la acumulada y baja al histograma</span></div>
+    <div class="screen"><canvas id="cvinv" style="height:400px"></canvas><span class="tag">arriba: la acumulada F(x)</span><span class="tag tag-b">abajo: histograma de los x · curva blanca: la forma ideal</span></div>
     <div class="controls" id="invctl"></div>
     <div id="invstats"></div>
   </div>
-  <p class="prose">Fijate que los <em>u</em> están repartidos parejo en el eje vertical, pero la curva es empinada a la izquierda: muchos u distintos caen en valores chicos de x. Por eso la exponencial tiene muchos intervalos cortos y pocos largos.</p>
+  <p class="prose">Los <em>u</em> están repartidos parejo en el eje vertical, pero la acumulada es empinada a la izquierda, así que muchos <em>u</em> distintos terminan en valores chicos de x. Por eso la exponencial tiene muchas esperas cortas y pocas largas. La curva blanca de abajo (la <strong>densidad</strong>) es la forma a la que tiende el histograma con infinitas muestras.</p>
 
   <div class="game"><strong>En juegos: ¿spawn cada 10 s o "en promedio" cada 10 s?</strong>
     Un enemigo que aparece cada 10 segundos exactos se vuelve predecible: el jugador cuenta. Con esperas exponenciales de media 10 s, el ritmo promedio es el mismo, pero a veces caen dos casi juntos y a veces hay un respiro largo. La exponencial además <strong>no tiene memoria</strong>: haber esperado 8 segundos no hace más probable que el próximo llegue ya. Es el modelo de "cosas que pasan al azar", y es la base del simulador de eventos discretos del capítulo 5.
   </div>
   <a class="demo" href="../poisson.html"><span class="ico">↗</span><span><b>Demo completo: exponencial y ECDF</b><span>La acumulada empírica contra la teórica, los valores ordenados y las dos formas de generar una normal.</span></span></a>
 
-  <h2>La campana: sumar azar</h2>
-  <div class="prose">
-    <p>Si sumás varios números al azar independientes, la suma tiende a tener forma de campana (distribución normal), sin importar la forma de cada uno. Es el <strong>teorema central del límite</strong>. Con un dado la distribución es plana; con dos ya es un triángulo (el 7 es lo más probable); con tres ya parece una campana.</p>
-  </div>
-  <div class="rig">
-    <div class="rig-title">Suma de dados <span class="muted">· 20.000 tiradas por configuración · curva: normal con la misma media y varianza</span></div>
-    <div class="screen"><canvas id="cvsum" style="height:280px"></canvas><span class="tag" id="sumtag"></span></div>
-    <div class="controls" id="sumctl"></div>
-  </div>
-  <div class="prose">
-    <p>De ahí sale un truco viejo para generar una normal: sumar 12 uniformes y restar 6. La forma exacta es <strong>Box-Muller</strong>, que convierte dos uniformes en una normal:</p>
-  </div>
-  <pre><code>function normal(media = 0, desvio = 1) {
-  const u1 = 1 - Math.random(), u2 = Math.random();     // u1 nunca es 0 (log(0) = -∞)
-  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return media + desvio * z;
-}
-// aproximada: (12 uniformes − 6) tiene media 0 y desvío 1
-const zAprox = () => { let s = 0; for (let i = 0; i < 12; i++) s += Math.random(); return s - 6; };</code></pre>
-  <div class="game"><strong>En juegos</strong>
-    Las <strong>stats con 3d6</strong> de Dungeons &amp; Dragons hacen que los valores extremos (3 o 18) sean rarísimos, cosa que un dado de 16 caras no logra. En Catan, el 7 del ladrón sale 1 de cada 6 tiradas porque es la suma más probable de 2d6. Para la altura de NPCs, la puntería de la IA o la variación del daño, una normal se ve más natural que una uniforme: casi todos cerca del promedio y pocos raros.
-  </div>
-
   <h2>Azar en 2D: el error del radio</h2>
   <div class="prose">
-    <p>La dispersión de un disparo: elegir un ángulo al azar y un radio al azar parece razonable, pero amontona los impactos en el centro. Un anillo de radio grande tiene más área que uno chico, así que para que la densidad sea pareja el radio tiene que ser <code>R·√u</code>, no <code>R·u</code>. Es la transformada inversa otra vez: la acumulada del radio en un disco es (r/R)².</p>
+    <p>Querés repartir impactos de escopeta de forma pareja dentro de un círculo de radio R. Lo primero que se le ocurre a cualquiera: ángulo al azar y radio al azar, <code>r = R·u</code>. Pero eso amontona los impactos en el centro. ¿Por qué? Pensá el círculo como anillos. Un anillo cerca del borde es mucho más largo que uno cerca del centro, así que para que todo quede parejo tiene que recibir más impactos. Con <code>R·u</code>, todos los anillos reciben la misma cantidad, y los de adentro, que son chiquitos, quedan saturados.</p>
+    <p>La solución es la transformada inversa otra vez. ¿Qué fracción del círculo está a menos de r del centro? El área πr² dividida por el área total πR², o sea (r/R)². Esa es la acumulada del radio. Igualando a <em>u</em> y despejando sale <code>r = R·√u</code>.</p>
   </div>
   <div class="rig">
     <div class="rig-title">Dispersión de una escopeta <span class="muted">· mismo ángulo al azar, distinto radio</span></div>
@@ -281,7 +358,19 @@ const zAprox = () => { let s = 0; for (let i = 0; i < 12; i++) s += Math.random(
   <pre><code>const ang = Math.random() * 2 * Math.PI;
 const r   = R * Math.sqrt(Math.random());          // parejo en el disco
 const x = cx + r * Math.cos(ang), y = cy + r * Math.sin(ang);</code></pre>
-  <p class="prose">Ninguna de las tres es "la correcta": la del medio es pareja, la normal concentra los impactos sin cortar de golpe en el borde, y la primera hace lo mismo pero por accidente. Lo importante es elegirla a propósito. El siguiente capítulo da un paso más: puntos al azar que además <em>no se pisen</em>.</p>
+
+  <h3>Box-Muller: la normal exacta</h3>
+  <div class="prose">
+    <p>Ahora sí, la receta exacta para la normal. Box-Muller usa el mismo esquema que acabamos de ver: un ángulo al azar y un radio sacado con la transformada inversa. La diferencia es que no busca puntos parejos en un disco, sino puntos que formen una "campana en 2D", como el tercer panel: muchos en el centro y cada vez menos hacia afuera. Para esa campana, la transformada inversa del radio da <code>√(−2·ln u)</code>. Y lo interesante es que la coordenada x de ese punto tiene distribución normal exacta. La y también, así que salen dos normales por el precio de una.</p>
+    <p>No hace falta saber derivar la fórmula para usarla: alcanza con saber que es exacta, rápida y que es la que usan casi todas las bibliotecas.</p>
+  </div>
+  <pre><code>function normal(media = 0, desvio = 1) {
+  const u1 = 1 - Math.random(), u2 = Math.random();   // u1 nunca es 0, porque log(0) = −∞
+  const radio  = Math.sqrt(-2 * Math.log(u1));        // transformada inversa del radio
+  const angulo = 2 * Math.PI * u2;                     // ángulo uniforme
+  return media + desvio * radio * Math.cos(angulo);    // la x del punto (la y sería con sin)
+}</code></pre>
+  <p class="prose">Ninguna de las tres dispersiones es "la correcta": la del medio es pareja, la normal concentra los impactos sin un borde duro, y la primera concentra también, pero por accidente. Lo importante es elegirla a propósito. El siguiente capítulo da un paso más: puntos al azar que además <em>no se pisen</em>.</p>
 </main>
 <script>
 /* ====================================================================
@@ -521,6 +610,79 @@ animate($('#cvseed'), ({ g, w, h: H }) => {
   for (const [i, s] of W.trees) { const x = i * cw, y = W.hs[i] * H; g.fillStyle = '#5c4632'; g.fillRect(x - 1.5, y - 10 * s, 3, 10 * s);
     g.fillStyle = '#6fb873'; g.beginPath(); g.moveTo(x - 7 * s, y - 8 * s); g.lineTo(x + 7 * s, y - 8 * s); g.lineTo(x, y - 26 * s); g.fill(); }
   g.fillStyle = '#5ed0e618'; g.fillRect(0, W.water * H, w, 3);
+});
+
+/* ---------------- 1b. fábrica de histogramas ---------------- */
+const bm = () => { const u1 = 1 - Math.random(), u2 = Math.random(); return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); };
+const GENS = {
+  u: { label: 'Math.random()', lo: 0, hi: 1, bins: 20, f: () => Math.random() },
+  d6: { label: 'Un dado', disc: [1, 6], f: () => 1 + Math.floor(Math.random() * 6) },
+  d2: { label: 'Dos dados sumados', disc: [2, 12], f: () => 2 + Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) },
+  exp: { label: 'Espera exponencial (media 1)', lo: 0, hi: 6, bins: 30, f: () => -Math.log(1 - Math.random()) },
+  n: { label: 'Normal (media 0, desvío 1)', lo: -4, hi: 4, bins: 32, f: bm } };
+const FAB = { g: 'd6', auto: false, acc: 0, rate: 8, showMS: true };
+function fabReset() { const G = GENS[FAB.g]; FAB.nb = G.disc ? G.disc[1] - G.disc[0] + 1 : G.bins; FAB.counts = new Array(FAB.nb).fill(0); FAB.n = 0; FAB.s = 0; FAB.s2 = 0; FAB.balls = []; FAB.last = null; }
+function fabBin(v) { const G = GENS[FAB.g]; return G.disc ? v - G.disc[0] : Math.floor((v - G.lo) / (G.hi - G.lo) * G.bins); }
+function fabThrow(k, anim) { const G = GENS[FAB.g];
+  for (let i = 0; i < k; i++) { const v = G.f(), b = fabBin(v); FAB.n++; FAB.s += v; FAB.s2 += v * v; FAB.last = v;
+    if (anim && FAB.balls.length < 60) FAB.balls.push({ v, b, t: 0 }); else if (b >= 0 && b < FAB.nb) FAB.counts[b]++; } }
+seg('#fabgen', Object.entries(GENS).map(([v, g]) => ({ v, label: g.label })), FAB.g, v => { FAB.g = v; fabReset(); });
+const fabRow = h('div', { class: 'row' }); $('#fabctl').append(fabRow);
+button(fabRow, 'Tirar 1', () => fabThrow(1, true), 'primary'); button(fabRow, '+10', () => fabThrow(10, true)); button(fabRow, '+1.000', () => fabThrow(1000, false)); button(fabRow, '+100.000', () => fabThrow(1e5, false));
+const fabAuto = button(fabRow, '▶ Lluvia', () => { FAB.auto = !FAB.auto; fabAuto.textContent = FAB.auto ? '■ Pausar' : '▶ Lluvia'; fabAuto.classList.toggle('playing', FAB.auto); });
+button(fabRow, 'Borrar', fabReset);
+toggle('#fabctl', 'Mostrar media y desvío', FAB.showMS, v => FAB.showMS = v);
+const fabSt = stats('#fabst', [['n', 'Tiradas'], ['l', 'Último valor', 'violet'], ['m', 'Media', 'amber'], ['d', 'Desvío', 'cyan']]);
+fabReset();
+animate($('#cvfab'), ({ g, w, h: H, dt }) => {
+  if (FAB.auto) { FAB.acc += dt * FAB.rate; while (FAB.acc >= 1) { FAB.acc--; fabThrow(1, true); } }
+  const G = GENS[FAB.g]; clearScreen(g, w, H, 10, 4);
+  const L = 16, R = w - 16, T = 40, Bt = H - 26, bw = (R - L) / FAB.nb;
+  const xOf = v => G.disc ? L + (v - G.disc[0] + .5) * bw : L + (v - G.lo) / (G.hi - G.lo) * (R - L);
+  const max = Math.max(4, ...FAB.counts) * 1.1;
+  // media y desvío
+  if (FAB.showMS && FAB.n > 1) { const m = FAB.s / FAB.n, sd = Math.sqrt(Math.max(0, FAB.s2 / FAB.n - m * m));
+    g.fillStyle = '#5ed0e61c'; g.fillRect(xOf(m - sd), T - 10, xOf(m + sd) - xOf(m - sd), Bt - T + 10);
+    g.strokeStyle = COL.amber; g.lineWidth = 2; g.beginPath(); g.moveTo(xOf(m), T - 14); g.lineTo(xOf(m), Bt); g.stroke();
+    text(g, 'media', xOf(m) + 5, T - 2, COL.amber); text(g, '← desvío →', xOf(m + sd) - 4, Bt - 6, COL.cyan, 'right'); }
+  drawHist(g, L, T, R - L, Bt - T, FAB.counts, COL.green, { max, alpha: .8 });
+  // bolitas cayendo
+  for (const b of FAB.balls) b.t += dt * 2.2;
+  for (const b of FAB.balls.filter(b => b.t >= 1)) if (b.b >= 0 && b.b < FAB.nb) FAB.counts[b.b]++;
+  FAB.balls = FAB.balls.filter(b => b.t < 1);
+  for (const b of FAB.balls) { if (b.b < 0 || b.b >= FAB.nb) continue; const x = L + (b.b + .5) * bw, top = Bt - FAB.counts[b.b] / max * (Bt - T);
+    g.fillStyle = COL.violet; g.beginPath(); g.arc(x, lerp(8, top - 6, b.t * b.t), 5, 0, 7); g.fill(); }
+  // eje
+  if (G.disc) for (let v = G.disc[0]; v <= G.disc[1]; v++) text(g, v, xOf(v), H - 8, COL.dim, 'center');
+  else for (let i = 0; i <= 4; i++) { const v = G.lo + (G.hi - G.lo) * i / 4; text(g, fmtNum(v, G.hi - G.lo < 2 ? 2 : 1), xOf(v), H - 8, COL.dim, i ? (i === 4 ? 'right' : 'center') : 'left'); }
+  $('#fabtag').textContent = FAB.n ? `${G.label}: ${fmtInt(FAB.n)} tiradas` : `${G.label}: apretá "Tirar"`;
+  fabSt.n.textContent = fmtInt(FAB.n); fabSt.l.textContent = FAB.last == null ? '–' : fmtNum(FAB.last, G.disc ? 0 : 3);
+  const m = FAB.n ? FAB.s / FAB.n : NaN; fabSt.m.textContent = FAB.n ? fmtNum(m, 3) : '–'; fabSt.d.textContent = FAB.n > 1 ? fmtNum(Math.sqrt(Math.max(0, FAB.s2 / FAB.n - m * m)), 3) : '–';
+});
+
+/* ---------------- 1c. la campana: alturas de NPCs ---------------- */
+const BELL = { m: 170, sd: 8, npcs: [] };
+function bellNPCs() { BELL.z = Array.from({ length: 40 }, bm); }
+slider('#bellctl', { label: 'Media (cm)', min: 140, max: 200, step: 1, value: BELL.m, fmt: v => v + ' cm', oninput: v => BELL.m = v });
+slider('#bellctl', { label: 'Desvío (cm)', min: 2, max: 25, step: 0.5, value: BELL.sd, fmt: v => fmtNum(v, 1) + ' cm', oninput: v => BELL.sd = v });
+button('#bellctl', '🎲 Otros 40 NPCs', bellNPCs, 'primary');
+bellNPCs();
+animate($('#cvbell'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 12, 1);
+  const lo = 100, hi = 240, L = 16, R = w - 16, T = 24, Bt = H * 0.6, X = v => L + (v - lo) / (hi - lo) * (R - L), { m, sd } = BELL;
+  const pdf = x => Math.exp(-((x - m) ** 2) / (2 * sd * sd)), Y = x => Bt - pdf(x) * (Bt - T);
+  [[3, '#5ed0e614'], [2, '#5ed0e622'], [1, '#5ed0e638']].forEach(([k, c]) => { g.fillStyle = c; g.beginPath(); g.moveTo(X(m - k * sd), Bt);
+    for (let i = 0; i <= 80; i++) { const x = m - k * sd + 2 * k * sd * i / 80; g.lineTo(X(x), Y(x)); } g.lineTo(X(m + k * sd), Bt); g.fill(); });
+  glowLine(g, COL.cyan, 2); g.beginPath(); for (let i = 0; i <= 300; i++) { const x = lo + (hi - lo) * i / 300; i ? g.lineTo(X(x), Y(x)) : g.moveTo(X(x), Y(x)); } g.stroke(); noGlow(g);
+  g.strokeStyle = COL.amber; g.lineWidth = 2; g.beginPath(); g.moveTo(X(m), T - 6); g.lineTo(X(m), Bt); g.stroke();
+  [[1, '68%'], [2, '95%'], [3, '99,7%']].forEach(([k, p], i) => { const y = Bt + 14 + i * 15; g.strokeStyle = COL.cyan; g.globalAlpha = 1 - i * 0.25; g.lineWidth = 1; g.beginPath(); g.moveTo(X(m - k * sd), y - 4); g.lineTo(X(m + k * sd), y - 4); g.stroke(); g.globalAlpha = 1;
+    text(g, `${p}: ${Math.round(m - k * sd)} a ${Math.round(m + k * sd)} cm`, X(m + k * sd) + 6, y, COL.muted); });
+  for (let v = 110; v <= 230; v += 20) text(g, v, X(v), Bt + 62, COL.dim, 'center');
+  // los NPCs
+  const base = H - 6, maxPx = H - Bt - 74;
+  BELL.z.forEach((z, i) => { const hgt = m + sd * z, x = L + (i + .5) * (R - L) / 40, ph = clamp((hgt - 100) / 140, 0.08, 1) * maxPx;
+    g.fillStyle = Math.abs(z) > 2 ? COL.red : COL.ink; g.globalAlpha = .8; g.beginPath(); g.arc(x, base - ph, Math.max(2.5, ph * 0.09), 0, 7); g.fill(); g.fillRect(x - 2, base - ph * 0.9, 4, ph * 0.9); g.globalAlpha = 1; });
+  $('#belltag').textContent = `media ${m} cm · desvío ${fmtNum(sd, 1)} cm · en rojo, NPCs a más de 2 desvíos`;
 });
 
 /* ---------------- 2. transformada inversa ---------------- */
