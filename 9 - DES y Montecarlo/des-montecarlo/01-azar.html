@@ -259,12 +259,12 @@ const desvio = Math.sqrt(xs.reduce((a, x) => a + (x - media) ** 2, 0) / xs.lengt
   </div>
 
   <h3>Las tres distribuciones de hoy</h3>
-  <table>
+  <div style="overflow-x:auto"><table>
     <tr><th>Nombre</th><th>Forma</th><th>Qué describe</th><th>En un juego</th></tr>
     <tr><td><strong>Uniforme</strong></td><td>Plana: todas las barras iguales.</td><td>Cualquier valor del rango tiene la misma chance.</td><td><code>Math.random()</code>, elegir una carta, una posición al azar.</td></tr>
     <tr><td><strong>Normal</strong></td><td>Campana simétrica.</td><td>Valores que se juntan alrededor de un promedio; los extremos son raros.</td><td>Altura de NPCs, puntería, variación del daño.</td></tr>
     <tr><td><strong>Exponencial</strong></td><td>Alta en 0 y cae rápido, con una cola larga.</td><td>Cuánto hay que esperar hasta que pase algo que ocurre al azar.</td><td>Tiempo entre spawns, llegada de clientes, eventos aleatorios.</td></tr>
-  </table>
+  </table></div>
 
   <h2>La normal (campana de Gauss)</h2>
   <div class="prose">
