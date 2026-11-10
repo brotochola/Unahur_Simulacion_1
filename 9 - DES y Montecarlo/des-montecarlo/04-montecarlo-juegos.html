@@ -193,8 +193,30 @@ p code,li code,td code{white-space:nowrap}
 
   <h2>El azar puro no se siente justo</h2>
   <div class="prose">
-    <p>Un personaje con 25% de crítico, con azar puro, puede pegar 20 golpes seguidos sin crítico (pasa más o menos 1 vez cada 300 rachas) o meter 3 críticos al hilo. El jugador no ve el 25%: ve la racha, y la vive como un bug o como una trampa.</p>
-    <p>Dota 2 y Warcraft III usan <strong>pseudo-random distribution</strong> (PRD): la probabilidad arranca baja y sube con cada golpe sin crítico, <code>P(n) = C·n</code>, y vuelve a C cuando sale un crítico. Eligiendo bien C, el promedio sigue siendo 25%, pero las rachas se acortan. ¿Cómo se encuentra C? Hay fórmula, pero es incómoda; también se puede probar valores y simular.</p>
+    <p>Un personaje tiene 25% de chance de crítico. Con azar puro, en cada golpe se tira <code>Math.random() &lt; 0.25</code>, sin importar lo que pasó antes. En promedio da 1 crítico cada 4 golpes, pero las rachas pueden ser feas. La chance de que 10 golpes seguidos salgan <em>sin</em> crítico es 0,75¹⁰ ≈ 5,6%, más o menos una de cada 18 veces. Y un jugador pega miles de golpes por partida, así que le va a pasar seguido. El jugador no ve el 25%: ve la racha, y la vive como un bug o como una trampa.</p>
+  </div>
+
+  <h3>La idea de PRD: que la chance vaya creciendo</h3>
+  <div class="prose">
+    <p>Dota 2 y Warcraft III usan una técnica llamada <strong>pseudo-random distribution</strong> (PRD). En vez de una chance fija, la chance de crítico <strong>crece con cada golpe que no fue crítico</strong>, y cuando sale un crítico vuelve a empezar desde abajo. Así, cuanto más tiempo pasa sin crítico, más probable es el próximo, y las rachas largas casi desaparecen.</p>
+    <p>La regla es simple. Se elige un número fijo, <strong>C</strong>, que es "cuánto sube la chance por golpe". Contando los golpes desde el último crítico:</p>
+  </div>
+  <div class="formula">chance en el golpe n = C · n <small>&nbsp;// n = golpes desde el último crítico (1, 2, 3…)</small></div>
+  <div class="prose">
+    <p>Para un 25% nominal, C resulta ser 8,5%. El primer golpe después de un crítico tiene 8,5% de chance, el segundo 17%, el tercero 25,4%, el cuarto 33,9%… y el duodécimo pasaría el 100%, así que <strong>nunca hay más de 11 golpes seguidos sin crítico</strong>.</p>
+    <p>¿Por qué C es 8,5% y no 25%? Porque la chance va subiendo: si arrancara en 25%, el promedio terminaría mucho más alto que 25%. Hay que arrancar más bajo para que, contando todo, salga <strong>exactamente</strong> un crítico cada 4 golpes. El problema es encontrar ese C. Hay una fórmula, pero es incómoda. Lo práctico es <strong>probar un C, simular cien mil golpes, medir qué porcentaje salió crítico y corregir</strong>. Eso es Montecarlo. Probalo moviendo el slider hasta que la tasa medida dé 25%, o apretá "Buscar C" para que lo haga solo:</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Encontrá C <span class="muted">· barras: chance de crítico en cada golpe desde el último · línea: azar puro</span></div>
+    <div class="side">
+      <div class="screen"><canvas id="cvC" style="height:280px"></canvas><span class="tag" id="Ctag"></span></div>
+      <div class="panel" id="Clog" style="height:280px"></div>
+    </div>
+    <div class="controls" id="Cctl"></div>
+    <div id="Cst"></div>
+  </div>
+  <div class="prose">
+    <p>La búsqueda automática hace lo que harías a mano: si la tasa medida da más alta que 25%, baja C; si da más baja, sube C. Cada vez parte el rango a la mitad (búsqueda binaria), así que en una docena de pasos llega. Como cada medición tiene un poco de ruido (es Montecarlo), el resultado puede variar en el segundo decimal entre corridas; el valor exacto es 8,47%. Ahora comparemos los dos métodos con el C correcto:</p>
   </div>
   <div class="rig">
     <div class="rig-title">Críticos: azar puro vs. PRD <span class="muted">· arriba los últimos golpes · abajo la distribución de "golpes entre críticos" en 200.000 golpes</span></div>
@@ -204,6 +226,7 @@ p code,li code,td code{white-space:nowrap}
     <div class="cols" style="margin-top:4px"><div id="critA"></div><div id="critB"></div></div>
   </div>
   <pre><code>// PRD: la chance crece con cada fallo y se resetea al acertar
+const C = 0.085;          // para un 25% nominal
 let fallos = 0;
 function esCritico() {
   fallos++;
@@ -489,6 +512,36 @@ function buildChrome(current) {
 }
 </script>
 <script>
+/* ---------------- 0. encontrá C ---------------- */
+const FC = { target: 0.25, C: 0.25, rate: null, busy: false };
+function prdRate(C, N = 100000) { let miss = 0, crit = 0; for (let i = 0; i < N; i++) { miss++; if (Math.random() < C * miss) { crit++; miss = 0; } } return crit / N; }
+function fcMeasure() { FC.rate = prdRate(FC.C); fcStats(); }
+function fcStats() { fcSt.c.textContent = fmtPct(FC.C, 2); fcSt.r.textContent = FC.rate == null ? '–' : fmtPct(FC.rate, 2); fcSt.t.textContent = fmtPct(FC.target, 0);
+  const d = FC.rate == null ? null : FC.rate - FC.target; fcSt.d.textContent = d == null ? '–' : (Math.abs(d) < 0.003 ? '¡lo encontraste!' : d > 0 ? 'muy alta: bajá C' : 'muy baja: subí C');
+  fcSt.d.parentNode.className = 'stat ' + (d != null && Math.abs(d) < 0.003 ? 'green' : 'red'); }
+function fcLog(html) { const el = $('#Clog'); el.innerHTML += `<div>${html}</div>`; el.scrollTop = el.scrollHeight; }
+const fcC = slider('#Cctl', { label: 'C (cuánto sube la chance por golpe)', min: 0.01, max: 0.3, step: 0.001, value: FC.C, fmt: v => fmtPct(v, 1), oninput: v => { FC.C = v; FC.rate = null; fcStats(); }, onchange: () => fcMeasure() });
+button('#Cctl', 'Simular 100.000 golpes', fcMeasure);
+button('#Cctl', 'Buscar C automáticamente', async () => { if (FC.busy) return; FC.busy = true; $('#Clog').innerHTML = ''; let lo = 0, hi = FC.target;
+  fcLog(`objetivo: <b>${fmtPct(FC.target, 0)}</b> · busco C entre 0% y ${fmtPct(hi, 0)}`);
+  for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; FC.C = m; fcC.set(m); FC.rate = prdRate(m, 150000); fcStats();
+    const alta = FC.rate > FC.target; fcLog(`C = <b>${fmtPct(m, 2)}</b> → tasa ${fmtPct(FC.rate, 2)} · ${alta ? '<span class="red">alta, bajo</span>' : '<span class="cyan">baja, subo</span>'}`);
+    alta ? hi = m : lo = m; await sleep(260); }
+  fcLog(`<span class="green">listo: C ≈ ${fmtPct((lo + hi) / 2, 2)}</span>`); FC.busy = false; }, 'primary');
+slider('#Cctl', { label: 'Crítico nominal buscado', min: 0.05, max: 0.6, step: 0.01, value: FC.target, fmt: v => fmtPct(v, 0), oninput: v => { FC.target = v; FC.rate = null; fcStats(); } });
+const fcSt = stats('#Cst', [['c', 'C elegido', 'cyan'], ['r', 'Tasa de crítico medida', 'amber'], ['t', 'Objetivo'], ['d', 'Veredicto', 'red']]);
+$('#Clog').innerHTML = '<div>Mové C y soltá el slider para medir, o apretá "Buscar C automáticamente".</div>';
+fcStats();
+animate($('#cvC'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 1, 4); const N = 15, L = 40, R = w - 10, T = 24, Bt = H - 24, bw = (R - L) / N, Y = p => Bt - Math.min(1, p) * (Bt - T);
+  for (let i = 0; i <= 4; i++) text(g, fmtPct(i / 4, 0), L - 6, Y(i / 4) + 4, COL.dim, 'right');
+  for (let n = 1; n <= N; n++) { const p = Math.min(1, FC.C * n), x = L + (n - 1) * bw; g.fillStyle = p >= 1 ? COL.green : COL.cyan; g.globalAlpha = .8; g.fillRect(x + bw * .15, Y(p), bw * .7, Bt - Y(p)); g.globalAlpha = 1;
+    text(g, n, x + bw / 2, H - 8, COL.dim, 'center'); if (bw > 34) text(g, fmtPct(p, 0), x + bw / 2, Y(p) - 4, COL.muted, 'center', '10px JetBrains Mono, monospace'); }
+  g.strokeStyle = COL.amber; g.lineWidth = 2; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(L, Y(FC.target)); g.lineTo(R, Y(FC.target)); g.stroke(); g.setLineDash([]);
+  text(g, `azar puro: ${fmtPct(FC.target, 0)} siempre`, R - 4, Y(FC.target) - 6, COL.amber, 'right');
+  const guar = Math.ceil(1 / FC.C); $('#Ctag').textContent = `golpe n.º (desde el último crítico) · crítico seguro en el golpe ${guar}`;
+});
+
 /* ---------------- 1. críticos PRD ---------------- */
 function prdC(p) {   // C tal que la tasa efectiva de PRD sea p (búsqueda binaria sobre la esperanza exacta)
   const rate = C => { let E = 0, surv = 1; for (let n = 1; surv > 1e-12; n++) { const q = Math.min(1, C * n); E += n * surv * q; surv *= 1 - q; } return 1 / E; };
