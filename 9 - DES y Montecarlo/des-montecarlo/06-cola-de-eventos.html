@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>La cola de eventos: heaps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#26303a;
+  --bg-2:#2f3b46;
+  --bg-3:#384653;
+  --screen:#0f171b;
+  --grid:#1b282d;
+  --grid-2:#243840;
+  --ink:#e9eef1;
+  --muted:#9eadb8;
+  --line:#465663;
+  --amber:#ffb23f;
+  --cyan:#5ed0e6;
+  --red:#ff6b5a;
+  --violet:#b99cff;
+  --green:#8fd694;
+  --radius:10px;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:18px;line-height:1.55;font-variation-settings:"wdth" 100}
+a{color:var(--cyan);text-underline-offset:3px}
+a:hover{color:#9fe6f3}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+::selection{background:var(--amber);color:#1a1a1a}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:#1f2830;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 20px;flex-wrap:wrap}
+.topbar .home{color:var(--ink);text-decoration:none;font-weight:700;font-variation-settings:"wdth" 118;white-space:nowrap;font-size:15px}
+.topbar nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.topbar nav a{color:var(--muted);text-decoration:none;font-size:14px;padding:5px 9px;border-radius:6px;white-space:nowrap}
+.topbar nav a b{color:var(--ink);font-weight:600;margin-right:5px;font-variant-numeric:tabular-nums}
+.topbar nav a:hover{background:var(--bg-2);color:var(--ink)}
+.topbar nav a[aria-current]{background:var(--bg-3);color:var(--ink)}
+.topbar nav a[aria-current] b{color:var(--amber)}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 22px 80px}
+.prose{max-width:72ch}
+h1{font-size:clamp(34px,5vw,58px);line-height:1.02;margin:10px 0 18px;font-weight:800;font-variation-settings:"wdth" 122;letter-spacing:-.01em}
+h2{font-size:clamp(25px,3vw,34px);line-height:1.1;margin:64px 0 14px;font-weight:750;font-variation-settings:"wdth" 116}
+h3{font-size:21px;line-height:1.2;margin:34px 0 8px;font-weight:700;font-variation-settings:"wdth" 110}
+h4{font-size:17px;margin:20px 0 6px;font-weight:700}
+p{margin:0 0 14px}
+.lead{font-size:21px;color:#d5dde3;max-width:64ch}
+.muted{color:var(--muted)}
+small,.small{font-size:14px}
+ul,ol{padding-left:22px;margin:0 0 14px}
+li{margin:4px 0}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}
+.kbd,kbd{font:600 13px var(--mono);background:var(--bg-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+code{font-family:var(--mono);font-size:.86em;background:#1c252c;padding:1px 5px;border-radius:4px;color:#f2d7a6}
+.amber{color:var(--amber)}.cyan{color:var(--cyan)}.red{color:var(--red)}.violet{color:var(--violet)}.green{color:var(--green)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:22px;align-items:start}
+.cols-2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media (max-width:860px){.cols-2{grid-template-columns:1fr}}
+
+/* ---------- instruments ---------- */
+.rig{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:18px 0 22px;box-shadow:inset 0 1px 0 #ffffff0d}
+.rig > .rig-title{font-weight:700;font-size:15px;margin:0 0 10px;color:var(--ink);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rig > .rig-title .muted{font-weight:400}
+.screen{position:relative;background:var(--screen);border-radius:7px;border:1px solid #0a1013;box-shadow:inset 0 0 0 1px #ffffff08, inset 0 6px 24px #0008;overflow:hidden}
+.screen canvas{display:block;width:100%;touch-action:none}
+.screen .tag{position:absolute;left:10px;top:7px;font:12px var(--mono);color:var(--muted);pointer-events:none}
+.screen .tag-r{left:auto;right:10px}
+.screens{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+@media (max-width:760px){.screens{grid-template-columns:1fr}}
+.controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:end;margin-top:12px}
+.ctl{display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 170px;max-width:300px}
+.ctl label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl label output{color:var(--ink);font:600 13px var(--mono);white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.readout{font:13px var(--mono);color:var(--muted);background:var(--screen);border:1px solid #0a1013;border-radius:6px;padding:8px 10px;line-height:1.6}
+.readout b{color:var(--ink);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:linear-gradient(90deg,var(--amber) var(--p,50%),#1a2329 var(--p,50%));border-radius:2px}
+input[type=range]::-moz-range-track{height:4px;background:#1a2329;border-radius:2px}
+input[type=range]::-moz-range-progress{height:4px;background:var(--amber);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;margin-top:-7px;box-shadow:0 1px 3px #0009}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;box-shadow:0 1px 3px #0009}
+
+button,.btn{font:600 15px var(--font);color:var(--ink);background:var(--bg-3);border:1px solid #556676;border-radius:8px;padding:8px 14px;cursor:pointer;line-height:1.2;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+button:hover,.btn:hover{background:#43535f}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--amber);border-color:var(--amber);color:#21180a}
+button.primary:hover{background:#ffc66d}
+button.playing{background:var(--cyan);border-color:var(--cyan);color:#06232a}
+button.small{font-size:13px;padding:5px 10px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #556676;border-radius:8px;overflow:hidden;background:#222c34}
+.seg button{border:0;border-radius:0;background:transparent;border-right:1px solid #44535f;font-size:14px;padding:7px 12px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#18212a}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px;cursor:pointer;user-select:none}
+.toggle input{appearance:none;width:38px;height:22px;border-radius:11px;background:#1a2329;border:1px solid #556676;position:relative;cursor:pointer;margin:0;flex:none}
+.toggle input::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#aab6be;top:2px;left:2px;transition:left .15s}
+.toggle input:checked{background:var(--cyan);border-color:var(--cyan)}
+.toggle input:checked::after{left:18px;background:#fff}
+select{font:15px var(--font);background:var(--bg-3);color:var(--ink);border:1px solid #556676;border-radius:8px;padding:7px 10px}
+
+
+/* ---------- code ---------- */
+pre{background:#161e23;border:1px solid #0d1417;border-radius:8px;padding:14px 16px;overflow:auto;font:14px/1.6 var(--mono);color:#d6e1e8;margin:12px 0 18px;tab-size:2}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.tk-c{color:#71828e;font-style:italic}.tk-s{color:#a8e0a0}.tk-k{color:#ff9e7a}.tk-n{color:#ffcf73}.tk-t{color:#7fd8ec}.tk-f{color:#e0c2ff}
+
+/* ---------- callouts ---------- */
+.game{border:1px solid #3e5a49;background:#26372f;border-radius:var(--radius);padding:14px 18px;margin:18px 0}
+.game > strong:first-child{color:var(--green);display:block;margin-bottom:4px}
+.warn{border:1px solid #6a4a2c;background:#3a2f25;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.figure{margin:18px 0}
+.figure figcaption{font-size:14px;color:var(--muted);margin-top:6px}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:12px 0 20px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
+
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:70px;border-top:1px solid var(--line);padding-top:20px;flex-wrap:wrap}
+.pager a{text-decoration:none;color:var(--ink);font-weight:600}
+.pager a span{display:block;font-size:13px;color:var(--muted);font-weight:400}
+.credits{font-size:13px;color:var(--muted);margin-top:30px;max-width:90ch}
+
+@media (max-width:700px){
+  .topbar{position:static;gap:8px}
+  .topbar nav{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+}
+@media (max-width:600px){
+  body{font-size:17px}
+  main{padding:24px 16px 60px}
+  .topbar{padding:8px 12px}
+  .rig{padding:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- unidad 9: extras ---------- */
+.topbar .tag9{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stat{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:6px 11px;min-width:110px}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+.stat b{font:600 17px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.stat.amber b{color:var(--amber)}.stat.cyan b{color:var(--cyan)}.stat.red b{color:var(--red)}.stat.green b{color:var(--green)}.stat.violet b{color:var(--violet)}
+.demo{display:flex;gap:14px;align-items:center;border:1px solid #3f5466;background:#263644;border-radius:var(--radius);padding:12px 16px;margin:18px 0;text-decoration:none;color:var(--ink)}
+.demo:hover{background:#2d4152;color:var(--ink)}
+.demo .ico{font:700 22px var(--mono);color:var(--cyan);flex:none}
+.demo b{display:block}
+.demo span{color:var(--muted);font-size:15px}
+.formula{font:600 17px var(--mono);background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 14px;margin:12px 0 16px;color:#f2d7a6;overflow:auto;white-space:nowrap}
+.formula small{color:var(--muted);font-weight:400}
+.screen .tag-b{top:auto;bottom:7px}
+.panel{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:8px 10px;font:13px/1.55 var(--mono);color:var(--muted);overflow:auto}
+.panel .hi{color:var(--ink);background:#2b3a1f;border-radius:3px}
+.panel .ev{display:flex;gap:10px;white-space:nowrap;padding:1px 4px}
+.panel .ev .t{color:var(--amber);min-width:62px;text-align:right}
+.panel .ev .k-arr{color:var(--cyan)}.panel .ev .k-end{color:var(--green)}.panel .ev .k-x{color:var(--violet)}
+.side{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+@media (max-width:860px){.side{grid-template-columns:1fr}}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin:10px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--bg-3);border:1px solid #556676;font:700 14px/28px var(--font);text-align:center;color:var(--amber)}
+.timebox{display:inline-block;font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+
+p code,li code,td code{white-space:nowrap}
+.screen .tag{background:#0f171bb3;padding:1px 6px;border-radius:4px}
+</style>
+<style>
+.cx{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:16px}
+.cx b{font-family:var(--mono);font-weight:600}
+.valin{width:80px;font:600 15px var(--mono);background:var(--screen);color:var(--amber);border:1px solid #556676;border-radius:8px;padding:7px 10px}
+.out{font:13px var(--mono);color:var(--muted);margin-top:8px;min-height:1.4em}
+.out b{color:var(--green)}
+.tie{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+@media (max-width:700px){.tie{grid-template-columns:1fr}}
+.bench td.num{text-align:right}
+</style>
+</head>
+<body>
+<main>
+  <h1>La cola de eventos</h1>
+  <p class="lead">El loop de un simulador de eventos discretos hace siempre lo mismo: <strong>sacar el evento más próximo</strong> y agendar otros. Con 10 eventos cualquier lista sirve. En el simulador del pueblo hay miles agendados a la vez, y en un juego con física por eventos (capítulo 7) puede haber cientos de miles. Ahí la estructura de datos lo decide todo.</p>
+
+  <h2>Tres candidatos</h2>
+  <div style="overflow-x:auto"><table>
+    <tr><th>Estructura</th><th>Agendar (insertar)</th><th>Sacar el mínimo</th><th>Comentario</th></tr>
+    <tr><td>Array sin ordenar</td><td class="num">O(1)</td><td class="num">O(n)</td><td>Hay que recorrer todo para encontrar el mínimo.</td></tr>
+    <tr><td>Array ordenado</td><td class="num">O(n)</td><td class="num">O(1)*</td><td>Insertar mueve medio array. El supermercado del ejemplo hace esto. *Si se saca con <code>shift()</code>, también es O(n).</td></tr>
+    <tr><td><strong>Min-heap</strong></td><td class="num">O(log n)</td><td class="num">O(log n)</td><td>Ni ordenado ni desordenado: "casi ordenado", justo lo necesario.</td></tr>
+  </table></div>
+
+  <h2>Qué es un heap</h2>
+  <div class="prose">
+    <p>Un <strong>min-heap</strong> es un árbol binario con una sola regla: <strong>cada padre es menor o igual que sus hijos</strong>. No dice nada sobre hermanos ni primos, así que no está ordenado, pero garantiza que el mínimo está siempre en la raíz. Además el árbol está siempre completo (se llena nivel por nivel, de izquierda a derecha), y por eso entra en un array común sin punteros:</p>
+  </div>
+  <div class="cx prose">
+    <span>padre de i</span><b>(i − 1) &gt;&gt; 1</b>
+    <span>hijos de i</span><b>2i + 1 &nbsp;y&nbsp; 2i + 2</b>
+  </div>
+  <ul class="prose">
+    <li><strong>Insertar</strong>: va al final del array (la primera hoja libre) y <em>sube</em> intercambiándose con su padre mientras sea menor (<em>sift up</em>).</li>
+    <li><strong>Sacar el mínimo</strong>: se saca la raíz, el último elemento pasa a la raíz y <em>baja</em> intercambiándose con el menor de sus hijos (<em>sift down</em>).</li>
+  </ul>
+  <p class="prose">Las dos operaciones recorren a lo sumo la altura del árbol, que es log₂ n: con un millón de eventos, unos 20 pasos.</p>
+
+  <div class="rig">
+    <div class="rig-title">Min-heap en vivo <span class="muted">· arriba el árbol, abajo el mismo heap como array · <span class="amber">■</span> comparando · <span class="green">■</span> recién intercambiado</span></div>
+    <div class="screen"><canvas id="cvh" style="height:400px"></canvas><span class="tag" id="htag"></span></div>
+    <div class="controls" id="hctl"></div>
+    <div class="out" id="hout"></div>
+  </div>
+  <pre><code>class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  push(x) {
+    const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) {                                   // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]]; i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last; let i = 0;
+      for (;;) {                                      // sift down
+        const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l &lt; a.length &amp;&amp; this.cmp(a[l], a[m]) &lt; 0) m = l;
+        if (r &lt; a.length &amp;&amp; this.cmp(a[r], a[m]) &lt; 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]]; i = m;
+      }
+    }
+    return top;
+  }
+}</code></pre>
+
+  <h2>Heapify y heap sort</h2>
+  <div class="prose">
+    <p>Si ya tenés todos los elementos, no hace falta insertarlos de a uno (n·log n). <strong>Heapify</strong> arma el heap de abajo hacia arriba: recorre los nodos internos desde el último hasta la raíz y hace <em>sift down</em> de cada uno. Parece n·log n, pero la mitad de los nodos son hojas que no se mueven, un cuarto baja un nivel, un octavo dos... y la suma da <strong>O(n)</strong>.</p>
+    <p>Con un heap, ordenar es fácil: <strong>heap sort</strong>. Se arma un max-heap, el máximo (la raíz) se intercambia con el último lugar, ese lugar queda "cerrado" y se repite con el resto. Ordena en el mismo array en O(n log n) garantizado y sin memoria extra.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Heapify + heap sort (max-heap) <span class="muted">· en gris, la parte ya ordenada</span></div>
+    <div class="screen"><canvas id="cvs" style="height:420px"></canvas><span class="tag" id="stag"></span></div>
+    <div class="controls" id="sctl"></div>
+    <div id="sst"></div>
+  </div>
+  <a class="demo" href="../Discrete_event_sim/heap%20sort.jpg"><span class="ico">↗</span><span><b>Infografía: cómo funciona un heap</b><span>La lámina de la carpeta, con max-heap, min-heap, inserción, extracción y heapify paso a paso.</span></span></a>
+
+  <h2>Medirlo: un DES con n eventos agendados</h2>
+  <div class="prose">
+    <p>La prueba típica de una cola de eventos (el <em>hold model</em>): se cargan n eventos y después se repite n veces "sacar el próximo y agendar uno nuevo un rato más tarde", que es exactamente lo que hace un simulador.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Benchmark en tu navegador <span class="muted">· milisegundos para n operaciones de sacar + agendar · escala log-log</span></div>
+    <div class="screen"><canvas id="cvbench" style="height:300px"></canvas></div>
+    <div class="controls" id="benchctl"></div>
+    <div style="overflow-x:auto"><table class="bench" id="benchtab"></table></div>
+  </div>
+  <a class="demo" href="../min_heap.html"><span class="ico">↗</span><span><b>Demo completo: heap vs. alternativas</b><span>Inserción, borrado y consulta con distintos escenarios, tamaños y corridas promediadas.</span></span></a>
+
+  <h2>Empates: el detalle que rompe la reproducibilidad</h2>
+  <div class="prose">
+    <p>¿Qué pasa si dos eventos tienen el mismo tiempo? Un heap <strong>no es estable</strong>: entre iguales, el orden de salida depende de cómo quedó armado el árbol, no del orden en que se agendaron. En un juego por turnos eso puede decidir quién actúa primero, y si cambia entre corridas, ya no podés reproducir un bug ni un replay. La solución es un contador de secuencia como segundo criterio. El simulador del pueblo lo hace así:</p>
+  </div>
+  <pre><code>this.eventQueue = new MinHeap((a, b) => {
+  const d = a.time - b.time;
+  return d !== 0 ? d : a.seq - b.seq;     // a igual tiempo, el que se agendó primero
+});
+scheduleEvent(ev) { ev.seq = this._eventSeq++; this.eventQueue.push(ev); }</code></pre>
+  <div class="rig">
+    <div class="rig-title">Diez eventos agendados en orden A…J <span class="muted">· todos con tiempo 10, mezclados con otros eventos</span></div>
+    <div class="controls" id="tiectl"></div>
+    <div class="tie"><div class="readout" id="tie1"></div><div class="readout" id="tie2"></div></div>
+  </div>
+</main>
+<script>
+/* ====================================================================
+   Unidad 9 – Eventos discretos y Montecarlo · helpers compartidos (se inlinea en cada página)
+   ==================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+/* ---------------- azar con semilla ---------------- */
+/* mulberry32: 32 bits de estado, rápido y suficientemente bueno para juegos */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+class Rng {
+  constructor(seed = (Math.random() * 2 ** 32) >>> 0) { this.seed = seed >>> 0; this.next = mulberry32(this.seed); }
+  float(a = 0, b = 1) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }       // entero en [a, b]
+  exp(mean) { return -mean * Math.log(1 - this.next()); }                // exponencial (transformada inversa)
+  normal(mu = 0, sd = 1) {                                               // Box-Muller
+    const u1 = 1 - this.next(), u2 = this.next();
+    return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(this.next() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+}
+
+/* ---------------- min-heap (cola de prioridad) ---------------- */
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  get size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) >= 0) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a; if (!a.length) return undefined; const top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0; const n = a.length;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < n && this.cmp(a[l], a[m]) < 0) m = l; if (r < n && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top; }
+  clear() { this.a.length = 0; }
+  sorted() { return [...this.a].sort(this.cmp); }
+}
+
+/* ---------------- UI helpers ---------------- */
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') el.className = v; else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(k));
+  return el;
+}
+function paintRange(r) { const p = (r.value - r.min) / (r.max - r.min) * 100; r.style.setProperty('--p', p + '%'); }
+/* slider con label y valor. opts: {label,min,max,step,value,fmt,log,oninput,onchange} */
+function slider(parent, o) {
+  const id = 'r' + Math.random().toString(36).slice(2, 8);
+  const out = h('output', { for: id });
+  const r = h('input', { type: 'range', id, min: 0, max: 1000, step: 1 });
+  const toPos = v => o.log ? 1000 * Math.log(v / o.min) / Math.log(o.max / o.min) : 1000 * (v - o.min) / (o.max - o.min);
+  const fromPos = p => { let v = o.log ? o.min * Math.pow(o.max / o.min, p / 1000) : o.min + (o.max - o.min) * p / 1000; if (o.step) v = Math.round(v / o.step) * o.step; return clamp(+v.toFixed(6), o.min, o.max); };
+  const fmt = o.fmt || (v => v);
+  const wrap = h('div', { class: 'ctl' }, h('label', { for: id }, h('span', {}, o.label), out), r);
+  const api = {
+    el: wrap, input: r, value: o.value,
+    set(v, fire) { api.value = v; r.value = toPos(v); out.textContent = fmt(v); paintRange(r); if (fire) o.oninput && o.oninput(v); },
+  };
+  r.addEventListener('input', () => { api.value = fromPos(+r.value); out.textContent = fmt(api.value); paintRange(r); o.oninput && o.oninput(api.value); });
+  if (o.onchange) r.addEventListener('change', () => o.onchange(api.value));
+  api.set(o.value);
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return api;
+}
+/* grupo de botones excluyentes. options: [{v,label}] */
+function seg(parent, options, value, onchange) {
+  const el = h('div', { class: 'seg', role: 'group' });
+  const api = { el, value, set(v, fire) { api.value = v; for (const b of el.children) b.setAttribute('aria-pressed', b.dataset.v === String(v)); if (fire) onchange && onchange(v); } };
+  for (const op of options) {
+    const b = h('button', { type: 'button', 'data-v': op.v, title: op.title || null }, op.label);
+    b.addEventListener('click', () => api.set(op.v, true)); el.append(b);
+  }
+  api.set(value);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return api;
+}
+function toggle(parent, label, checked, onchange) {
+  const inp = h('input', { type: 'checkbox' }); inp.checked = !!checked;
+  inp.addEventListener('change', () => onchange && onchange(inp.checked));
+  const el = h('label', { class: 'toggle' }, inp, label);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return inp;
+}
+function button(parent, label, onclick, cls = '') {
+  const b = h('button', { type: 'button', class: cls }, label); b.addEventListener('click', onclick);
+  (typeof parent === 'string' ? $(parent) : parent).append(b); return b;
+}
+/* fila de "stats": stats('#x', [['n','Dardos'],['pi','π estimado','amber']]) -> {n: el, pi: el} */
+function stats(parent, defs) {
+  const wrap = h('div', { class: 'stats' }), out = {};
+  for (const [k, label, cls] of defs) { const b = h('b', {}, '–'); wrap.append(h('div', { class: 'stat ' + (cls || '') }, h('span', {}, label), b)); out[k] = b; }
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return out;
+}
+const NF = {};
+const fmtNum = (v, d = 0) => { if (!isFinite(v)) return v > 0 ? '∞' : '–'; const k = d; return (NF[k] || (NF[k] = new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }))).format(v); };
+const fmtInt = v => fmtNum(Math.round(v), 0);
+const fmtPct = (v, d = 1) => fmtNum(v * 100, d) + '%';
+const fmtCompact = v => v >= 1e6 ? fmtNum(v / 1e6, v >= 1e7 ? 0 : 1) + ' M' : v >= 1e4 ? fmtNum(v / 1e3, 0) + ' k' : fmtInt(v);
+
+/* ---------------- canvas ---------------- */
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), hh = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+const COL = { amber: '#ffb23f', cyan: '#5ed0e6', red: '#ff6b5a', violet: '#b99cff', green: '#8fd694', ink: '#e9eef1', muted: '#9eadb8', dim: '#5d717b', grid: '#1b282d', grid2: '#25363d', screen: '#0f171b' };
+function clearScreen(g, w, h, gridX = 10, gridY = 4, mid = false) {
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, h);
+  g.strokeStyle = COL.grid; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < gridX; i++) { const x = Math.round(i * w / gridX) + .5; g.moveTo(x, 0); g.lineTo(x, h); }
+  for (let i = 1; i < gridY; i++) { const y = Math.round(i * h / gridY) + .5; g.moveTo(0, y); g.lineTo(w, y); }
+  g.stroke();
+  if (mid) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(h / 2) + .5); g.lineTo(w, Math.round(h / 2) + .5); g.stroke(); }
+}
+function glowLine(g, color, width = 2) { g.strokeStyle = color; g.lineWidth = width; g.shadowColor = color; g.shadowBlur = 6; g.lineJoin = 'round'; }
+function noGlow(g) { g.shadowBlur = 0; }
+function text(g, s, x, y, color = COL.muted, align = 'left', font = '12px JetBrains Mono, monospace') {
+  g.fillStyle = color; g.font = font; g.textAlign = align; g.fillText(s, x, y); g.textAlign = 'left';
+}
+/* histograma: counts[] dibujado en el rectángulo (x,y,w,h). opts: {max, color, fill, gap} */
+function drawHist(g, x, y, w, hh, counts, color, o = {}) {
+  const n = counts.length; if (!n) return;
+  const max = o.max || Math.max(1, ...counts), bw = w / n, gap = o.gap ?? (bw > 4 ? 1 : 0);
+  g.fillStyle = color; g.globalAlpha = o.alpha ?? 0.85;
+  for (let i = 0; i < n; i++) { const bh = Math.min(hh, counts[i] / max * hh); if (bh > 0) g.fillRect(x + i * bw + gap / 2, y + hh - bh, Math.max(1, bw - gap), bh); }
+  g.globalAlpha = 1;
+}
+/* curva: f(t) con t en [0,1] -> valor en [0,1] (0 abajo) */
+function drawCurve(g, x, y, w, hh, f, color, width = 2, steps = 200) {
+  glowLine(g, color, width); g.beginPath();
+  for (let i = 0; i <= steps; i++) { const t = i / steps, v = f(t); const px = x + t * w, py = y + hh - v * hh; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  g.stroke(); noGlow(g);
+}
+/* Loop de animación compartido: solo dibuja los canvas visibles */
+const _anims = [];
+function animate(canvas, fn) {
+  const a = { canvas, fn, visible: true }; _anims.push(a);
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => a.visible = e.isIntersecting)).observe(canvas);
+  return a;
+}
+let _lastT = performance.now();
+(function loop(now) { const dt = Math.min(0.1, ((now || performance.now()) - _lastT) / 1000); _lastT = now || performance.now();
+  for (const a of _anims) if (a.visible) { try { const c = fitCanvas(a.canvas); c.dt = dt; a.fn(c); } catch (e) { console.error(e); } }
+  requestAnimationFrame(loop); })();
+
+/* ---------------- resaltado de código JS ---------------- */
+function highlight(src) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = /(\/\/.*$|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\b(const|let|var|function|return|new|if|else|for|while|class|extends|this|async|await|of|in|true|false|null|undefined|super|static|import|export|from|break|continue|switch|case|default)\b|\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b|\b([A-Z][A-Za-z0-9]+)\b|(\.?[a-zA-Z_]\w*)(?=\()/gm;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'k' : m[4] ? 'n' : m[5] ? 't' : 'f';
+    out += `<span class="tk-${cls}">${esc(m[0])}</span>`; last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
+}
+function highlightAll() { $$('pre code').forEach(c => { if (!c.dataset.hl) { c.innerHTML = highlight(c.textContent.replace(/^\n/, '')); c.dataset.hl = 1; } }); }
+
+/* ---------------- barra superior / navegación ---------------- */
+const PAGES = [
+  ['index.html', 'Inicio'], ['01-azar.html', 'Azar con forma'], ['02-poisson-disk.html', 'Poisson disk'],
+  ['03-montecarlo.html', 'Montecarlo'], ['04-montecarlo-juegos.html', 'MC en juegos'], ['05-eventos-discretos.html', 'Eventos discretos'],
+  ['06-cola-de-eventos.html', 'Cola de eventos'], ['07-eventos-en-juegos.html', 'DES en juegos'], ['08-mcts.html', 'MCTS']];
+function buildChrome(current) {
+  const nav = h('nav', { 'aria-label': 'Temas de la clase' });
+  PAGES.slice(1).forEach(([href, name], i) => nav.append(h('a', { href, 'aria-current': href === current ? 'page' : null }, h('b', {}, i + 1), name)));
+  const bar = h('header', { class: 'topbar' },
+    h('a', { class: 'home', href: 'index.html' }, 'Unidad 9: eventos y Montecarlo'), nav);
+  document.body.prepend(bar);
+  const idx = PAGES.findIndex(p => p[0] === current);
+  if (idx >= 0 && $('main')) {
+    const prev = PAGES[idx - 1], next = PAGES[idx + 1];
+    $('main').append(h('div', { class: 'pager' },
+      prev ? h('a', { href: prev[0] }, h('span', {}, 'Anterior'), prev[1]) : h('span'),
+      next ? h('a', { href: next[0], style: { textAlign: 'right' } }, h('span', {}, 'Siguiente'), next[1]) : h('span')));
+  }
+  highlightAll();
+}
+</script>
+<script>
+/* =========== visualizador de heap reutilizable =========== */
+class HeapViz {
+  constructor(canvas, { max = false, bars = false } = {}) { this.cv = canvas; this.max = max; this.bars = bars; this.nodes = []; this.size = 0; this.ops = []; this.hl = []; this.sw = []; this.ms = 380; this.t = 0; this.idc = 0; this.out = null; this.cmp = 0; this.swp = 0; this.sorted = 0; }
+  less(a, b) { return this.max ? a > b : a < b; }
+  node(v) { return { v, id: this.idc++, x: null, y: null }; }
+  get busy() { return this.ops.length > 0; }
+  tick(dt) { this.t += dt * 1000; while (this.ops.length && this.t >= this.ms) { this.t -= this.ms; this.apply(this.ops.shift()); } if (!this.ops.length) this.t = 0; }
+  apply(op) { const N = this.nodes; this.hl = []; this.sw = [];
+    if (op[0] === 'hl') this.hl = op.slice(1);
+    else if (op[0] === 'swap') { const [, i, j] = op; [N[i], N[j]] = [N[j], N[i]]; this.sw = [i, j]; }
+    else if (op[0] === 'push') { N.push(op[1]); this.size = N.length; this.hl = [N.length - 1]; }
+    else if (op[0] === 'take') { const top = N[0], last = N.pop(); this.size = N.length; if (N.length) { N[0] = last; } this.flying = { n: top, t: 0 }; this.onTake && this.onTake(top.v); }
+    else if (op[0] === 'size') { this.size = op[1]; this.sorted = N.length - op[1]; }
+    else if (op[0] === 'fn') op[1](); }
+  /* planificación: simula sobre una copia de los valores y encola los pasos */
+  planSiftUp(vals, i) { while (i > 0) { const p = (i - 1) >> 1; this.ops.push(['hl', i, p]); this.cmp++; if (!this.less(vals[i], vals[p])) break; [vals[i], vals[p]] = [vals[p], vals[i]]; this.ops.push(['swap', i, p]); this.swp++; i = p; } }
+  planSiftDown(vals, i, n) { for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l >= n) break;
+      this.ops.push(['hl', i, l, ...(r < n ? [r] : [])]); this.cmp += r < n ? 2 : 1;
+      if (this.less(vals[l], vals[m])) m = l; if (r < n && this.less(vals[r], vals[m])) m = r; if (m === i) break;
+      [vals[i], vals[m]] = [vals[m], vals[i]]; this.ops.push(['swap', i, m]); this.swp++; i = m; } }
+  plannedVals() { const v = this.nodes.map(n => n.v); return v; }
+  draw(g, w, H) {
+    g.fillStyle = COL.screen; g.fillRect(0, 0, w, H);
+    const N = this.nodes, levels = Math.max(1, Math.ceil(Math.log2(N.length + 1))), treeH = H - (this.bars ? 150 : 86);
+    const pos = i => { const lv = Math.floor(Math.log2(i + 1)), k = i - (2 ** lv - 1), cnt = 2 ** lv; return [w * (k + .5) / cnt, 34 + lv * (treeH - 40) / Math.max(1, levels - 1 || 1)]; };
+    const cellW = Math.min(46, (w - 20) / Math.max(1, N.length)), ax0 = (w - cellW * N.length) / 2, ay = H - (this.bars ? 40 : 46);
+    // aristas
+    g.strokeStyle = '#3a4a55'; g.lineWidth = 1.5;
+    for (let i = 1; i < this.size; i++) { const [x, y] = pos(i), [px, py] = pos((i - 1) >> 1); g.beginPath(); g.moveTo(px, py); g.lineTo(x, y); g.stroke(); }
+    const k = 1 - Math.exp(-0.016 * 14);
+    N.forEach((n, i) => { const inTree = i < this.size, [tx, ty] = inTree ? pos(i) : [ax0 + (i + .5) * cellW, ay - 40];
+      if (n.x == null) { n.x = tx; n.y = ty; } n.x += (tx - n.x) * 0.22; n.y += (ty - n.y) * 0.22;
+      const hl = this.hl.includes(i), sw = this.sw.includes(i);
+      if (inTree) { g.fillStyle = sw ? '#2b4a3a' : hl ? '#4a3a1f' : '#26333c'; g.strokeStyle = sw ? COL.green : hl ? COL.amber : '#556676'; g.lineWidth = 2;
+        g.beginPath(); g.arc(n.x, n.y, 17, 0, 7); g.fill(); g.stroke(); text(g, n.v, n.x, n.y + 5, COL.ink, 'center', '600 14px JetBrains Mono, monospace'); }
+      // array
+      const cx = ax0 + i * cellW;
+      if (this.bars) { const vmax = Math.max(...N.map(q => q.v)), bh = n.v / vmax * 70; g.fillStyle = i >= this.size ? '#556676' : sw ? COL.green : hl ? COL.amber : COL.cyan; g.fillRect(cx + 2, ay - 6 - bh, cellW - 4, bh); }
+      g.fillStyle = i >= this.size ? '#1c252c' : sw ? '#2b4a3a' : hl ? '#4a3a1f' : '#26333c'; g.fillRect(cx + 1, ay, cellW - 2, 26);
+      text(g, n.v, cx + cellW / 2, ay + 18, i >= this.size ? COL.dim : COL.ink, 'center', '600 13px JetBrains Mono, monospace');
+      text(g, i, cx + cellW / 2, ay + 40, COL.dim, 'center', '10px JetBrains Mono, monospace'); });
+    if (this.flying) { const f = this.flying; f.t += 0.03; const a = Math.max(0, 1 - f.t); g.globalAlpha = a; g.fillStyle = COL.green; g.beginPath(); g.arc(w / 2 + f.t * 120, 34 - f.t * 10, 17, 0, 7); g.fill(); text(g, f.n.v, w / 2 + f.t * 120, 39 - f.t * 10, '#0f171b', 'center', '600 14px JetBrains Mono, monospace'); g.globalAlpha = 1; if (f.t >= 1) this.flying = null; }
+  }
+}
+
+/* =========== 1. min-heap interactivo =========== */
+const HV = new HeapViz($('#cvh')); let taken = [];
+HV.onTake = v => { taken.push(v); $('#hout').innerHTML = 'sacados en orden: <b>' + taken.join(' · ') + '</b>'; };
+function hvVals() { const v = HV.nodes.map(n => n.v); for (const op of HV.ops) { if (op[0] === 'swap') [v[op[1]], v[op[2]]] = [v[op[2]], v[op[1]]]; else if (op[0] === 'push') v.push(op[1].v); else if (op[0] === 'take') { const l = v.pop(); if (v.length) v[0] = l; } } return v; }
+function hvPush(x) { const v = hvVals(); if (v.length >= 31) return; const n = HV.node(x); HV.ops.push(['push', n]); v.push(x); HV.planSiftUp(v, v.length - 1); }
+function hvPop() { const v = hvVals(); if (!v.length) return; HV.ops.push(['hl', 0]); HV.ops.push(['take']); const l = v.pop(); if (v.length) { v[0] = l; HV.planSiftDown(v, 0, v.length); } }
+const vin = h('input', { type: 'number', class: 'valin', value: 7, min: 0, max: 99, 'aria-label': 'Valor a insertar' });
+const hrow = h('div', { class: 'row' }); $('#hctl').append(hrow);
+hrow.append(vin); button(hrow, 'Insertar', () => hvPush(clamp(+vin.value | 0, 0, 99)));
+button(hrow, 'Insertar al azar', () => hvPush(1 + Math.floor(Math.random() * 99)), 'primary');
+button(hrow, 'Sacar mínimo', hvPop);
+button(hrow, 'Sacar todos', () => { const n = hvVals().length; for (let i = 0; i < n; i++) hvPop(); });
+button(hrow, 'Vaciar', () => { HV.ops = []; HV.nodes = []; HV.size = 0; taken = []; $('#hout').textContent = ''; });
+slider('#hctl', { label: 'Velocidad (ms por paso)', min: 40, max: 1200, log: true, value: HV.ms, fmt: v => fmtInt(v) + ' ms', oninput: v => HV.ms = v });
+[23, 8, 42, 4, 16, 15, 31, 9, 3, 27, 12].forEach(x => { const v = hvVals(); HV.nodes.push(HV.node(x)); HV.size = HV.nodes.length; const vals = HV.nodes.map(n => n.v); let i = vals.length - 1;
+  while (i > 0) { const p = (i - 1) >> 1; if (vals[i] >= vals[p]) break; [HV.nodes[i], HV.nodes[p]] = [HV.nodes[p], HV.nodes[i]]; [vals[i], vals[p]] = [vals[p], vals[i]]; i = p; } });
+animate($('#cvh'), ({ g, w, h: H, dt }) => { HV.tick(dt); HV.draw(g, w, H); $('#htag').textContent = `${HV.nodes.length} elementos · altura ${Math.ceil(Math.log2(HV.nodes.length + 1))} · mínimo: ${HV.nodes.length ? HV.nodes[0].v : '–'}`; });
+
+/* =========== 2. heapify + heap sort =========== */
+const SV = new HeapViz($('#cvs'), { max: true, bars: true }); SV.ms = 260;
+function svShuffle() { SV.ops = []; SV.nodes = Array.from({ length: 15 }, () => SV.node(5 + Math.floor(Math.random() * 95))); SV.size = 15; SV.sorted = 0; SV.cmp = 0; SV.swp = 0; SV.phase = 'mezclado'; SV.hl = []; SV.sw = []; }
+function svHeapify() { if (SV.ops.length) return; const v = SV.nodes.map(n => n.v), n = v.length; SV.cmp = 0; SV.swp = 0; SV.ops.push(['size', n], ['fn', () => SV.phase = 'heapify']);
+  for (let i = (n >> 1) - 1; i >= 0; i--) SV.planSiftDown(v, i, n); SV.ops.push(['fn', () => { SV.phase = 'es un max-heap'; SV.hl = []; SV.sw = []; }]); return v; }
+function svSort() { if (SV.ops.length) return; const v = svHeapify(); const n = v.length; SV.ops.push(['fn', () => SV.phase = 'heap sort']);
+  for (let end = n - 1; end > 0; end--) { SV.ops.push(['hl', 0, end]); [v[0], v[end]] = [v[end], v[0]]; SV.ops.push(['swap', 0, end], ['size', end]); SV.swp++; SV.planSiftDown(v, 0, end); }
+  SV.ops.push(['size', 0], ['fn', () => { SV.phase = 'ordenado'; SV.hl = []; SV.sw = []; }]); }
+button('#sctl', 'Heapify', () => { svHeapify(); }, 'primary'); button('#sctl', 'Heapify + heap sort', svSort, 'primary'); button('#sctl', '🎲 Mezclar', svShuffle);
+slider('#sctl', { label: 'Velocidad (ms por paso)', min: 20, max: 1000, log: true, value: SV.ms, fmt: v => fmtInt(v) + ' ms', oninput: v => SV.ms = v });
+const sSt = stats('#sst', [['ph', 'Fase', 'amber'], ['c', 'Comparaciones planificadas', 'cyan'], ['s', 'Intercambios planificados', 'green']]);
+svShuffle();
+animate($('#cvs'), ({ g, w, h: H, dt }) => { SV.tick(dt); SV.draw(g, w, H); sSt.ph.textContent = SV.phase; sSt.c.textContent = SV.cmp; sSt.s.textContent = SV.swp; $('#stag').textContent = 'max-heap: cada padre ≥ sus hijos'; });
+
+/* =========== 3. benchmark =========== */
+class Unsorted { constructor() { this.a = []; } push(x) { this.a.push(x); } pop() { const a = this.a; let m = 0; for (let i = 1; i < a.length; i++) if (a[i].t < a[m].t) m = i; const r = a[m]; a[m] = a[a.length - 1]; a.pop(); return r; } }
+class SortedScan { constructor() { this.a = []; } push(x) { const a = this.a; let i = 0; while (i < a.length && a[i].t <= x.t) i++; a.splice(i, 0, x); } pop() { return this.a.shift(); } }
+class SortedBin { constructor() { this.a = []; } push(x) { const a = this.a; let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; a[m].t > x.t ? lo = m + 1 : hi = m; } a.splice(lo, 0, x); } pop() { return this.a.pop(); } }
+const BENCH = [
+  { k: 'heap', name: 'Min-heap', c: COL.green, make: () => new MinHeap((a, b) => a.t - b.t), cap: 1e6 },
+  { k: 'bin', name: 'Array ordenado (búsqueda binaria + splice)', c: COL.cyan, make: () => new SortedBin(), cap: 3e4 },
+  { k: 'scan', name: 'Array ordenado (recorrido lineal + shift)', c: COL.amber, make: () => new SortedScan(), cap: 3e4 },
+  { k: 'uns', name: 'Array sin ordenar', c: COL.red, make: () => new Unsorted(), cap: 3e4 }];
+const NS = [1000, 3000, 10000, 30000, 100000, 300000]; const BR = {};
+function holdBench(make, n) { const q = make(); let t = 0; for (let i = 0; i < n; i++) q.push({ t: Math.random() * 100 });
+  const t0 = performance.now(); for (let i = 0; i < n; i++) { const e = q.pop(); t = e.t; q.push({ t: t + -10 * Math.log(1 - Math.random()) }); } return performance.now() - t0; }
+let benchBusy = false;
+async function runBench() { if (benchBusy) return; benchBusy = true; for (const k in BR) delete BR[k];
+  for (const b of BENCH) for (let r = 0; r < 3; r++) holdBench(b.make, 2000);   // calentar el JIT antes de medir
+  for (const n of NS) for (const b of BENCH) { if (n > b.cap) { BR[b.k + n] = null; continue; } let best = holdBench(b.make, n); if (n <= 1e4) best = Math.min(best, holdBench(b.make, n)); BR[b.k + n] = best; benchTable(); await nextFrame(); }
+  benchBusy = false; }
+function benchTable() { $('#benchtab').innerHTML = `<tr><th>n</th>${BENCH.map(b => `<th style="text-align:right;color:${b.c}">${b.name}</th>`).join('')}</tr>` +
+  NS.map(n => `<tr><td class="num">${fmtInt(n)}</td>${BENCH.map(b => { const v = BR[b.k + n]; return `<td class="num">${v == null ? (n > b.cap ? 'demasiado lento' : '…') : fmtNum(v, v < 10 ? 2 : 0) + ' ms'}</td>`; }).join('')}</tr>`).join(''); }
+button('#benchctl', '▶ Medir', runBench, 'primary');
+benchTable();
+animate($('#cvbench'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 6, 5); const L = 54, R = w - 14, T = 18, Bt = H - 24, lx = n => L + (Math.log10(n) - 3) / (Math.log10(3e5) - 3) * (R - L), ly = ms => Bt - (Math.log10(Math.max(ms, 0.01)) + 2) / 6 * (Bt - T);
+  for (const n of NS) text(g, fmtCompact(n), lx(n), H - 6, COL.dim, 'center');
+  for (let e = -2; e <= 4; e++) text(g, e < 0 ? (10 ** e) + '' : fmtInt(10 ** e), L - 6, ly(10 ** e) + 4, COL.dim, 'right');
+  for (const b of BENCH) { glowLine(g, b.c, 2); g.beginPath(); let st = false; for (const n of NS) { const v = BR[b.k + n]; if (v == null) continue; const x = lx(n), y = ly(v); st ? g.lineTo(x, y) : (g.moveTo(x, y), st = true); } g.stroke(); noGlow(g);
+    for (const n of NS) { const v = BR[b.k + n]; if (v != null) { g.fillStyle = b.c; g.beginPath(); g.arc(lx(n), ly(v), 3.5, 0, 7); g.fill(); } } }
+  if (!Object.keys(BR).length) text(g, 'Apretá "Medir"', w / 2, H / 2, COL.muted, 'center', '15px Archivo, sans-serif');
+});
+
+/* =========== 4. empates =========== */
+function tieRun() {
+  const labels = 'ABCDEFGHIJ'.split(''), mk = useSeq => { let seq = 0; const q = new MinHeap(useSeq ? (a, b) => a.t - b.t || a.seq - b.seq : (a, b) => a.t - b.t);
+    const rnd = mulberry32(tieSeed); for (let i = 0; i < 12; i++) q.push({ t: rnd() * 20, name: '·', seq: seq++ });
+    labels.forEach(l => { q.push({ t: 10, name: l, seq: seq++ }); if (rnd() < .5) q.push({ t: rnd() * 20, name: '·', seq: seq++ }); });
+    const out = []; while (q.size) { const e = q.pop(); if (e.name !== '·') out.push(e.name); } return out; };
+  const a = mk(false), b = mk(true);
+  $('#tie1').innerHTML = `<b class="red">Solo por tiempo</b><br>salen: <b>${a.join(' ')}</b>`;
+  $('#tie2').innerHTML = `<b class="green">Tiempo y después seq</b><br>salen: <b>${b.join(' ')}</b>`;
+}
+let tieSeed = 3;
+button('#tiectl', '🎲 Otro armado del heap', () => { tieSeed = (Math.random() * 1e6) | 0; tieRun(); }, 'primary');
+tieRun();
+buildChrome('06-cola-de-eventos.html');
+</script>
+</body>
+</html>

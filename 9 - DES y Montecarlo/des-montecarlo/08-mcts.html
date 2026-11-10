@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monte Carlo Tree Search</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#26303a;
+  --bg-2:#2f3b46;
+  --bg-3:#384653;
+  --screen:#0f171b;
+  --grid:#1b282d;
+  --grid-2:#243840;
+  --ink:#e9eef1;
+  --muted:#9eadb8;
+  --line:#465663;
+  --amber:#ffb23f;
+  --cyan:#5ed0e6;
+  --red:#ff6b5a;
+  --violet:#b99cff;
+  --green:#8fd694;
+  --radius:10px;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:18px;line-height:1.55;font-variation-settings:"wdth" 100}
+a{color:var(--cyan);text-underline-offset:3px}
+a:hover{color:#9fe6f3}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+::selection{background:var(--amber);color:#1a1a1a}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:#1f2830;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 20px;flex-wrap:wrap}
+.topbar .home{color:var(--ink);text-decoration:none;font-weight:700;font-variation-settings:"wdth" 118;white-space:nowrap;font-size:15px}
+.topbar nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.topbar nav a{color:var(--muted);text-decoration:none;font-size:14px;padding:5px 9px;border-radius:6px;white-space:nowrap}
+.topbar nav a b{color:var(--ink);font-weight:600;margin-right:5px;font-variant-numeric:tabular-nums}
+.topbar nav a:hover{background:var(--bg-2);color:var(--ink)}
+.topbar nav a[aria-current]{background:var(--bg-3);color:var(--ink)}
+.topbar nav a[aria-current] b{color:var(--amber)}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 22px 80px}
+.prose{max-width:72ch}
+h1{font-size:clamp(34px,5vw,58px);line-height:1.02;margin:10px 0 18px;font-weight:800;font-variation-settings:"wdth" 122;letter-spacing:-.01em}
+h2{font-size:clamp(25px,3vw,34px);line-height:1.1;margin:64px 0 14px;font-weight:750;font-variation-settings:"wdth" 116}
+h3{font-size:21px;line-height:1.2;margin:34px 0 8px;font-weight:700;font-variation-settings:"wdth" 110}
+h4{font-size:17px;margin:20px 0 6px;font-weight:700}
+p{margin:0 0 14px}
+.lead{font-size:21px;color:#d5dde3;max-width:64ch}
+.muted{color:var(--muted)}
+small,.small{font-size:14px}
+ul,ol{padding-left:22px;margin:0 0 14px}
+li{margin:4px 0}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}
+.kbd,kbd{font:600 13px var(--mono);background:var(--bg-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+code{font-family:var(--mono);font-size:.86em;background:#1c252c;padding:1px 5px;border-radius:4px;color:#f2d7a6}
+.amber{color:var(--amber)}.cyan{color:var(--cyan)}.red{color:var(--red)}.violet{color:var(--violet)}.green{color:var(--green)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:22px;align-items:start}
+.cols-2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media (max-width:860px){.cols-2{grid-template-columns:1fr}}
+
+/* ---------- instruments ---------- */
+.rig{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:18px 0 22px;box-shadow:inset 0 1px 0 #ffffff0d}
+.rig > .rig-title{font-weight:700;font-size:15px;margin:0 0 10px;color:var(--ink);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rig > .rig-title .muted{font-weight:400}
+.screen{position:relative;background:var(--screen);border-radius:7px;border:1px solid #0a1013;box-shadow:inset 0 0 0 1px #ffffff08, inset 0 6px 24px #0008;overflow:hidden}
+.screen canvas{display:block;width:100%;touch-action:none}
+.screen .tag{position:absolute;left:10px;top:7px;font:12px var(--mono);color:var(--muted);pointer-events:none}
+.screen .tag-r{left:auto;right:10px}
+.screens{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+@media (max-width:760px){.screens{grid-template-columns:1fr}}
+.controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:end;margin-top:12px}
+.ctl{display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 170px;max-width:300px}
+.ctl label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl label output{color:var(--ink);font:600 13px var(--mono);white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.readout{font:13px var(--mono);color:var(--muted);background:var(--screen);border:1px solid #0a1013;border-radius:6px;padding:8px 10px;line-height:1.6}
+.readout b{color:var(--ink);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:linear-gradient(90deg,var(--amber) var(--p,50%),#1a2329 var(--p,50%));border-radius:2px}
+input[type=range]::-moz-range-track{height:4px;background:#1a2329;border-radius:2px}
+input[type=range]::-moz-range-progress{height:4px;background:var(--amber);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;margin-top:-7px;box-shadow:0 1px 3px #0009}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;box-shadow:0 1px 3px #0009}
+
+button,.btn{font:600 15px var(--font);color:var(--ink);background:var(--bg-3);border:1px solid #556676;border-radius:8px;padding:8px 14px;cursor:pointer;line-height:1.2;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+button:hover,.btn:hover{background:#43535f}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--amber);border-color:var(--amber);color:#21180a}
+button.primary:hover{background:#ffc66d}
+button.playing{background:var(--cyan);border-color:var(--cyan);color:#06232a}
+button.small{font-size:13px;padding:5px 10px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #556676;border-radius:8px;overflow:hidden;background:#222c34}
+.seg button{border:0;border-radius:0;background:transparent;border-right:1px solid #44535f;font-size:14px;padding:7px 12px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#18212a}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px;cursor:pointer;user-select:none}
+.toggle input{appearance:none;width:38px;height:22px;border-radius:11px;background:#1a2329;border:1px solid #556676;position:relative;cursor:pointer;margin:0;flex:none}
+.toggle input::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#aab6be;top:2px;left:2px;transition:left .15s}
+.toggle input:checked{background:var(--cyan);border-color:var(--cyan)}
+.toggle input:checked::after{left:18px;background:#fff}
+select{font:15px var(--font);background:var(--bg-3);color:var(--ink);border:1px solid #556676;border-radius:8px;padding:7px 10px}
+
+
+/* ---------- code ---------- */
+pre{background:#161e23;border:1px solid #0d1417;border-radius:8px;padding:14px 16px;overflow:auto;font:14px/1.6 var(--mono);color:#d6e1e8;margin:12px 0 18px;tab-size:2}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.tk-c{color:#71828e;font-style:italic}.tk-s{color:#a8e0a0}.tk-k{color:#ff9e7a}.tk-n{color:#ffcf73}.tk-t{color:#7fd8ec}.tk-f{color:#e0c2ff}
+
+/* ---------- callouts ---------- */
+.game{border:1px solid #3e5a49;background:#26372f;border-radius:var(--radius);padding:14px 18px;margin:18px 0}
+.game > strong:first-child{color:var(--green);display:block;margin-bottom:4px}
+.warn{border:1px solid #6a4a2c;background:#3a2f25;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.figure{margin:18px 0}
+.figure figcaption{font-size:14px;color:var(--muted);margin-top:6px}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:12px 0 20px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
+
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:70px;border-top:1px solid var(--line);padding-top:20px;flex-wrap:wrap}
+.pager a{text-decoration:none;color:var(--ink);font-weight:600}
+.pager a span{display:block;font-size:13px;color:var(--muted);font-weight:400}
+.credits{font-size:13px;color:var(--muted);margin-top:30px;max-width:90ch}
+
+@media (max-width:700px){
+  .topbar{position:static;gap:8px}
+  .topbar nav{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+}
+@media (max-width:600px){
+  body{font-size:17px}
+  main{padding:24px 16px 60px}
+  .topbar{padding:8px 12px}
+  .rig{padding:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- unidad 9: extras ---------- */
+.topbar .tag9{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stat{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:6px 11px;min-width:110px}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+.stat b{font:600 17px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.stat.amber b{color:var(--amber)}.stat.cyan b{color:var(--cyan)}.stat.red b{color:var(--red)}.stat.green b{color:var(--green)}.stat.violet b{color:var(--violet)}
+.demo{display:flex;gap:14px;align-items:center;border:1px solid #3f5466;background:#263644;border-radius:var(--radius);padding:12px 16px;margin:18px 0;text-decoration:none;color:var(--ink)}
+.demo:hover{background:#2d4152;color:var(--ink)}
+.demo .ico{font:700 22px var(--mono);color:var(--cyan);flex:none}
+.demo b{display:block}
+.demo span{color:var(--muted);font-size:15px}
+.formula{font:600 17px var(--mono);background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 14px;margin:12px 0 16px;color:#f2d7a6;overflow:auto;white-space:nowrap}
+.formula small{color:var(--muted);font-weight:400}
+.screen .tag-b{top:auto;bottom:7px}
+.panel{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:8px 10px;font:13px/1.55 var(--mono);color:var(--muted);overflow:auto}
+.panel .hi{color:var(--ink);background:#2b3a1f;border-radius:3px}
+.panel .ev{display:flex;gap:10px;white-space:nowrap;padding:1px 4px}
+.panel .ev .t{color:var(--amber);min-width:62px;text-align:right}
+.panel .ev .k-arr{color:var(--cyan)}.panel .ev .k-end{color:var(--green)}.panel .ev .k-x{color:var(--violet)}
+.side{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+@media (max-width:860px){.side{grid-template-columns:1fr}}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin:10px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--bg-3);border:1px solid #556676;font:700 14px/28px var(--font);text-align:center;color:var(--amber)}
+.timebox{display:inline-block;font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+
+p code,li code,td code{white-space:nowrap}
+.screen .tag{background:#0f171bb3;padding:1px 6px;border-radius:4px}
+</style>
+<style>
+.ttt{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:10px}
+@media (max-width:760px){.ttt{grid-template-columns:1fr}}
+.ttt .sq{aspect-ratio:1}
+.ttt .sq canvas{height:100%;cursor:pointer}
+.phase{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.phase span{font:600 13px var(--font);padding:5px 10px;border-radius:6px;background:var(--bg-3);color:var(--muted);border:1px solid #556676}
+.phase span.on{background:var(--amber);color:#21180a;border-color:var(--amber)}
+.c4{display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);gap:12px;align-items:start}
+@media (max-width:900px){.c4{grid-template-columns:1fr}}
+.c4 .screen canvas{cursor:pointer}
+.c4msg{font:600 18px var(--font);margin:6px 0 10px;min-height:1.4em}
+</style>
+</head>
+<body>
+<main>
+  <h1>Monte Carlo Tree Search</h1>
+  <p class="lead">¿Cómo hace una computadora para jugar bien a un juego si nadie le programó una estrategia? Una respuesta sorprendentemente buena: <strong>imaginando partidas al azar</strong>. Para cada jugada posible, juega cientos de partidas con movimientos aleatorios hasta el final y se fija cuál gana más seguido. Es Montecarlo aplicado a decidir, y con un árbol encima se vuelve una de las ideas más potentes de la IA de juegos.</p>
+
+  <h2>Primer intento: Montecarlo plano</h2>
+  <div class="prose">
+    <p>Para cada jugada legal, jugá N partidas al azar a partir de ahí y contá victorias (un empate vale medio punto). Elegí la jugada con mejor porcentaje. No hace falta saber nada del juego más allá de las reglas: qué jugadas son legales y quién ganó.</p>
+    <p>Probá la <strong>posición trampa</strong>: le toca a O, y X amenaza con completar la columna del medio. Cualquier persona tapa abajo al medio. Montecarlo plano, en cambio, prefiere una esquina. ¿Por qué? Porque en sus partidas imaginarias X juega <em>al azar</em> y muchas veces no completa la línea. Montecarlo plano asume que el rival es tonto.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Ta-te-ti con Montecarlo plano <span class="muted">· tocá las casillas para armar una posición · en cada casilla libre, % de victorias en partidas al azar</span></div>
+    <div class="ttt">
+      <div class="screen sq"><canvas id="cvflat"></canvas></div>
+      <div class="screen"><canvas id="cvflatbar" style="height:100%;min-height:260px"></canvas><span class="tag" id="flattag"></span></div>
+    </div>
+    <div class="controls" id="flatctl"></div>
+  </div>
+
+  <h2>MCTS: gastar las simulaciones donde importa</h2>
+  <div class="prose">
+    <p>MCTS arregla los dos problemas del método plano: reparte mal las simulaciones (le da lo mismo a jugadas obviamente malas que a las buenas) y no mira más allá de un movimiento. Construye de a poco un <strong>árbol de partidas</strong>, y cada iteración tiene cuatro fases:</p>
+  </div>
+  <ol class="steps prose">
+    <li><strong>Selección.</strong> Desde la raíz, bajar por el árbol eligiendo en cada nodo el hijo con mejor puntaje UCB (abajo), hasta llegar a un nodo que todavía tiene jugadas sin probar.</li>
+    <li><strong>Expansión.</strong> Agregar un hijo nuevo con una de esas jugadas.</li>
+    <li><strong>Simulación</strong> (<em>playout</em>). Desde ahí, jugar al azar hasta el final. Es el Montecarlo.</li>
+    <li><strong>Retropropagación.</strong> Subir por el camino sumando una visita a cada nodo y una victoria a los nodos del jugador que ganó.</li>
+  </ol>
+  <div class="prose">
+    <p>La clave está en la selección. Hay que balancear dos cosas: <strong>explotar</strong> (seguir probando la jugada que viene ganando) y <strong>explorar</strong> (darle chances a las que se probaron poco, por si tuvieron mala suerte). La fórmula UCB1 suma las dos:</p>
+  </div>
+  <div class="formula">UCB = victorias / visitas + c · √( ln(visitas del padre) / visitas ) <small>&nbsp;// c ≈ 1,4</small></div>
+  <div class="prose">
+    <p>El primer término es el promedio de Montecarlo. El segundo es un premio por incertidumbre: crece para los hijos con pocas visitas, y el ln hace que nunca deje de explorar del todo. Como el árbol pone al rival a elegir <em>su</em> mejor jugada en sus niveles, MCTS deja de asumir que el rival juega al azar.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">MCTS fase por fase en la posición trampa <span class="muted">· tamaño del nodo = visitas · <span class="amber">camino</span> de la iteración actual</span></div>
+    <div class="screen"><canvas id="cvtree" style="height:470px"></canvas><span class="tag" id="treetag"></span></div>
+    <div class="phase" id="phases"><span>1 · Selección</span><span>2 · Expansión</span><span>3 · Simulación</span><span>4 · Retropropagación</span></div>
+    <div class="controls" id="treectl"></div>
+  </div>
+  <pre><code>function mcts(estadoRaiz, iteraciones, c = 1.4) {
+  const raiz = nodo(null, null, estadoRaiz);
+  for (let it = 0; it &lt; iteraciones; it++) {
+    let n = raiz, s = estadoRaiz.clonar();
+    // 1. selección
+    while (n.sinProbar.length === 0 &amp;&amp; n.hijos.length > 0) {
+      n = maxPor(n.hijos, h => h.W / h.N + c * Math.sqrt(Math.log(n.N) / h.N));
+      s.jugar(n.jugada);
+    }
+    // 2. expansión
+    if (n.sinProbar.length > 0) {
+      const j = sacarAlAzar(n.sinProbar);
+      s.jugar(j);
+      n = agregarHijo(n, j, s);              // guarda quién hizo la jugada
+    }
+    // 3. simulación
+    while (!s.termino()) s.jugar(alAzar(s.jugadas()));
+    const g = s.ganador();
+    // 4. retropropagación
+    for (; n; n = n.padre) {
+      n.N++;
+      if (g === 'empate') n.W += 0.5; else if (g === n.quienJugo) n.W += 1;
+    }
+  }
+  return maxPor(raiz.hijos, h => h.N).jugada;  // la más visitada, no la de mejor promedio
+}</code></pre>
+  <p class="prose">Al final se elige el hijo <strong>más visitado</strong>: es el que MCTS investigó más y en el que más confía. Y el algoritmo se puede cortar en cualquier momento, después de 100 iteraciones o de 50 ms: <strong>más tiempo = mejor juego</strong>. Es el √N de Montecarlo convertido en dificultad.</p>
+
+  <h2>Jugá contra MCTS</h2>
+  <div class="prose">
+    <p>Cuatro en línea, sin una sola regla de estrategia programada: la compu solo sabe qué jugadas son legales y cuándo alguien ganó. Con 10 simulaciones por jugada le ganás fácil. Con 5.000, no tanto. Las barras muestran qué miró la compu en su última jugada.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">4 en línea vs. MCTS <span class="muted">· vos sos <span class="amber">●</span> · la compu es <span class="cyan">●</span> · tocá una columna</span></div>
+    <div class="c4">
+      <div class="screen"><canvas id="cvc4" style="height:420px"></canvas></div>
+      <div>
+        <div class="c4msg" id="c4msg"></div>
+        <div class="screen"><canvas id="cvc4bar" style="height:220px"></canvas><span class="tag">última jugada de la compu · barra: visitas · número: % de victorias estimado</span></div>
+        <div id="c4st"></div>
+      </div>
+    </div>
+    <div class="controls" id="c4ctl"></div>
+  </div>
+
+  <div class="game"><strong>En juegos</strong>
+    <strong>AlphaGo</strong> (2016) le ganó a Lee Sedol, uno de los mejores jugadores de Go del mundo, con MCTS, reemplazando las partidas al azar por redes neuronales que estiman quién va ganando y qué jugadas conviene mirar; <strong>AlphaZero</strong> aprendió así ajedrez, shogi y Go desde cero. En juegos comerciales, la IA de campaña de <strong>Total War: Rome II</strong> usa MCTS para planificar. En juegos de cartas con información oculta se usa <strong>determinización</strong>: se reparten al azar las cartas que no se ven (más Montecarlo) y se corre MCTS sobre cada reparto.
+  </div>
+  <div class="game"><strong>Para el proyecto</strong>
+    Si tu juego es por turnos y el estado se puede copiar y simular rápido, tenés una IA en 50 líneas, y el selector de dificultad sale gratis: es la cantidad de simulaciones. Funciona peor en tiempo real o cuando simular una partida entera es caro; ahí se cortan los playouts antes del final y se usa una heurística para estimar quién va ganando.
+  </div>
+
+  <h2>Cierre de la unidad</h2>
+  <div class="prose">
+    <p>Todo lo de hoy sale de dos ideas. <strong>Montecarlo</strong>: cuando no sabés calcular algo, simulalo muchas veces y mirá la distribución, sabiendo que el error baja como 1/√N. <strong>Eventos discretos</strong>: si lo que importa son los momentos en que algo cambia, poné esos momentos en una cola de prioridad y hacé saltar el reloj. Las dos juntas sirven para decidir cuántas cajas abrir, balancear un drop, poner al día una colonia o elegir la próxima jugada.</p>
+  </div>
+</main>
+<script>
+/* ====================================================================
+   Unidad 9 – Eventos discretos y Montecarlo · helpers compartidos (se inlinea en cada página)
+   ==================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+/* ---------------- azar con semilla ---------------- */
+/* mulberry32: 32 bits de estado, rápido y suficientemente bueno para juegos */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+class Rng {
+  constructor(seed = (Math.random() * 2 ** 32) >>> 0) { this.seed = seed >>> 0; this.next = mulberry32(this.seed); }
+  float(a = 0, b = 1) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }       // entero en [a, b]
+  exp(mean) { return -mean * Math.log(1 - this.next()); }                // exponencial (transformada inversa)
+  normal(mu = 0, sd = 1) {                                               // Box-Muller
+    const u1 = 1 - this.next(), u2 = this.next();
+    return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(this.next() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+}
+
+/* ---------------- min-heap (cola de prioridad) ---------------- */
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  get size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) >= 0) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a; if (!a.length) return undefined; const top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0; const n = a.length;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < n && this.cmp(a[l], a[m]) < 0) m = l; if (r < n && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top; }
+  clear() { this.a.length = 0; }
+  sorted() { return [...this.a].sort(this.cmp); }
+}
+
+/* ---------------- UI helpers ---------------- */
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') el.className = v; else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(k));
+  return el;
+}
+function paintRange(r) { const p = (r.value - r.min) / (r.max - r.min) * 100; r.style.setProperty('--p', p + '%'); }
+/* slider con label y valor. opts: {label,min,max,step,value,fmt,log,oninput,onchange} */
+function slider(parent, o) {
+  const id = 'r' + Math.random().toString(36).slice(2, 8);
+  const out = h('output', { for: id });
+  const r = h('input', { type: 'range', id, min: 0, max: 1000, step: 1 });
+  const toPos = v => o.log ? 1000 * Math.log(v / o.min) / Math.log(o.max / o.min) : 1000 * (v - o.min) / (o.max - o.min);
+  const fromPos = p => { let v = o.log ? o.min * Math.pow(o.max / o.min, p / 1000) : o.min + (o.max - o.min) * p / 1000; if (o.step) v = Math.round(v / o.step) * o.step; return clamp(+v.toFixed(6), o.min, o.max); };
+  const fmt = o.fmt || (v => v);
+  const wrap = h('div', { class: 'ctl' }, h('label', { for: id }, h('span', {}, o.label), out), r);
+  const api = {
+    el: wrap, input: r, value: o.value,
+    set(v, fire) { api.value = v; r.value = toPos(v); out.textContent = fmt(v); paintRange(r); if (fire) o.oninput && o.oninput(v); },
+  };
+  r.addEventListener('input', () => { api.value = fromPos(+r.value); out.textContent = fmt(api.value); paintRange(r); o.oninput && o.oninput(api.value); });
+  if (o.onchange) r.addEventListener('change', () => o.onchange(api.value));
+  api.set(o.value);
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return api;
+}
+/* grupo de botones excluyentes. options: [{v,label}] */
+function seg(parent, options, value, onchange) {
+  const el = h('div', { class: 'seg', role: 'group' });
+  const api = { el, value, set(v, fire) { api.value = v; for (const b of el.children) b.setAttribute('aria-pressed', b.dataset.v === String(v)); if (fire) onchange && onchange(v); } };
+  for (const op of options) {
+    const b = h('button', { type: 'button', 'data-v': op.v, title: op.title || null }, op.label);
+    b.addEventListener('click', () => api.set(op.v, true)); el.append(b);
+  }
+  api.set(value);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return api;
+}
+function toggle(parent, label, checked, onchange) {
+  const inp = h('input', { type: 'checkbox' }); inp.checked = !!checked;
+  inp.addEventListener('change', () => onchange && onchange(inp.checked));
+  const el = h('label', { class: 'toggle' }, inp, label);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return inp;
+}
+function button(parent, label, onclick, cls = '') {
+  const b = h('button', { type: 'button', class: cls }, label); b.addEventListener('click', onclick);
+  (typeof parent === 'string' ? $(parent) : parent).append(b); return b;
+}
+/* fila de "stats": stats('#x', [['n','Dardos'],['pi','π estimado','amber']]) -> {n: el, pi: el} */
+function stats(parent, defs) {
+  const wrap = h('div', { class: 'stats' }), out = {};
+  for (const [k, label, cls] of defs) { const b = h('b', {}, '–'); wrap.append(h('div', { class: 'stat ' + (cls || '') }, h('span', {}, label), b)); out[k] = b; }
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return out;
+}
+const NF = {};
+const fmtNum = (v, d = 0) => { if (!isFinite(v)) return v > 0 ? '∞' : '–'; const k = d; return (NF[k] || (NF[k] = new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }))).format(v); };
+const fmtInt = v => fmtNum(Math.round(v), 0);
+const fmtPct = (v, d = 1) => fmtNum(v * 100, d) + '%';
+const fmtCompact = v => v >= 1e6 ? fmtNum(v / 1e6, v >= 1e7 ? 0 : 1) + ' M' : v >= 1e4 ? fmtNum(v / 1e3, 0) + ' k' : fmtInt(v);
+
+/* ---------------- canvas ---------------- */
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), hh = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+const COL = { amber: '#ffb23f', cyan: '#5ed0e6', red: '#ff6b5a', violet: '#b99cff', green: '#8fd694', ink: '#e9eef1', muted: '#9eadb8', dim: '#5d717b', grid: '#1b282d', grid2: '#25363d', screen: '#0f171b' };
+function clearScreen(g, w, h, gridX = 10, gridY = 4, mid = false) {
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, h);
+  g.strokeStyle = COL.grid; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < gridX; i++) { const x = Math.round(i * w / gridX) + .5; g.moveTo(x, 0); g.lineTo(x, h); }
+  for (let i = 1; i < gridY; i++) { const y = Math.round(i * h / gridY) + .5; g.moveTo(0, y); g.lineTo(w, y); }
+  g.stroke();
+  if (mid) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(h / 2) + .5); g.lineTo(w, Math.round(h / 2) + .5); g.stroke(); }
+}
+function glowLine(g, color, width = 2) { g.strokeStyle = color; g.lineWidth = width; g.shadowColor = color; g.shadowBlur = 6; g.lineJoin = 'round'; }
+function noGlow(g) { g.shadowBlur = 0; }
+function text(g, s, x, y, color = COL.muted, align = 'left', font = '12px JetBrains Mono, monospace') {
+  g.fillStyle = color; g.font = font; g.textAlign = align; g.fillText(s, x, y); g.textAlign = 'left';
+}
+/* histograma: counts[] dibujado en el rectángulo (x,y,w,h). opts: {max, color, fill, gap} */
+function drawHist(g, x, y, w, hh, counts, color, o = {}) {
+  const n = counts.length; if (!n) return;
+  const max = o.max || Math.max(1, ...counts), bw = w / n, gap = o.gap ?? (bw > 4 ? 1 : 0);
+  g.fillStyle = color; g.globalAlpha = o.alpha ?? 0.85;
+  for (let i = 0; i < n; i++) { const bh = Math.min(hh, counts[i] / max * hh); if (bh > 0) g.fillRect(x + i * bw + gap / 2, y + hh - bh, Math.max(1, bw - gap), bh); }
+  g.globalAlpha = 1;
+}
+/* curva: f(t) con t en [0,1] -> valor en [0,1] (0 abajo) */
+function drawCurve(g, x, y, w, hh, f, color, width = 2, steps = 200) {
+  glowLine(g, color, width); g.beginPath();
+  for (let i = 0; i <= steps; i++) { const t = i / steps, v = f(t); const px = x + t * w, py = y + hh - v * hh; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  g.stroke(); noGlow(g);
+}
+/* Loop de animación compartido: solo dibuja los canvas visibles */
+const _anims = [];
+function animate(canvas, fn) {
+  const a = { canvas, fn, visible: true }; _anims.push(a);
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => a.visible = e.isIntersecting)).observe(canvas);
+  return a;
+}
+let _lastT = performance.now();
+(function loop(now) { const dt = Math.min(0.1, ((now || performance.now()) - _lastT) / 1000); _lastT = now || performance.now();
+  for (const a of _anims) if (a.visible) { try { const c = fitCanvas(a.canvas); c.dt = dt; a.fn(c); } catch (e) { console.error(e); } }
+  requestAnimationFrame(loop); })();
+
+/* ---------------- resaltado de código JS ---------------- */
+function highlight(src) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = /(\/\/.*$|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\b(const|let|var|function|return|new|if|else|for|while|class|extends|this|async|await|of|in|true|false|null|undefined|super|static|import|export|from|break|continue|switch|case|default)\b|\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b|\b([A-Z][A-Za-z0-9]+)\b|(\.?[a-zA-Z_]\w*)(?=\()/gm;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'k' : m[4] ? 'n' : m[5] ? 't' : 'f';
+    out += `<span class="tk-${cls}">${esc(m[0])}</span>`; last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
+}
+function highlightAll() { $$('pre code').forEach(c => { if (!c.dataset.hl) { c.innerHTML = highlight(c.textContent.replace(/^\n/, '')); c.dataset.hl = 1; } }); }
+
+/* ---------------- barra superior / navegación ---------------- */
+const PAGES = [
+  ['index.html', 'Inicio'], ['01-azar.html', 'Azar con forma'], ['02-poisson-disk.html', 'Poisson disk'],
+  ['03-montecarlo.html', 'Montecarlo'], ['04-montecarlo-juegos.html', 'MC en juegos'], ['05-eventos-discretos.html', 'Eventos discretos'],
+  ['06-cola-de-eventos.html', 'Cola de eventos'], ['07-eventos-en-juegos.html', 'DES en juegos'], ['08-mcts.html', 'MCTS']];
+function buildChrome(current) {
+  const nav = h('nav', { 'aria-label': 'Temas de la clase' });
+  PAGES.slice(1).forEach(([href, name], i) => nav.append(h('a', { href, 'aria-current': href === current ? 'page' : null }, h('b', {}, i + 1), name)));
+  const bar = h('header', { class: 'topbar' },
+    h('a', { class: 'home', href: 'index.html' }, 'Unidad 9: eventos y Montecarlo'), nav);
+  document.body.prepend(bar);
+  const idx = PAGES.findIndex(p => p[0] === current);
+  if (idx >= 0 && $('main')) {
+    const prev = PAGES[idx - 1], next = PAGES[idx + 1];
+    $('main').append(h('div', { class: 'pager' },
+      prev ? h('a', { href: prev[0] }, h('span', {}, 'Anterior'), prev[1]) : h('span'),
+      next ? h('a', { href: next[0], style: { textAlign: 'right' } }, h('span', {}, 'Siguiente'), next[1]) : h('span')));
+  }
+  highlightAll();
+}
+</script>
+<script>
+/* =================== juegos =================== */
+const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+class TTT {
+  constructor(b = new Array(9).fill(0)) { this.b = b; }
+  clone() { return new TTT(this.b.slice()); }
+  get toMove() { let n = 0; for (const v of this.b) if (v) n++; return n % 2 ? 2 : 1; }
+  moves() { if (this.winner()) return []; const m = []; for (let i = 0; i < 9; i++) if (!this.b[i]) m.push(i); return m; }
+  play(m) { this.b[m] = this.toMove; }
+  winner() { const b = this.b; for (const [a, c, d] of LINES) if (b[a] && b[a] === b[c] && b[a] === b[d]) return b[a]; return b.includes(0) ? 0 : 3; }
+}
+class C4 {
+  constructor() { this.c = new Int8Array(42); this.hgt = new Int8Array(7); this.n = 0; this.w = 0; this.last = -1; }
+  clone() { const s = new C4(); s.c.set(this.c); s.hgt.set(this.hgt); s.n = this.n; s.w = this.w; s.last = this.last; return s; }
+  get toMove() { return this.n % 2 ? 2 : 1; }
+  moves() { if (this.w) return []; const m = []; for (let x = 0; x < 7; x++) if (this.hgt[x] < 6) m.push(x); return m; }
+  play(x) { const p = this.toMove, y = this.hgt[x]++; this.c[x * 6 + y] = p; this.n++; this.last = x;
+    const at = (i, j) => i >= 0 && i < 7 && j >= 0 && j < 6 ? this.c[i * 6 + j] : 0;
+    for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) { let k = 1; for (let s = 1; at(x + dx * s, y + dy * s) === p; s++) k++; for (let s = 1; at(x - dx * s, y - dy * s) === p; s++) k++; if (k >= 4) { this.w = p; return; } }
+    if (this.n === 42) this.w = 3; }
+  winner() { return this.w; }
+}
+function randomPlayout(s) { let m; while ((m = s.moves()).length) s.play(m[Math.floor(Math.random() * m.length)]); return s.winner(); }
+
+/* =================== MCTS =================== */
+class MNode { constructor(parent, move, pjm, state) { this.parent = parent; this.move = move; this.pjm = pjm; this.children = []; this.untried = state.moves(); this.N = 0; this.W = 0; } }
+function mctsRoot(state) { return new MNode(null, null, 3 - state.toMove, state); }
+function ucb(ch, parentN, c) { return ch.W / ch.N + c * Math.sqrt(Math.log(parentN) / ch.N); }
+function mctsIterate(root, rootState, c) {
+  let n = root; const s = rootState.clone(), path = [n];
+  while (n.untried.length === 0 && n.children.length) { let best = null, bv = -Infinity; for (const ch of n.children) { const v = ucb(ch, n.N, c); if (v > bv) { bv = v; best = ch; } } n = best; s.play(n.move); path.push(n); }
+  let expanded = null;
+  if (n.untried.length) { const i = Math.floor(Math.random() * n.untried.length), m = n.untried[i]; n.untried[i] = n.untried[n.untried.length - 1]; n.untried.pop();
+    const p = s.toMove; s.play(m); const ch = new MNode(n, m, p, s); n.children.push(ch); n = ch; path.push(ch); expanded = ch; }
+  const sim = s.clone(), g = randomPlayout(sim);
+  for (const q of path) { q.N++; if (g === 3) q.W += 0.5; else if (g === q.pjm) q.W += 1; }
+  return { path, expanded, g, sim };
+}
+function* mctsPhases(root, rootState, c) {   // la misma iteración, pero frenando en cada fase para dibujarla
+  let n = root; const s = rootState.clone(), path = [n];
+  while (n.untried.length === 0 && n.children.length) { let best = null, bv = -Infinity; for (const ch of n.children) { const v = ucb(ch, n.N, c); if (v > bv) { bv = v; best = ch; } } n = best; s.play(n.move); path.push(n); }
+  yield { phase: 0, path };
+  let expanded = null;
+  if (n.untried.length) { const i = Math.floor(Math.random() * n.untried.length), m = n.untried[i]; n.untried[i] = n.untried[n.untried.length - 1]; n.untried.pop();
+    const p = s.toMove; s.play(m); const ch = new MNode(n, m, p, s); n.children.push(ch); n = ch; path.push(ch); expanded = ch; }
+  yield { phase: 1, path, expanded };
+  const sim = s.clone(), before = sim.b.slice(), g = randomPlayout(sim);
+  yield { phase: 2, path, expanded, g, sim, before };
+  for (const q of path) { q.N++; if (g === 3) q.W += 0.5; else if (g === q.pjm) q.W += 1; }
+  yield { phase: 3, path, expanded, g, sim, before };
+}
+
+/* =================== dibujo de un tablero de ta-te-ti =================== */
+function drawTTT(g, x, y, S, b, o = {}) {
+  g.strokeStyle = o.grid || '#556676'; g.lineWidth = o.lw || 2; g.beginPath();
+  for (let i = 1; i < 3; i++) { g.moveTo(x + i * S / 3, y + 2); g.lineTo(x + i * S / 3, y + S - 2); g.moveTo(x + 2, y + i * S / 3); g.lineTo(x + S - 2, y + i * S / 3); } g.stroke();
+  for (let i = 0; i < 9; i++) { const cx = x + (i % 3 + .5) * S / 3, cy = y + (Math.floor(i / 3) + .5) * S / 3, r = S / 9;
+    const v = b[i], dim = o.dimFrom && o.dimFrom[i] === 0 && v;
+    g.globalAlpha = dim ? 0.45 : 1; g.lineWidth = Math.max(1.5, S / 40);
+    if (v === 1) { g.strokeStyle = COL.amber; g.beginPath(); g.moveTo(cx - r, cy - r); g.lineTo(cx + r, cy + r); g.moveTo(cx + r, cy - r); g.lineTo(cx - r, cy + r); g.stroke(); }
+    else if (v === 2) { g.strokeStyle = COL.cyan; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke(); }
+    if (o.mark === i) { g.globalAlpha = 1; g.fillStyle = '#8fd69433'; g.fillRect(x + (i % 3) * S / 3 + 1, y + Math.floor(i / 3) * S / 3 + 1, S / 3 - 2, S / 3 - 2); }
+    g.globalAlpha = 1; }
+}
+const TRAP = [2, 1, 0, 0, 1, 0, 0, 0, 0];   // O X . / . X . / . . .  → le toca a O: hay que tapar la casilla 7
+
+/* =================== 1. Montecarlo plano =================== */
+const FLAT = { s: new TTT(TRAP.slice()), stats: {}, run: true, hist: [] };
+function flatReset() { FLAT.stats = {}; for (const m of FLAT.s.moves()) FLAT.stats[m] = { n: 0, w: 0 }; FLAT.opt = minimaxBest(FLAT.s); }
+const mmMemo = new Map();
+function mmVal(s) { const k = s.b.join(''); if (mmMemo.has(k)) return mmMemo.get(k); const w = s.winner(); let r;
+  if (w === 3) r = 0; else if (w) r = w === s.toMove ? 1 : -1; else { r = -2; for (const m of s.moves()) { const c = s.clone(); c.play(m); r = Math.max(r, -mmVal(c)); } }
+  mmMemo.set(k, r); return r; }
+function minimaxBest(s) { const ms = s.moves(); if (!ms.length) return []; const v = ms.map(m => { const c = s.clone(); c.play(m); return -mmVal(c); }); const b = Math.max(...v); return ms.filter((m, i) => v[i] === b); }
+function flatTick(k) { const ms = Object.keys(FLAT.stats).map(Number); if (!ms.length) return; const p = FLAT.s.toMove;
+  for (let i = 0; i < k; i++) { const m = ms[i % ms.length], c = FLAT.s.clone(); c.play(m); const g = randomPlayout(c); const st = FLAT.stats[m]; st.n++; st.w += g === p ? 1 : g === 3 ? 0.5 : 0; } }
+$('#cvflat').addEventListener('click', e => { const r = e.target.getBoundingClientRect(), i = Math.floor((e.clientY - r.top) / r.height * 3) * 3 + Math.floor((e.clientX - r.left) / r.width * 3);
+  if (i >= 0 && i < 9 && !FLAT.s.b[i] && !FLAT.s.winner()) { FLAT.hist.push(FLAT.s.b.slice()); FLAT.s.play(i); flatReset(); } });
+button('#flatctl', 'Posición trampa', () => { FLAT.s = new TTT(TRAP.slice()); FLAT.hist = []; flatReset(); }, 'primary');
+button('#flatctl', 'Tablero vacío', () => { FLAT.s = new TTT(); FLAT.hist = []; flatReset(); });
+button('#flatctl', 'Deshacer', () => { if (FLAT.hist.length) { FLAT.s = new TTT(FLAT.hist.pop()); flatReset(); } });
+const flatRun = button('#flatctl', '■ Pausar', () => { FLAT.run = !FLAT.run; flatRun.textContent = FLAT.run ? '■ Pausar' : '▶ Seguir'; flatRun.classList.toggle('playing', FLAT.run); }, 'playing');
+let flatRate = 60; slider('#flatctl', { label: 'Partidas al azar por cuadro', min: 1, max: 2000, log: true, value: flatRate, fmt: fmtInt, oninput: v => flatRate = v });
+flatReset();
+animate($('#cvflat'), ({ g, w, h: H }) => {
+  if (FLAT.run) flatTick(Math.round(flatRate));
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, H); const S = Math.min(w, H) - 20, x0 = (w - S) / 2, y0 = (H - S) / 2;
+  const ms = Object.keys(FLAT.stats).map(Number), rate = m => FLAT.stats[m].n ? FLAT.stats[m].w / FLAT.stats[m].n : 0, best = ms.length ? ms.reduce((a, b) => rate(b) > rate(a) ? b : a) : -1;
+  for (const m of ms) { const cx = x0 + (m % 3) * S / 3, cy = y0 + Math.floor(m / 3) * S / 3, r = rate(m);
+    g.fillStyle = m === best ? '#ffb23f33' : `rgba(94,208,230,${0.05 + r * 0.25})`; g.fillRect(cx + 4, cy + 4, S / 3 - 8, S / 3 - 8);
+    text(g, fmtPct(r, 0), cx + S / 6, cy + S / 6 + 6, m === best ? COL.amber : COL.muted, 'center', '600 17px JetBrains Mono, monospace');
+    if (FLAT.opt.includes(m)) { g.strokeStyle = COL.green; g.lineWidth = 2; g.setLineDash([5, 4]); g.strokeRect(cx + 6, cy + 6, S / 3 - 12, S / 3 - 12); g.setLineDash([]); } }
+  drawTTT(g, x0, y0, S, FLAT.s.b);
+});
+animate($('#cvflatbar'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 1, 4); const ms = Object.keys(FLAT.stats).map(Number); const w0 = FLAT.s.winner();
+  if (!ms.length) { text(g, w0 === 3 ? 'Empate' : w0 ? `Ganó ${w0 === 1 ? 'X' : 'O'}` : '', w / 2, H / 2, COL.ink, 'center', '600 18px Archivo, sans-serif'); $('#flattag').textContent = ''; return; }
+  const rate = m => FLAT.stats[m].n ? FLAT.stats[m].w / FLAT.stats[m].n : 0, sorted = [...ms].sort((a, b) => rate(b) - rate(a)), bh = Math.min(30, (H - 50) / ms.length), L = 120, R = w - 60;
+  sorted.forEach((m, i) => { const y = 36 + i * (bh + 6), r = rate(m), ok = FLAT.opt.includes(m);
+    text(g, `casilla ${m}${ok ? ' ✓' : ''}`, 10, y + bh / 2 + 4, ok ? COL.green : COL.muted, 'left', '13px JetBrains Mono, monospace');
+    g.fillStyle = i === 0 ? COL.amber : '#5ed0e688'; g.fillRect(L, y, (R - L) * r, bh);
+    text(g, fmtPct(r, 1), R + 6, y + bh / 2 + 4, COL.ink); });
+  const tot = ms.reduce((a, m) => a + FLAT.stats[m].n, 0);
+  $('#flattag').textContent = `le toca a ${FLAT.s.toMove === 1 ? 'X' : 'O'} · ${fmtInt(tot)} partidas · ✓ = jugada correcta (minimax)`;
+});
+
+/* =================== 2. árbol fase por fase =================== */
+const TR = { s: new TTT(TRAP.slice()), c: 1.4, gen: null, cur: null, auto: false, acc: 0 };
+function trReset() { TR.root = mctsRoot(TR.s); TR.gen = null; TR.cur = null; trPhaseUI(-1); }
+function trPhaseUI(p) { $$('#phases span').forEach((e, i) => e.classList.toggle('on', i === p)); }
+function trPhase() { if (!TR.gen) TR.gen = mctsPhases(TR.root, TR.s, TR.c); const r = TR.gen.next(); if (r.done) { TR.gen = mctsPhases(TR.root, TR.s, TR.c); TR.cur = TR.gen.next().value; } else TR.cur = r.value; trPhaseUI(TR.cur.phase); if (TR.cur.phase === 3) TR.gen = null; }
+function trMany(k) { if (TR.gen) { while (!TR.gen.next().done); TR.gen = null; } let last; for (let i = 0; i < k; i++) last = mctsIterate(TR.root, TR.s, TR.c); TR.cur = { phase: 3, ...last }; trPhaseUI(-1); }
+const trRow = h('div', { class: 'row' }); $('#treectl').append(trRow);
+button(trRow, 'Fase siguiente ▸', trPhase, 'primary');
+button(trRow, '+1 iteración', () => trMany(1)); button(trRow, '+10', () => trMany(10)); button(trRow, '+100', () => trMany(100)); button(trRow, '+1.000', () => trMany(1000));
+button(trRow, 'Reiniciar árbol', trReset);
+slider('#treectl', { label: 'Exploración c', min: 0, max: 4, step: 0.1, value: TR.c, fmt: v => fmtNum(v, 1), oninput: v => TR.c = v });
+trReset();
+animate($('#cvtree'), ({ g, w, h: H }) => {
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, H);
+  const root = TR.root, cur = TR.cur, onPath = new Set(cur ? cur.path : []), kids = [...root.children].sort((a, b) => a.move - b.move);
+  const rootS = 64, rx = w / 2 - rootS / 2, ry = 16; drawTTT(g, rx, ry, rootS, TR.s.b, { lw: 1.2 });
+  text(g, `raíz · N=${root.N}`, w / 2 + rootS / 2 + 8, ry + 36, COL.muted);
+  const best = root.children.length ? root.children.reduce((a, b) => b.N > a.N ? b : a) : null;
+  const slotW = w / Math.max(1, TR.s.moves().length), y1 = 150, y2 = 330;
+  const all = TR.s.moves();
+  all.forEach((m, i) => { const ch = kids.find(k => k.move === m), cx = (i + .5) * slotW;
+    const sz = 44; g.strokeStyle = ch && onPath.has(ch) ? COL.amber : '#3a4a55'; g.lineWidth = ch && onPath.has(ch) ? 3 : 1;
+    g.beginPath(); g.moveTo(w / 2, ry + rootS); g.lineTo(cx, y1 - sz / 2 - 6); g.stroke();
+    if (!ch) { text(g, 'sin probar', cx, y1 + 4, COL.dim, 'center'); return; }
+    const b = TR.s.b.slice(); b[m] = TR.s.toMove;
+    g.fillStyle = ch === best ? '#2b4a3a' : '#1c252c'; g.fillRect(cx - sz / 2 - 4, y1 - sz / 2 - 4, sz + 8, sz + 8);
+    drawTTT(g, cx - sz / 2, y1 - sz / 2, sz, b, { lw: 1, mark: m });
+    text(g, `${fmtNum(ch.W, 1)}/${ch.N}`, cx, y1 + sz / 2 + 18, ch === best ? COL.green : COL.ink, 'center', '600 12px JetBrains Mono, monospace');
+    text(g, `${fmtPct(ch.W / ch.N, 0)}`, cx, y1 + sz / 2 + 33, COL.muted, 'center');
+    if (root.N > 0) text(g, `UCB ${fmtNum(ucb(ch, root.N, TR.c), 2)}`, cx, y1 + sz / 2 + 48, COL.dim, 'center', '11px JetBrains Mono, monospace');
+    // nietos
+    const gk = [...ch.children].sort((a, b) => a.move - b.move), fan = Math.min(slotW * 0.9, 150);
+    gk.forEach((q, j) => { const qx = cx - fan / 2 + (gk.length > 1 ? j / (gk.length - 1) : .5) * fan, r = 3 + Math.sqrt(q.N) * 1.3;
+      g.strokeStyle = onPath.has(q) ? COL.amber : '#2b3a44'; g.lineWidth = onPath.has(q) ? 2.5 : 1; g.beginPath(); g.moveTo(cx, y1 + sz / 2 + 54); g.lineTo(qx, y2 - r); g.stroke();
+      g.fillStyle = onPath.has(q) ? COL.amber : q === (cur && cur.expanded) ? COL.green : '#5ed0e6aa'; g.beginPath(); g.arc(qx, y2, Math.min(r, 16), 0, 7); g.fill();
+      if (q.children.length && onPath.has(q)) text(g, '⋮', qx, y2 + 28, COL.amber, 'center'); });
+  });
+  text(g, 'nietos: respuestas de X (tamaño = visitas)', 10, y2 + 50, COL.dim);
+  if (cur && cur.phase >= 2 && cur.sim) { const S = 90, x = w - S - 16, y = H - S - 22; text(g, cur.phase === 2 ? 'playout al azar:' : 'resultado:', x + S, y - 8, COL.muted, 'right');
+    drawTTT(g, x, y, S, cur.sim.b, { lw: 1.2, dimFrom: cur.before });
+    text(g, cur.g === 3 ? 'empate (+0,5)' : `gana ${cur.g === 1 ? 'X' : 'O'}`, x + S / 2, y + S + 14, cur.g === 2 ? COL.cyan : cur.g === 1 ? COL.amber : COL.ink, 'center'); }
+  $('#treetag').textContent = best ? `elegiría la casilla ${best.move} (la más visitada)` : 'apretá "Fase siguiente"';
+});
+
+/* =================== 3. cuatro en línea =================== */
+const G4 = { s: new C4(), sims: 800, human: 1, thinking: false, last: null, msg: '', hover: -1, anim: [] };
+function c4New() { G4.s = new C4(); G4.last = null; G4.thinking = false; G4.anim = []; c4Msg(); if (G4.human === 2) setTimeout(c4AI, 300); }
+function c4Msg() { const w = G4.s.winner(); $('#c4msg').innerHTML = w === 3 ? 'Empate.' : w === G4.human ? '<span class="amber">¡Ganaste!</span>' : w ? '<span class="cyan">Ganó la compu.</span>' : G4.thinking ? '<span class="cyan">Pensando…</span>' : 'Te toca.'; }
+async function c4AI() { if (G4.s.winner() || G4.s.toMove === G4.human) return; G4.thinking = true; c4Msg();
+  const root = mctsRoot(G4.s), budget = G4.sims, t0 = performance.now(); let done = 0;
+  while (done < budget) { const end = Math.min(budget, done + 400); for (; done < end; done++) mctsIterate(root, G4.s, 1.4); G4.progress = done / budget; await nextFrame(); }
+  const best = root.children.reduce((a, b) => b.N > a.N ? b : a);
+  G4.last = { cols: root.children.map(c => ({ x: c.move, N: c.N, r: c.W / c.N })), best: best.move, ms: performance.now() - t0, sims: budget };
+  c4Drop(best.move); G4.thinking = false; G4.progress = 0; c4Msg(); c4Stats(); }
+function c4Drop(x) { const y = G4.s.hgt[x]; G4.s.play(x); G4.anim.push({ x, y, t: 0 }); }
+function c4Stats() { if (!G4.last) return; c4St.t.textContent = fmtNum(G4.last.ms, 0) + ' ms'; const b = G4.last.cols.find(c => c.x === G4.last.best); c4St.r.textContent = fmtPct(b.r, 0); c4St.n.textContent = fmtInt(G4.last.sims); }
+$('#cvc4').addEventListener('mousemove', e => { const r = e.target.getBoundingClientRect(); G4.hover = Math.floor((e.clientX - r.left) / r.width * 7); });
+$('#cvc4').addEventListener('mouseleave', () => G4.hover = -1);
+$('#cvc4').addEventListener('click', e => { if (G4.thinking || G4.s.winner() || G4.s.toMove !== G4.human) return; const r = e.target.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * 7);
+  if (x < 0 || x > 6 || G4.s.hgt[x] >= 6) return; c4Drop(x); c4Msg(); setTimeout(c4AI, 250); });
+slider('#c4ctl', { label: 'Simulaciones por jugada', min: 10, max: 20000, log: true, value: G4.sims, fmt: fmtInt, oninput: v => G4.sims = Math.round(v) });
+seg('#c4ctl', [{ v: 1, label: 'Empiezo yo' }, { v: 2, label: 'Empieza la compu' }], G4.human, v => { G4.human = +v; c4New(); });
+button('#c4ctl', 'Nueva partida', c4New, 'primary');
+const c4St = stats('#c4st', [['n', 'Simulaciones', 'cyan'], ['t', 'Tiempo pensando', 'amber'], ['r', 'Cree que gana', 'green']]);
+c4New();
+animate($('#cvc4'), ({ g, w, h: H, dt }) => {
+  g.fillStyle = '#1d3a52'; g.fillRect(0, 0, w, H); const cw = w / 7, ch = H / 6, r = Math.min(cw, ch) * 0.38, s = G4.s;
+  if (G4.hover >= 0 && !G4.thinking && !s.winner()) { g.fillStyle = '#ffffff10'; g.fillRect(G4.hover * cw, 0, cw, H); }
+  const anim = new Map(G4.anim.map(a => [a.x * 6 + a.y, a]));
+  for (let x = 0; x < 7; x++) for (let y = 0; y < 6; y++) { const cx = (x + .5) * cw, cy = H - (y + .5) * ch, v = s.c[x * 6 + y];
+    g.fillStyle = COL.screen; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
+    if (v) { const a = anim.get(x * 6 + y); let py = cy; if (a) { a.t = Math.min(1, a.t + dt * 3); py = lerp(-r, cy, a.t * a.t); }
+      g.fillStyle = v === G4.human ? COL.amber : COL.cyan; g.beginPath(); g.arc(cx, py, r * 0.92, 0, 7); g.fill();
+      if (s.last === x && y === s.hgt[x] - 1) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(cx, py, r * 0.5, 0, 7); g.stroke(); } } }
+  G4.anim = G4.anim.filter(a => a.t < 1);
+  if (G4.thinking && G4.progress) { g.fillStyle = COL.cyan; g.fillRect(0, 0, w * G4.progress, 4); }
+});
+animate($('#cvc4bar'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 7, 1); const cw = w / 7, L = G4.last; for (let x = 0; x < 7; x++) text(g, x + 1, (x + .5) * cw, H - 6, COL.dim, 'center');
+  if (!L) { text(g, 'todavía no jugó', w / 2, H / 2, COL.muted, 'center', '14px Archivo, sans-serif'); return; }
+  const mx = Math.max(...L.cols.map(c => c.N));
+  for (const c of L.cols) { const bh = c.N / mx * (H - 84), x = c.x * cw; g.fillStyle = c.x === L.best ? COL.cyan : '#5ed0e655'; g.fillRect(x + cw * .18, H - 22 - bh, cw * .64, bh);
+    text(g, fmtPct(c.r, 0), x + cw / 2, H - 28 - bh, c.x === L.best ? COL.ink : COL.muted, 'center'); }
+});
+buildChrome('08-mcts.html');
+</script>
+</body>
+</html>

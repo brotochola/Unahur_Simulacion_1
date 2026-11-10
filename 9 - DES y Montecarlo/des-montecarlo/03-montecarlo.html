@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Método Montecarlo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#26303a;
+  --bg-2:#2f3b46;
+  --bg-3:#384653;
+  --screen:#0f171b;
+  --grid:#1b282d;
+  --grid-2:#243840;
+  --ink:#e9eef1;
+  --muted:#9eadb8;
+  --line:#465663;
+  --amber:#ffb23f;
+  --cyan:#5ed0e6;
+  --red:#ff6b5a;
+  --violet:#b99cff;
+  --green:#8fd694;
+  --radius:10px;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:18px;line-height:1.55;font-variation-settings:"wdth" 100}
+a{color:var(--cyan);text-underline-offset:3px}
+a:hover{color:#9fe6f3}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+::selection{background:var(--amber);color:#1a1a1a}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:#1f2830;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 20px;flex-wrap:wrap}
+.topbar .home{color:var(--ink);text-decoration:none;font-weight:700;font-variation-settings:"wdth" 118;white-space:nowrap;font-size:15px}
+.topbar nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.topbar nav a{color:var(--muted);text-decoration:none;font-size:14px;padding:5px 9px;border-radius:6px;white-space:nowrap}
+.topbar nav a b{color:var(--ink);font-weight:600;margin-right:5px;font-variant-numeric:tabular-nums}
+.topbar nav a:hover{background:var(--bg-2);color:var(--ink)}
+.topbar nav a[aria-current]{background:var(--bg-3);color:var(--ink)}
+.topbar nav a[aria-current] b{color:var(--amber)}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 22px 80px}
+.prose{max-width:72ch}
+h1{font-size:clamp(34px,5vw,58px);line-height:1.02;margin:10px 0 18px;font-weight:800;font-variation-settings:"wdth" 122;letter-spacing:-.01em}
+h2{font-size:clamp(25px,3vw,34px);line-height:1.1;margin:64px 0 14px;font-weight:750;font-variation-settings:"wdth" 116}
+h3{font-size:21px;line-height:1.2;margin:34px 0 8px;font-weight:700;font-variation-settings:"wdth" 110}
+h4{font-size:17px;margin:20px 0 6px;font-weight:700}
+p{margin:0 0 14px}
+.lead{font-size:21px;color:#d5dde3;max-width:64ch}
+.muted{color:var(--muted)}
+small,.small{font-size:14px}
+ul,ol{padding-left:22px;margin:0 0 14px}
+li{margin:4px 0}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}
+.kbd,kbd{font:600 13px var(--mono);background:var(--bg-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+code{font-family:var(--mono);font-size:.86em;background:#1c252c;padding:1px 5px;border-radius:4px;color:#f2d7a6}
+.amber{color:var(--amber)}.cyan{color:var(--cyan)}.red{color:var(--red)}.violet{color:var(--violet)}.green{color:var(--green)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:22px;align-items:start}
+.cols-2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media (max-width:860px){.cols-2{grid-template-columns:1fr}}
+
+/* ---------- instruments ---------- */
+.rig{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:18px 0 22px;box-shadow:inset 0 1px 0 #ffffff0d}
+.rig > .rig-title{font-weight:700;font-size:15px;margin:0 0 10px;color:var(--ink);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rig > .rig-title .muted{font-weight:400}
+.screen{position:relative;background:var(--screen);border-radius:7px;border:1px solid #0a1013;box-shadow:inset 0 0 0 1px #ffffff08, inset 0 6px 24px #0008;overflow:hidden}
+.screen canvas{display:block;width:100%;touch-action:none}
+.screen .tag{position:absolute;left:10px;top:7px;font:12px var(--mono);color:var(--muted);pointer-events:none}
+.screen .tag-r{left:auto;right:10px}
+.screens{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+@media (max-width:760px){.screens{grid-template-columns:1fr}}
+.controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:end;margin-top:12px}
+.ctl{display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 170px;max-width:300px}
+.ctl label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl label output{color:var(--ink);font:600 13px var(--mono);white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.readout{font:13px var(--mono);color:var(--muted);background:var(--screen);border:1px solid #0a1013;border-radius:6px;padding:8px 10px;line-height:1.6}
+.readout b{color:var(--ink);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:linear-gradient(90deg,var(--amber) var(--p,50%),#1a2329 var(--p,50%));border-radius:2px}
+input[type=range]::-moz-range-track{height:4px;background:#1a2329;border-radius:2px}
+input[type=range]::-moz-range-progress{height:4px;background:var(--amber);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;margin-top:-7px;box-shadow:0 1px 3px #0009}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;box-shadow:0 1px 3px #0009}
+
+button,.btn{font:600 15px var(--font);color:var(--ink);background:var(--bg-3);border:1px solid #556676;border-radius:8px;padding:8px 14px;cursor:pointer;line-height:1.2;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+button:hover,.btn:hover{background:#43535f}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--amber);border-color:var(--amber);color:#21180a}
+button.primary:hover{background:#ffc66d}
+button.playing{background:var(--cyan);border-color:var(--cyan);color:#06232a}
+button.small{font-size:13px;padding:5px 10px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #556676;border-radius:8px;overflow:hidden;background:#222c34}
+.seg button{border:0;border-radius:0;background:transparent;border-right:1px solid #44535f;font-size:14px;padding:7px 12px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#18212a}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px;cursor:pointer;user-select:none}
+.toggle input{appearance:none;width:38px;height:22px;border-radius:11px;background:#1a2329;border:1px solid #556676;position:relative;cursor:pointer;margin:0;flex:none}
+.toggle input::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#aab6be;top:2px;left:2px;transition:left .15s}
+.toggle input:checked{background:var(--cyan);border-color:var(--cyan)}
+.toggle input:checked::after{left:18px;background:#fff}
+select{font:15px var(--font);background:var(--bg-3);color:var(--ink);border:1px solid #556676;border-radius:8px;padding:7px 10px}
+
+
+/* ---------- code ---------- */
+pre{background:#161e23;border:1px solid #0d1417;border-radius:8px;padding:14px 16px;overflow:auto;font:14px/1.6 var(--mono);color:#d6e1e8;margin:12px 0 18px;tab-size:2}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.tk-c{color:#71828e;font-style:italic}.tk-s{color:#a8e0a0}.tk-k{color:#ff9e7a}.tk-n{color:#ffcf73}.tk-t{color:#7fd8ec}.tk-f{color:#e0c2ff}
+
+/* ---------- callouts ---------- */
+.game{border:1px solid #3e5a49;background:#26372f;border-radius:var(--radius);padding:14px 18px;margin:18px 0}
+.game > strong:first-child{color:var(--green);display:block;margin-bottom:4px}
+.warn{border:1px solid #6a4a2c;background:#3a2f25;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.figure{margin:18px 0}
+.figure figcaption{font-size:14px;color:var(--muted);margin-top:6px}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:12px 0 20px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
+
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:70px;border-top:1px solid var(--line);padding-top:20px;flex-wrap:wrap}
+.pager a{text-decoration:none;color:var(--ink);font-weight:600}
+.pager a span{display:block;font-size:13px;color:var(--muted);font-weight:400}
+.credits{font-size:13px;color:var(--muted);margin-top:30px;max-width:90ch}
+
+@media (max-width:700px){
+  .topbar{position:static;gap:8px}
+  .topbar nav{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+}
+@media (max-width:600px){
+  body{font-size:17px}
+  main{padding:24px 16px 60px}
+  .topbar{padding:8px 12px}
+  .rig{padding:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- unidad 9: extras ---------- */
+.topbar .tag9{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stat{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:6px 11px;min-width:110px}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+.stat b{font:600 17px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.stat.amber b{color:var(--amber)}.stat.cyan b{color:var(--cyan)}.stat.red b{color:var(--red)}.stat.green b{color:var(--green)}.stat.violet b{color:var(--violet)}
+.demo{display:flex;gap:14px;align-items:center;border:1px solid #3f5466;background:#263644;border-radius:var(--radius);padding:12px 16px;margin:18px 0;text-decoration:none;color:var(--ink)}
+.demo:hover{background:#2d4152;color:var(--ink)}
+.demo .ico{font:700 22px var(--mono);color:var(--cyan);flex:none}
+.demo b{display:block}
+.demo span{color:var(--muted);font-size:15px}
+.formula{font:600 17px var(--mono);background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 14px;margin:12px 0 16px;color:#f2d7a6;overflow:auto;white-space:nowrap}
+.formula small{color:var(--muted);font-weight:400}
+.screen .tag-b{top:auto;bottom:7px}
+.panel{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:8px 10px;font:13px/1.55 var(--mono);color:var(--muted);overflow:auto}
+.panel .hi{color:var(--ink);background:#2b3a1f;border-radius:3px}
+.panel .ev{display:flex;gap:10px;white-space:nowrap;padding:1px 4px}
+.panel .ev .t{color:var(--amber);min-width:62px;text-align:right}
+.panel .ev .k-arr{color:var(--cyan)}.panel .ev .k-end{color:var(--green)}.panel .ev .k-x{color:var(--violet)}
+.side{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+@media (max-width:860px){.side{grid-template-columns:1fr}}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin:10px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--bg-3);border:1px solid #556676;font:700 14px/28px var(--font);text-align:center;color:var(--amber)}
+.timebox{display:inline-block;font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+
+p code,li code,td code{white-space:nowrap}
+.screen .tag{background:#0f171bb3;padding:1px 6px;border-radius:4px}
+</style>
+<style>
+.darts{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:10px}
+@media (max-width:760px){.darts{grid-template-columns:1fr}}
+.darts .sq{aspect-ratio:1}
+.darts .sq canvas{height:100%}
+</style>
+</head>
+<body>
+<main>
+  <h1>El método Montecarlo</h1>
+  <p class="lead">Cuando una cuenta es demasiado difícil de hacer, se puede <strong>simular el experimento muchas veces y contar</strong>. Ese es todo el método. Lo bautizaron así Stanislaw Ulam, John von Neumann y Nicholas Metropolis en Los Álamos (1946), por el casino de Montecarlo: Ulam se preguntaba con qué probabilidad le salía un solitario, y en vez de calcularla se le ocurrió jugarlo cien veces.</p>
+
+  <h2>Calcular π tirando dardos</h2>
+  <div class="prose">
+    <p>Un círculo de radio 1 adentro de un cuadrado de lado 2. Si tirás dardos parejo sobre el cuadrado, la fracción que cae en el círculo tiende al cociente de las áreas: π·1² / 2² = π/4. Entonces <code>π ≈ 4 · adentro / total</code>. No hace falta saber geometría: alcanza con poder decir si un punto está adentro o afuera.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Lluvia de dardos <span class="muted">· a la derecha, la estimación contra la cantidad de dardos (escala logarítmica)</span></div>
+    <div class="darts">
+      <div class="screen sq"><canvas id="cvd"></canvas><span class="tag" id="dtag"></span></div>
+      <div class="screen"><canvas id="cvc" style="height:100%;min-height:300px"></canvas><span class="tag">estimación de π · banda: error esperado (95%)</span></div>
+    </div>
+    <div class="controls" id="dctl"></div>
+    <div id="dstats"></div>
+  </div>
+  <pre><code>function estimarPi(n) {
+  let adentro = 0;
+  for (let i = 0; i < n; i++) {
+    const x = Math.random() * 2 - 1, y = Math.random() * 2 - 1;
+    if (x * x + y * y <= 1) adentro++;
+  }
+  return 4 * adentro / n;
+}</code></pre>
+
+  <h2>¿Cuánto me puedo equivocar?</h2>
+  <div class="prose">
+    <p>La <strong>ley de los grandes números</strong> garantiza que el promedio de muchas tiradas se acerca al valor verdadero. La pregunta práctica es <em>qué tan rápido</em>. La respuesta es la regla más importante de Montecarlo:</p>
+  </div>
+  <div class="formula">error ≈ σ / √N <small>&nbsp;// σ: cuánto varía una sola tirada · N: cantidad de tiradas</small></div>
+  <div class="prose">
+    <p>Para tener <strong>10 veces</strong> más precisión hacen falta <strong>100 veces</strong> más tiradas. Montecarlo converge lento, pero tiene una ventaja enorme: ese √N no depende de cuántas dimensiones tenga el problema. Por eso domina donde las fórmulas no llegan: integrales de muchas variables, sistemas con mucho azar o juegos con miles de estados posibles.</p>
+    <p>Con eso se arma un <strong>intervalo de confianza</strong>: <code>estimación ± 1,96 · σ/√N</code>. Si repetís el experimento muchas veces, ese intervalo contiene al valor verdadero en el 95% de los casos. Es la forma honesta de reportar un resultado de Montecarlo: no "me dio 3,15", sino "me dio 3,15 ± 0,03".</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">50 experimentos independientes <span class="muted">· cada línea es un intervalo de confianza del 95% · en rojo, los que no contienen a π</span></div>
+    <div class="screen"><canvas id="cvi" style="height:380px"></canvas><span class="tag" id="itag"></span></div>
+    <div class="controls" id="ictl"></div>
+    <div id="istats"></div>
+  </div>
+  <p class="prose">Mové el slider de a 100×: los intervalos se achican 10×. Y siempre quedan unos 2 o 3 en rojo de cada 50. No es un error del método: es exactamente lo que significa "95%".</p>
+
+  <h2>Integrar con dardos: sombras suaves</h2>
+  <div class="prose">
+    <p>Estimar π es estimar un área, y estimar un área es <strong>integrar</strong>. La misma idea sirve para cualquier integral que no sabemos resolver. El ejemplo más visible en juegos es la iluminación: cuánta luz llega a un punto es el promedio de la luz que llega desde cada punto de la lámpara. Con una lámpara de área, una parte la tapa un obstáculo y otra no, y eso forma la penumbra.</p>
+    <p>Montecarlo lo resuelve tirando rayos: desde cada pixel, elegí un punto al azar de la lámpara, fijate si el rayo choca con algo (el raycasting de la unidad 6) y promediá. Con pocos rayos se ve <strong>ruido</strong>; acumulando cuadros, la imagen converge.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Luz de área con Montecarlo <span class="muted">· arrastrá la lámpara · cada cuadro suma rayos por pixel y promedia</span></div>
+    <div class="screen"><canvas id="cvl" style="height:420px;cursor:grab"></canvas><span class="tag" id="ltag"></span></div>
+    <div class="controls" id="lctl"></div>
+  </div>
+  <pre><code>// brillo de un pixel = fracción de rayos que llegan a la lámpara sin chocar
+let luz = 0;
+for (let s = 0; s < muestras; s++) {
+  const a = Math.random() * 2 * Math.PI, r = radioLampara * Math.sqrt(Math.random());
+  const lx = lampara.x + r * Math.cos(a), ly = lampara.y + r * Math.sin(a);
+  if (!chocaConAlgo(px, py, lx, ly)) luz++;
+}
+brillo = luz / muestras;</code></pre>
+  <div class="game"><strong>En juegos</strong>
+    El <strong>path tracing</strong> de Cyberpunk 2077 o Alan Wake 2 es este mismo promedio de rayos al azar, pero en 3D y con rebotes. Con 1 o 2 rayos por pixel la imagen sale con ruido, y un <em>denoiser</em> (muchas veces una red neuronal) lo limpia. El <strong>ambient occlusion</strong> también es Montecarlo: cuántos rayos al azar desde un punto escapan sin chocar. Y cuando un motor "acumula" la imagen al dejar quieta la cámara (los modos foto, los lightmaps que se hornean), es esto mismo: más muestras, menos error, √N.
+  </div>
+  <p class="prose">En el próximo capítulo usamos Montecarlo para lo que más le sirve a un diseñador: responder preguntas de balance que no tienen fórmula.</p>
+</main>
+<script>
+/* ====================================================================
+   Unidad 9 – Eventos discretos y Montecarlo · helpers compartidos (se inlinea en cada página)
+   ==================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+/* ---------------- azar con semilla ---------------- */
+/* mulberry32: 32 bits de estado, rápido y suficientemente bueno para juegos */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+class Rng {
+  constructor(seed = (Math.random() * 2 ** 32) >>> 0) { this.seed = seed >>> 0; this.next = mulberry32(this.seed); }
+  float(a = 0, b = 1) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }       // entero en [a, b]
+  exp(mean) { return -mean * Math.log(1 - this.next()); }                // exponencial (transformada inversa)
+  normal(mu = 0, sd = 1) {                                               // Box-Muller
+    const u1 = 1 - this.next(), u2 = this.next();
+    return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(this.next() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+}
+
+/* ---------------- min-heap (cola de prioridad) ---------------- */
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  get size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) >= 0) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a; if (!a.length) return undefined; const top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0; const n = a.length;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < n && this.cmp(a[l], a[m]) < 0) m = l; if (r < n && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top; }
+  clear() { this.a.length = 0; }
+  sorted() { return [...this.a].sort(this.cmp); }
+}
+
+/* ---------------- UI helpers ---------------- */
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') el.className = v; else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(k));
+  return el;
+}
+function paintRange(r) { const p = (r.value - r.min) / (r.max - r.min) * 100; r.style.setProperty('--p', p + '%'); }
+/* slider con label y valor. opts: {label,min,max,step,value,fmt,log,oninput,onchange} */
+function slider(parent, o) {
+  const id = 'r' + Math.random().toString(36).slice(2, 8);
+  const out = h('output', { for: id });
+  const r = h('input', { type: 'range', id, min: 0, max: 1000, step: 1 });
+  const toPos = v => o.log ? 1000 * Math.log(v / o.min) / Math.log(o.max / o.min) : 1000 * (v - o.min) / (o.max - o.min);
+  const fromPos = p => { let v = o.log ? o.min * Math.pow(o.max / o.min, p / 1000) : o.min + (o.max - o.min) * p / 1000; if (o.step) v = Math.round(v / o.step) * o.step; return clamp(+v.toFixed(6), o.min, o.max); };
+  const fmt = o.fmt || (v => v);
+  const wrap = h('div', { class: 'ctl' }, h('label', { for: id }, h('span', {}, o.label), out), r);
+  const api = {
+    el: wrap, input: r, value: o.value,
+    set(v, fire) { api.value = v; r.value = toPos(v); out.textContent = fmt(v); paintRange(r); if (fire) o.oninput && o.oninput(v); },
+  };
+  r.addEventListener('input', () => { api.value = fromPos(+r.value); out.textContent = fmt(api.value); paintRange(r); o.oninput && o.oninput(api.value); });
+  if (o.onchange) r.addEventListener('change', () => o.onchange(api.value));
+  api.set(o.value);
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return api;
+}
+/* grupo de botones excluyentes. options: [{v,label}] */
+function seg(parent, options, value, onchange) {
+  const el = h('div', { class: 'seg', role: 'group' });
+  const api = { el, value, set(v, fire) { api.value = v; for (const b of el.children) b.setAttribute('aria-pressed', b.dataset.v === String(v)); if (fire) onchange && onchange(v); } };
+  for (const op of options) {
+    const b = h('button', { type: 'button', 'data-v': op.v, title: op.title || null }, op.label);
+    b.addEventListener('click', () => api.set(op.v, true)); el.append(b);
+  }
+  api.set(value);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return api;
+}
+function toggle(parent, label, checked, onchange) {
+  const inp = h('input', { type: 'checkbox' }); inp.checked = !!checked;
+  inp.addEventListener('change', () => onchange && onchange(inp.checked));
+  const el = h('label', { class: 'toggle' }, inp, label);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return inp;
+}
+function button(parent, label, onclick, cls = '') {
+  const b = h('button', { type: 'button', class: cls }, label); b.addEventListener('click', onclick);
+  (typeof parent === 'string' ? $(parent) : parent).append(b); return b;
+}
+/* fila de "stats": stats('#x', [['n','Dardos'],['pi','π estimado','amber']]) -> {n: el, pi: el} */
+function stats(parent, defs) {
+  const wrap = h('div', { class: 'stats' }), out = {};
+  for (const [k, label, cls] of defs) { const b = h('b', {}, '–'); wrap.append(h('div', { class: 'stat ' + (cls || '') }, h('span', {}, label), b)); out[k] = b; }
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return out;
+}
+const NF = {};
+const fmtNum = (v, d = 0) => { if (!isFinite(v)) return v > 0 ? '∞' : '–'; const k = d; return (NF[k] || (NF[k] = new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }))).format(v); };
+const fmtInt = v => fmtNum(Math.round(v), 0);
+const fmtPct = (v, d = 1) => fmtNum(v * 100, d) + '%';
+const fmtCompact = v => v >= 1e6 ? fmtNum(v / 1e6, v >= 1e7 ? 0 : 1) + ' M' : v >= 1e4 ? fmtNum(v / 1e3, 0) + ' k' : fmtInt(v);
+
+/* ---------------- canvas ---------------- */
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), hh = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+const COL = { amber: '#ffb23f', cyan: '#5ed0e6', red: '#ff6b5a', violet: '#b99cff', green: '#8fd694', ink: '#e9eef1', muted: '#9eadb8', dim: '#5d717b', grid: '#1b282d', grid2: '#25363d', screen: '#0f171b' };
+function clearScreen(g, w, h, gridX = 10, gridY = 4, mid = false) {
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, h);
+  g.strokeStyle = COL.grid; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < gridX; i++) { const x = Math.round(i * w / gridX) + .5; g.moveTo(x, 0); g.lineTo(x, h); }
+  for (let i = 1; i < gridY; i++) { const y = Math.round(i * h / gridY) + .5; g.moveTo(0, y); g.lineTo(w, y); }
+  g.stroke();
+  if (mid) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(h / 2) + .5); g.lineTo(w, Math.round(h / 2) + .5); g.stroke(); }
+}
+function glowLine(g, color, width = 2) { g.strokeStyle = color; g.lineWidth = width; g.shadowColor = color; g.shadowBlur = 6; g.lineJoin = 'round'; }
+function noGlow(g) { g.shadowBlur = 0; }
+function text(g, s, x, y, color = COL.muted, align = 'left', font = '12px JetBrains Mono, monospace') {
+  g.fillStyle = color; g.font = font; g.textAlign = align; g.fillText(s, x, y); g.textAlign = 'left';
+}
+/* histograma: counts[] dibujado en el rectángulo (x,y,w,h). opts: {max, color, fill, gap} */
+function drawHist(g, x, y, w, hh, counts, color, o = {}) {
+  const n = counts.length; if (!n) return;
+  const max = o.max || Math.max(1, ...counts), bw = w / n, gap = o.gap ?? (bw > 4 ? 1 : 0);
+  g.fillStyle = color; g.globalAlpha = o.alpha ?? 0.85;
+  for (let i = 0; i < n; i++) { const bh = Math.min(hh, counts[i] / max * hh); if (bh > 0) g.fillRect(x + i * bw + gap / 2, y + hh - bh, Math.max(1, bw - gap), bh); }
+  g.globalAlpha = 1;
+}
+/* curva: f(t) con t en [0,1] -> valor en [0,1] (0 abajo) */
+function drawCurve(g, x, y, w, hh, f, color, width = 2, steps = 200) {
+  glowLine(g, color, width); g.beginPath();
+  for (let i = 0; i <= steps; i++) { const t = i / steps, v = f(t); const px = x + t * w, py = y + hh - v * hh; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  g.stroke(); noGlow(g);
+}
+/* Loop de animación compartido: solo dibuja los canvas visibles */
+const _anims = [];
+function animate(canvas, fn) {
+  const a = { canvas, fn, visible: true }; _anims.push(a);
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => a.visible = e.isIntersecting)).observe(canvas);
+  return a;
+}
+let _lastT = performance.now();
+(function loop(now) { const dt = Math.min(0.1, ((now || performance.now()) - _lastT) / 1000); _lastT = now || performance.now();
+  for (const a of _anims) if (a.visible) { try { const c = fitCanvas(a.canvas); c.dt = dt; a.fn(c); } catch (e) { console.error(e); } }
+  requestAnimationFrame(loop); })();
+
+/* ---------------- resaltado de código JS ---------------- */
+function highlight(src) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = /(\/\/.*$|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\b(const|let|var|function|return|new|if|else|for|while|class|extends|this|async|await|of|in|true|false|null|undefined|super|static|import|export|from|break|continue|switch|case|default)\b|\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b|\b([A-Z][A-Za-z0-9]+)\b|(\.?[a-zA-Z_]\w*)(?=\()/gm;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'k' : m[4] ? 'n' : m[5] ? 't' : 'f';
+    out += `<span class="tk-${cls}">${esc(m[0])}</span>`; last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
+}
+function highlightAll() { $$('pre code').forEach(c => { if (!c.dataset.hl) { c.innerHTML = highlight(c.textContent.replace(/^\n/, '')); c.dataset.hl = 1; } }); }
+
+/* ---------------- barra superior / navegación ---------------- */
+const PAGES = [
+  ['index.html', 'Inicio'], ['01-azar.html', 'Azar con forma'], ['02-poisson-disk.html', 'Poisson disk'],
+  ['03-montecarlo.html', 'Montecarlo'], ['04-montecarlo-juegos.html', 'MC en juegos'], ['05-eventos-discretos.html', 'Eventos discretos'],
+  ['06-cola-de-eventos.html', 'Cola de eventos'], ['07-eventos-en-juegos.html', 'DES en juegos'], ['08-mcts.html', 'MCTS']];
+function buildChrome(current) {
+  const nav = h('nav', { 'aria-label': 'Temas de la clase' });
+  PAGES.slice(1).forEach(([href, name], i) => nav.append(h('a', { href, 'aria-current': href === current ? 'page' : null }, h('b', {}, i + 1), name)));
+  const bar = h('header', { class: 'topbar' },
+    h('a', { class: 'home', href: 'index.html' }, 'Unidad 9: eventos y Montecarlo'), nav);
+  document.body.prepend(bar);
+  const idx = PAGES.findIndex(p => p[0] === current);
+  if (idx >= 0 && $('main')) {
+    const prev = PAGES[idx - 1], next = PAGES[idx + 1];
+    $('main').append(h('div', { class: 'pager' },
+      prev ? h('a', { href: prev[0] }, h('span', {}, 'Anterior'), prev[1]) : h('span'),
+      next ? h('a', { href: next[0], style: { textAlign: 'right' } }, h('span', {}, 'Siguiente'), next[1]) : h('span')));
+  }
+  highlightAll();
+}
+</script>
+<script>
+/* ---------------- 1. dardos ---------------- */
+const D = { n: 0, inside: 0, hist: [], nextLog: 1, buf: [], auto: true, rate: 60, off: null };
+const SIG = 4 * Math.sqrt(Math.PI / 4 * (1 - Math.PI / 4));   // σ de una tirada de 4·[adentro]
+function dReset() { D.n = 0; D.inside = 0; D.hist = []; D.nextLog = 1; D.buf = []; D.clear = true; }
+function dThrow(k) {
+  const draw = D.buf.length < 30000;
+  for (let i = 0; i < k; i++) {
+    const x = Math.random() * 2 - 1, y = Math.random() * 2 - 1, inn = x * x + y * y <= 1;
+    D.n++; if (inn) D.inside++;
+    if (draw && i < 30000) D.buf.push(x, y, inn ? 1 : 0);
+    if (D.n >= D.nextLog) { D.hist.push([D.n, 4 * D.inside / D.n]); D.nextLog = Math.max(D.n + 1, Math.ceil(D.n * 1.06)); }
+  }
+}
+const drow = h('div', { class: 'row' }); $('#dctl').append(drow);
+button(drow, '+1', () => dThrow(1)); button(drow, '+100', () => dThrow(100)); button(drow, '+10.000', () => dThrow(1e4));
+button(drow, '+1.000.000', () => dThrow(1e6), 'primary');
+const dAuto = button(drow, '■ Pausar', () => { D.auto = !D.auto; dAuto.textContent = D.auto ? '■ Pausar' : '▶ Lluvia'; dAuto.classList.toggle('playing', D.auto); }, 'playing');
+button(drow, 'Reiniciar', dReset);
+slider('#dctl', { label: 'Dardos por cuadro (lluvia)', min: 1, max: 5000, log: true, value: D.rate, fmt: fmtInt, oninput: v => D.rate = v });
+const dSt = stats('#dstats', [['n', 'Dardos'], ['i', 'Adentro'], ['p', 'π estimado', 'amber'], ['e', 'Error real', 'red'], ['s', 'Error esperado ≈ 1,64/√N', 'cyan']]);
+dReset();
+animate($('#cvd'), ({ g, w, h: H }) => {
+  if (D.auto) dThrow(Math.round(D.rate));
+  if (!D.off || D.off.width !== Math.round(w) || D.clear) { D.off = document.createElement('canvas'); D.off.width = Math.round(w); D.off.height = Math.round(H); D.clear = false; }
+  const og = D.off.getContext('2d'), S = Math.min(w, H) / 2 - 8, cx = w / 2, cy = H / 2, b = D.buf;
+  for (let i = 0; i < b.length; i += 3) { og.fillStyle = b[i + 2] ? '#ffb23fcc' : '#5ed0e699'; og.fillRect(cx + b[i] * S - 1, cy + b[i + 1] * S - 1, 2, 2); }
+  D.buf = [];
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, H); g.drawImage(D.off, 0, 0);
+  g.strokeStyle = COL.ink; g.lineWidth = 1.2; g.strokeRect(cx - S, cy - S, 2 * S, 2 * S); g.beginPath(); g.arc(cx, cy, S, 0, 7); g.stroke();
+  $('#dtag').textContent = D.n ? `4 · ${fmtInt(D.inside)} / ${fmtInt(D.n)}` : 'tirá dardos';
+  dSt.n.textContent = fmtInt(D.n); dSt.i.textContent = fmtInt(D.inside);
+  const est = D.n ? 4 * D.inside / D.n : NaN;
+  dSt.p.textContent = D.n ? fmtNum(est, 5) : '–'; dSt.e.textContent = D.n ? fmtNum(Math.abs(est - Math.PI), 5) : '–'; dSt.s.textContent = D.n ? fmtNum(SIG / Math.sqrt(D.n), 5) : '–';
+});
+animate($('#cvc'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 7, 4);
+  const L = 36, R = w - 12, T = 26, Bt = H - 22, maxN = Math.max(1e3, D.n * 1.2), lx = n => L + Math.log10(n) / Math.log10(maxN) * (R - L), yr = 0.9, Y = v => T + (Bt - T) * (0.5 - (v - Math.PI) / (2 * yr));
+  for (let e = 0; e <= Math.log10(maxN); e++) text(g, e === 0 ? '1' : '10' + '⁰¹²³⁴⁵⁶⁷⁸⁹'[e], lx(10 ** e), H - 6, COL.dim, 'center');
+  g.fillStyle = '#5ed0e622'; g.beginPath();
+  for (let i = 0; i <= 120; i++) { const n = 10 ** (i / 120 * Math.log10(maxN)); g.lineTo(lx(n), Y(Math.PI + 1.96 * SIG / Math.sqrt(n))); }
+  for (let i = 120; i >= 0; i--) { const n = 10 ** (i / 120 * Math.log10(maxN)); g.lineTo(lx(n), Y(Math.PI - 1.96 * SIG / Math.sqrt(n))); }
+  g.fill();
+  g.strokeStyle = COL.ink; g.setLineDash([5, 5]); g.beginPath(); g.moveTo(L, Y(Math.PI)); g.lineTo(R, Y(Math.PI)); g.stroke(); g.setLineDash([]);
+  text(g, 'π', L - 10, Y(Math.PI) + 4, COL.ink, 'right'); text(g, fmtNum(Math.PI + .5, 2), L - 6, Y(Math.PI + .5) + 4, COL.dim, 'right'); text(g, fmtNum(Math.PI - .5, 2), L - 6, Y(Math.PI - .5) + 4, COL.dim, 'right');
+  glowLine(g, COL.amber, 1.6); g.beginPath(); D.hist.forEach(([n, v], i) => { const y = clamp(Y(v), T - 10, Bt + 10); i ? g.lineTo(lx(n), y) : g.moveTo(lx(n), y); }); g.stroke(); noGlow(g);
+});
+
+/* ---------------- 2. intervalos ---------------- */
+const IV = { N: 1000, M: 50, rows: [] };
+function ivRun() {
+  IV.rows = []; for (let m = 0; m < IV.M; m++) { let inn = 0; for (let i = 0; i < IV.N; i++) { const x = Math.random(), y = Math.random(); if (x * x + y * y <= 1) inn++; }
+    const p = inn / IV.N, est = 4 * p, se = 4 * Math.sqrt(Math.max(p * (1 - p), 1e-9) / IV.N); IV.rows.push([est, se]); }
+  const ok = IV.rows.filter(([e, s]) => Math.abs(e - Math.PI) <= 1.96 * s).length;
+  const mean = IV.rows.reduce((a, r) => a + r[0], 0) / IV.M, sd = Math.sqrt(IV.rows.reduce((a, r) => a + (r[0] - mean) ** 2, 0) / (IV.M - 1));
+  ivSt.ok.textContent = `${ok} / ${IV.M}`; ivSt.sd.textContent = fmtNum(sd, 4); ivSt.th.textContent = fmtNum(SIG / Math.sqrt(IV.N), 4);
+  ivSt.ok.parentNode.className = 'stat ' + (ok / IV.M >= 0.9 ? 'green' : 'amber');
+}
+slider('#ictl', { label: 'Dardos por experimento (N)', min: 10, max: 1e5, log: true, value: IV.N, fmt: fmtInt, onchange: v => { IV.N = Math.round(v); ivRun(); }, oninput: v => IV.N = Math.round(v) });
+button('#ictl', '🎲 Repetir los 50', ivRun, 'primary');
+const ivSt = stats('#istats', [['ok', 'Contienen a π', 'green'], ['sd', 'Desvío medido entre experimentos', 'amber'], ['th', 'Teórico: 1,64/√N', 'cyan']]);
+ivRun();
+animate($('#cvi'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 10, 1);
+  const half = Math.max(0.05, 1.96 * SIG / Math.sqrt(IV.N) * 2.2), X = v => w / 2 + (v - Math.PI) / half * (w / 2 - 20), rh = (H - 40) / IV.M;
+  g.strokeStyle = COL.ink; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(X(Math.PI), 0); g.lineTo(X(Math.PI), H); g.stroke(); g.setLineDash([]);
+  IV.rows.forEach(([e, s], i) => { const y = 14 + (i + .5) * rh, bad = Math.abs(e - Math.PI) > 1.96 * s, c = bad ? COL.red : COL.cyan;
+    g.strokeStyle = c; g.lineWidth = bad ? 2 : 1.4; g.beginPath(); g.moveTo(X(e - 1.96 * s), y); g.lineTo(X(e + 1.96 * s), y); g.stroke(); g.fillStyle = c; g.fillRect(X(e) - 2, y - 2, 4, 4); });
+  text(g, 'π', X(Math.PI) + 5, H - 8, COL.ink); text(g, fmtNum(Math.PI - half, 4), 8, H - 8, COL.dim); text(g, fmtNum(Math.PI + half, 4), w - 8, H - 8, COL.dim, 'right');
+  $('#itag').textContent = `N = ${fmtInt(IV.N)} por experimento · ancho típico ±${fmtNum(1.96 * SIG / Math.sqrt(IV.N), 4)}`;
+});
+
+/* ---------------- 3. luz de área ---------------- */
+const LT = { W: 220, H: 0, acc: null, n: 0, spp: 2, lamp: { x: 0.18, y: 0.3, r: 0.04 }, area: true, boxes: [[0.38, 0.18, 0.06, 0.24], [0.55, 0.55, 0.16, 0.06], [0.3, 0.62, 0.05, 0.05], [0.78, 0.2, 0.05, 0.16], [0.62, 0.32, 0.03, 0.03]] };
+function ltReset() { LT.acc = null; LT.n = 0; }
+function segHitsBox(x0, y0, x1, y1, b) {   // slab test, segmento p0->p1 contra AABB [x,y,w,h]
+  let t0 = 0, t1 = 1; const dx = x1 - x0, dy = y1 - y0;
+  for (const [p, d, lo, hi] of [[x0, dx, b[0], b[0] + b[2]], [y0, dy, b[1], b[1] + b[3]]]) {
+    if (Math.abs(d) < 1e-12) { if (p < lo || p > hi) return false; continue; }
+    let a = (lo - p) / d, c = (hi - p) / d; if (a > c) [a, c] = [c, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, c); if (t0 > t1) return false; }
+  return true;
+}
+slider('#lctl', { label: 'Rayos por pixel por cuadro', min: 1, max: 32, step: 1, value: LT.spp, oninput: v => LT.spp = v });
+slider('#lctl', { label: 'Radio de la lámpara', min: 0.005, max: 0.15, step: 0.005, value: LT.lamp.r, fmt: v => fmtNum(v, 3), oninput: v => { LT.lamp.r = v; ltReset(); } });
+const lrow = h('div', { class: 'row' }); $('#lctl').append(lrow);
+let ltFreeze = false;
+const ltF = button(lrow, '■ Congelar', () => { ltFreeze = !ltFreeze; ltF.textContent = ltFreeze ? '▶ Seguir acumulando' : '■ Congelar'; ltF.classList.toggle('playing', !ltFreeze); }, 'playing');
+button(lrow, 'Empezar de cero', ltReset);
+(function dragLamp() {
+  const cv = $('#cvl'); let drag = false;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  cv.addEventListener('pointerdown', e => { const [x, y] = pos(e), asp = r => r; drag = true; cv.setPointerCapture(e.pointerId); LT.lamp.x = x; LT.lamp.y = y; ltReset(); cv.style.cursor = 'grabbing'; });
+  cv.addEventListener('pointermove', e => { if (!drag) return; const [x, y] = pos(e); LT.lamp.x = clamp(x, 0, 1); LT.lamp.y = clamp(y, 0, 1); ltReset(); });
+  cv.addEventListener('pointerup', () => { drag = false; cv.style.cursor = 'grab'; });
+})();
+animate($('#cvl'), ({ g, w, h: H }) => {
+  const W = LT.W, HH = Math.max(40, Math.round(W * H / w)), asp = H / w;
+  if (!LT.acc || LT.acc.length !== W * HH) { LT.acc = new Float32Array(W * HH); LT.n = 0; LT.H = HH; LT.img = new ImageData(W, HH); LT.cv = document.createElement('canvas'); LT.cv.width = W; LT.cv.height = HH; }
+  const lp = LT.lamp, boxes = LT.boxes.map(b => [b[0], b[1] * 1, b[2], b[3]]);
+  // coordenadas: x en [0,1], y en [0,1] (la pantalla no es cuadrada; corregimos distancias con asp)
+  if (!ltFreeze) {
+    for (let s = 0; s < LT.spp; s++) {
+      for (let j = 0; j < HH; j++) { const py = (j + Math.random()) / HH;
+        for (let i = 0; i < W; i++) { const px = (i + Math.random()) / W;
+          let inBox = false; for (const b of boxes) if (px >= b[0] && px <= b[0] + b[2] && py >= b[1] && py <= b[1] + b[3]) { inBox = true; break; }
+          if (inBox) continue;
+          const a = Math.random() * 2 * Math.PI, rr = lp.r * Math.sqrt(Math.random()), lx = lp.x + rr * Math.cos(a), ly = lp.y + rr * Math.sin(a) / asp;
+          let hit = false; for (const b of boxes) if (segHitsBox(px, py, lx, ly, b)) { hit = true; break; }
+          if (!hit) { const d2 = (px - lp.x) ** 2 + ((py - lp.y) * asp) ** 2; LT.acc[j * W + i] += 1 / (1 + d2 * 9); } } }
+      LT.n++;
+    }
+  }
+  const d = LT.img.data;
+  for (let k = 0; k < W * HH; k++) { const v = LT.n ? LT.acc[k] / LT.n : 0, o = k * 4; d[o] = 18 + v * 237; d[o + 1] = 26 + v * 200; d[o + 2] = 30 + v * 130; d[o + 3] = 255; }
+  LT.cv.getContext('2d').putImageData(LT.img, 0, 0);
+  g.imageSmoothingEnabled = false; g.drawImage(LT.cv, 0, 0, w, H);
+  g.fillStyle = '#3d4b56'; g.strokeStyle = '#6b7c88'; for (const b of boxes) { g.fillRect(b[0] * w, b[1] * H, b[2] * w, b[3] * H); g.strokeRect(b[0] * w + .5, b[1] * H + .5, b[2] * w, b[3] * H); }
+  g.fillStyle = '#fff8e0'; g.shadowColor = '#ffd27a'; g.shadowBlur = 18; g.beginPath(); g.arc(lp.x * w, lp.y * H, Math.max(3, lp.r * w), 0, 7); g.fill(); g.shadowBlur = 0;
+  $('#ltag').textContent = `${W}×${HH} pixels · ${fmtInt(LT.n)} muestras por pixel acumuladas`;
+});
+buildChrome('03-montecarlo.html');
+</script>
+</body>
+</html>

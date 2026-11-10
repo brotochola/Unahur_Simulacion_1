@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Montecarlo en juegos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#26303a;
+  --bg-2:#2f3b46;
+  --bg-3:#384653;
+  --screen:#0f171b;
+  --grid:#1b282d;
+  --grid-2:#243840;
+  --ink:#e9eef1;
+  --muted:#9eadb8;
+  --line:#465663;
+  --amber:#ffb23f;
+  --cyan:#5ed0e6;
+  --red:#ff6b5a;
+  --violet:#b99cff;
+  --green:#8fd694;
+  --radius:10px;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:18px;line-height:1.55;font-variation-settings:"wdth" 100}
+a{color:var(--cyan);text-underline-offset:3px}
+a:hover{color:#9fe6f3}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+::selection{background:var(--amber);color:#1a1a1a}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:#1f2830;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 20px;flex-wrap:wrap}
+.topbar .home{color:var(--ink);text-decoration:none;font-weight:700;font-variation-settings:"wdth" 118;white-space:nowrap;font-size:15px}
+.topbar nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.topbar nav a{color:var(--muted);text-decoration:none;font-size:14px;padding:5px 9px;border-radius:6px;white-space:nowrap}
+.topbar nav a b{color:var(--ink);font-weight:600;margin-right:5px;font-variant-numeric:tabular-nums}
+.topbar nav a:hover{background:var(--bg-2);color:var(--ink)}
+.topbar nav a[aria-current]{background:var(--bg-3);color:var(--ink)}
+.topbar nav a[aria-current] b{color:var(--amber)}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 22px 80px}
+.prose{max-width:72ch}
+h1{font-size:clamp(34px,5vw,58px);line-height:1.02;margin:10px 0 18px;font-weight:800;font-variation-settings:"wdth" 122;letter-spacing:-.01em}
+h2{font-size:clamp(25px,3vw,34px);line-height:1.1;margin:64px 0 14px;font-weight:750;font-variation-settings:"wdth" 116}
+h3{font-size:21px;line-height:1.2;margin:34px 0 8px;font-weight:700;font-variation-settings:"wdth" 110}
+h4{font-size:17px;margin:20px 0 6px;font-weight:700}
+p{margin:0 0 14px}
+.lead{font-size:21px;color:#d5dde3;max-width:64ch}
+.muted{color:var(--muted)}
+small,.small{font-size:14px}
+ul,ol{padding-left:22px;margin:0 0 14px}
+li{margin:4px 0}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}
+.kbd,kbd{font:600 13px var(--mono);background:var(--bg-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+code{font-family:var(--mono);font-size:.86em;background:#1c252c;padding:1px 5px;border-radius:4px;color:#f2d7a6}
+.amber{color:var(--amber)}.cyan{color:var(--cyan)}.red{color:var(--red)}.violet{color:var(--violet)}.green{color:var(--green)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:22px;align-items:start}
+.cols-2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media (max-width:860px){.cols-2{grid-template-columns:1fr}}
+
+/* ---------- instruments ---------- */
+.rig{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:18px 0 22px;box-shadow:inset 0 1px 0 #ffffff0d}
+.rig > .rig-title{font-weight:700;font-size:15px;margin:0 0 10px;color:var(--ink);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rig > .rig-title .muted{font-weight:400}
+.screen{position:relative;background:var(--screen);border-radius:7px;border:1px solid #0a1013;box-shadow:inset 0 0 0 1px #ffffff08, inset 0 6px 24px #0008;overflow:hidden}
+.screen canvas{display:block;width:100%;touch-action:none}
+.screen .tag{position:absolute;left:10px;top:7px;font:12px var(--mono);color:var(--muted);pointer-events:none}
+.screen .tag-r{left:auto;right:10px}
+.screens{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+@media (max-width:760px){.screens{grid-template-columns:1fr}}
+.controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:end;margin-top:12px}
+.ctl{display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 170px;max-width:300px}
+.ctl label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl label output{color:var(--ink);font:600 13px var(--mono);white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.readout{font:13px var(--mono);color:var(--muted);background:var(--screen);border:1px solid #0a1013;border-radius:6px;padding:8px 10px;line-height:1.6}
+.readout b{color:var(--ink);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:linear-gradient(90deg,var(--amber) var(--p,50%),#1a2329 var(--p,50%));border-radius:2px}
+input[type=range]::-moz-range-track{height:4px;background:#1a2329;border-radius:2px}
+input[type=range]::-moz-range-progress{height:4px;background:var(--amber);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;margin-top:-7px;box-shadow:0 1px 3px #0009}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;box-shadow:0 1px 3px #0009}
+
+button,.btn{font:600 15px var(--font);color:var(--ink);background:var(--bg-3);border:1px solid #556676;border-radius:8px;padding:8px 14px;cursor:pointer;line-height:1.2;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+button:hover,.btn:hover{background:#43535f}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--amber);border-color:var(--amber);color:#21180a}
+button.primary:hover{background:#ffc66d}
+button.playing{background:var(--cyan);border-color:var(--cyan);color:#06232a}
+button.small{font-size:13px;padding:5px 10px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #556676;border-radius:8px;overflow:hidden;background:#222c34}
+.seg button{border:0;border-radius:0;background:transparent;border-right:1px solid #44535f;font-size:14px;padding:7px 12px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#18212a}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px;cursor:pointer;user-select:none}
+.toggle input{appearance:none;width:38px;height:22px;border-radius:11px;background:#1a2329;border:1px solid #556676;position:relative;cursor:pointer;margin:0;flex:none}
+.toggle input::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#aab6be;top:2px;left:2px;transition:left .15s}
+.toggle input:checked{background:var(--cyan);border-color:var(--cyan)}
+.toggle input:checked::after{left:18px;background:#fff}
+select{font:15px var(--font);background:var(--bg-3);color:var(--ink);border:1px solid #556676;border-radius:8px;padding:7px 10px}
+
+
+/* ---------- code ---------- */
+pre{background:#161e23;border:1px solid #0d1417;border-radius:8px;padding:14px 16px;overflow:auto;font:14px/1.6 var(--mono);color:#d6e1e8;margin:12px 0 18px;tab-size:2}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.tk-c{color:#71828e;font-style:italic}.tk-s{color:#a8e0a0}.tk-k{color:#ff9e7a}.tk-n{color:#ffcf73}.tk-t{color:#7fd8ec}.tk-f{color:#e0c2ff}
+
+/* ---------- callouts ---------- */
+.game{border:1px solid #3e5a49;background:#26372f;border-radius:var(--radius);padding:14px 18px;margin:18px 0}
+.game > strong:first-child{color:var(--green);display:block;margin-bottom:4px}
+.warn{border:1px solid #6a4a2c;background:#3a2f25;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.figure{margin:18px 0}
+.figure figcaption{font-size:14px;color:var(--muted);margin-top:6px}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:12px 0 20px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
+
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:70px;border-top:1px solid var(--line);padding-top:20px;flex-wrap:wrap}
+.pager a{text-decoration:none;color:var(--ink);font-weight:600}
+.pager a span{display:block;font-size:13px;color:var(--muted);font-weight:400}
+.credits{font-size:13px;color:var(--muted);margin-top:30px;max-width:90ch}
+
+@media (max-width:700px){
+  .topbar{position:static;gap:8px}
+  .topbar nav{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+}
+@media (max-width:600px){
+  body{font-size:17px}
+  main{padding:24px 16px 60px}
+  .topbar{padding:8px 12px}
+  .rig{padding:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- unidad 9: extras ---------- */
+.topbar .tag9{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stat{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:6px 11px;min-width:110px}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+.stat b{font:600 17px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.stat.amber b{color:var(--amber)}.stat.cyan b{color:var(--cyan)}.stat.red b{color:var(--red)}.stat.green b{color:var(--green)}.stat.violet b{color:var(--violet)}
+.demo{display:flex;gap:14px;align-items:center;border:1px solid #3f5466;background:#263644;border-radius:var(--radius);padding:12px 16px;margin:18px 0;text-decoration:none;color:var(--ink)}
+.demo:hover{background:#2d4152;color:var(--ink)}
+.demo .ico{font:700 22px var(--mono);color:var(--cyan);flex:none}
+.demo b{display:block}
+.demo span{color:var(--muted);font-size:15px}
+.formula{font:600 17px var(--mono);background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 14px;margin:12px 0 16px;color:#f2d7a6;overflow:auto;white-space:nowrap}
+.formula small{color:var(--muted);font-weight:400}
+.screen .tag-b{top:auto;bottom:7px}
+.panel{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:8px 10px;font:13px/1.55 var(--mono);color:var(--muted);overflow:auto}
+.panel .hi{color:var(--ink);background:#2b3a1f;border-radius:3px}
+.panel .ev{display:flex;gap:10px;white-space:nowrap;padding:1px 4px}
+.panel .ev .t{color:var(--amber);min-width:62px;text-align:right}
+.panel .ev .k-arr{color:var(--cyan)}.panel .ev .k-end{color:var(--green)}.panel .ev .k-x{color:var(--violet)}
+.side{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+@media (max-width:860px){.side{grid-template-columns:1fr}}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin:10px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--bg-3);border:1px solid #556676;font:700 14px/28px var(--font);text-align:center;color:var(--amber)}
+.timebox{display:inline-block;font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+
+p code,li code,td code{white-space:nowrap}
+.screen .tag{background:#0f171bb3;padding:1px 6px;border-radius:4px}
+</style>
+<style>
+.duel{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.duel{grid-template-columns:1fr}}
+.duel h4{margin:0 0 4px}
+.duel .controls{margin-top:4px}
+.duel .ctl{max-width:none}
+.bar2{height:30px;border-radius:7px;overflow:hidden;display:flex;font:600 14px/30px var(--mono);margin-top:12px;background:var(--screen)}
+.bar2 div{padding:0 10px;white-space:nowrap;transition:width .25s}
+</style>
+</head>
+<body>
+<main>
+  <h1>Montecarlo en juegos</h1>
+  <p class="lead">Un diseñador vive haciéndose preguntas como "¿esto es justo?", "¿cuánto tarda un jugador en conseguir la espada?" o "¿está roto este personaje?". Casi ninguna tiene una fórmula cómoda, pero todas se responden igual: <strong>simulá un millón de veces y mirá la distribución</strong>.</p>
+
+  <h2>El azar puro no se siente justo</h2>
+  <div class="prose">
+    <p>Un personaje con 25% de crítico, con azar puro, puede pegar 20 golpes seguidos sin crítico (pasa más o menos 1 vez cada 300 rachas) o meter 3 críticos al hilo. El jugador no ve el 25%: ve la racha, y la vive como un bug o como una trampa.</p>
+    <p>Dota 2 y Warcraft III usan <strong>pseudo-random distribution</strong> (PRD): la probabilidad arranca baja y sube con cada golpe sin crítico, <code>P(n) = C·n</code>, y vuelve a C cuando sale un crítico. Eligiendo bien C, el promedio sigue siendo 25%, pero las rachas se acortan. ¿Cómo se encuentra C? Hay fórmula, pero es incómoda; también se puede probar valores y simular.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Críticos: azar puro vs. PRD <span class="muted">· arriba los últimos golpes · abajo la distribución de "golpes entre críticos" en 200.000 golpes</span></div>
+    <div class="screen"><canvas id="cvcrit" style="height:150px"></canvas></div>
+    <div class="screen" style="margin-top:10px"><canvas id="cvgap" style="height:220px"></canvas><span class="tag">golpes hasta el próximo crítico</span></div>
+    <div class="controls" id="critctl"></div>
+    <div class="cols" style="margin-top:4px"><div id="critA"></div><div id="critB"></div></div>
+  </div>
+  <pre><code>// PRD: la chance crece con cada fallo y se resetea al acertar
+let fallos = 0;
+function esCritico() {
+  fallos++;
+  if (Math.random() &lt; C * fallos) { fallos = 0; return true; }
+  return false;
+}</code></pre>
+
+  <h3>Tetris y la bolsa de 7</h3>
+  <div class="prose">
+    <p>Los Tetris modernos no eligen piezas al azar puro: meten las 7 piezas en una bolsa, la mezclan y las van sacando. Cuando la bolsa se vacía, se rellena. Así, entre dos palos largos (la pieza I) hay como máximo 12 piezas. Con azar puro, la "sequía" puede durar 40 o más.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">¿Cuánto hay que esperar el palo? <span class="muted">· 200.000 piezas por método</span></div>
+    <div class="screen"><canvas id="cvtet" style="height:240px"></canvas></div>
+    <div class="controls" id="tetctl"></div>
+    <div class="cols" style="margin-top:4px"><div id="tetA"></div><div id="tetB"></div></div>
+  </div>
+  <div class="game"><strong>La idea de fondo</strong>
+    Las dos técnicas cambian la <em>forma</em> de la distribución sin cambiar el promedio. Montecarlo es la herramienta para ver esa forma antes de que la vea el jugador. La misma idea se usa en los mazos de los roguelikes (Slay the Spire, Balatro): "¿con qué probabilidad tengo el combo en mano en el turno 3?" se responde mezclando el mazo un millón de veces.
+  </div>
+
+  <h2>"Drop del 1%": el promedio miente</h2>
+  <div class="prose">
+    <p>Si un ítem cae con probabilidad p por enemigo, el promedio de intentos es 1/p: con 1%, 100 enemigos. Pero la probabilidad de <em>no</em> tenerlo después de n intentos es (1 − p)ⁿ, y a los 100 intentos todavía el 37% de los jugadores no lo tiene. Uno de cada cien va a necesitar más de 460. Los juegos con gacha o loot boxes agregan <strong>pity</strong>: si llegaste a N intentos sin premio, el siguiente es seguro. Eso corta la cola larga de la distribución.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">20.000 jugadores farmeando <span class="muted">· cuántos intentos necesitó cada uno</span></div>
+    <div class="screen"><canvas id="cvdrop" style="height:260px"></canvas><span class="tag" id="droptag"></span></div>
+    <div class="controls" id="dropctl"></div>
+    <div id="dropst"></div>
+  </div>
+  <p class="prose">Al diseñar no conviene mirar el promedio sino los percentiles: ¿qué le pasa al 10% con peor suerte? Esa gente es la que abandona el juego, y el pity está pensado para ella.</p>
+
+  <h2>¿Está balanceado este duelo?</h2>
+  <div class="prose">
+    <p>Dos unidades con vida, daño, precisión y crítico. Calcular la probabilidad exacta de que gane cada una es un lío de combinatoria. Simular 20.000 duelos tarda milisegundos. Probá dejarlas idénticas y mirá qué pasa con quién pega primero.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Duelo por turnos <span class="muted">· cada cambio corre 20.000 duelos</span></div>
+    <div class="duel">
+      <div><h4 class="amber">Guerrero</h4><div class="controls" id="ua"></div></div>
+      <div><h4 class="cyan">Pícaro</h4><div class="controls" id="ub"></div></div>
+    </div>
+    <div class="controls" id="duelctl"></div>
+    <div class="bar2"><div id="wa" style="background:var(--amber);color:#21180a"></div><div id="wb" style="background:var(--cyan);color:#06232a;margin-left:auto;text-align:right"></div></div>
+    <div class="screen" style="margin-top:10px"><canvas id="cvduel" style="height:170px"></canvas><span class="tag">duración del duelo (turnos)</span></div>
+    <div id="duelst"></div>
+  </div>
+  <pre><code>function duelo(A, B, empiezaA) {
+  const vida = [A.vida, B.vida], u = [A, B];
+  let t = empiezaA ? 0 : 1, turnos = 0;
+  while (vida[0] > 0 &amp;&amp; vida[1] > 0) {
+    const atk = u[t];
+    if (Math.random() &lt; atk.precision) {
+      let dmg = atk.dmin + Math.random() * (atk.dmax - atk.dmin);
+      if (Math.random() &lt; atk.critico) dmg *= 2;
+      vida[1 - t] -= dmg;
+    }
+    t = 1 - t; turnos++;
+  }
+  return { ganaA: vida[0] > 0, turnos };
+}
+// ganaA en 20.000 duelos → % de victorias ± 1,96·√(p(1−p)/N)</code></pre>
+
+  <h2>Estrategias de casino: validar con simulación</h2>
+  <div class="prose">
+    <p>La <strong>martingala</strong> dice: apostá 1 a rojo; si perdés, duplicá; cuando ganes, recuperás todo y ganás 1. Parece infalible, y en una sesión corta casi siempre funciona. Pero la ruleta tiene el 0, que hace que cada apuesta pierda en promedio 2,7%, y una racha de 8 rojos perdidos te pide apostar 256. Montecarlo muestra la verdad en segundos: la mayoría de las sesiones llega a la meta ganando de a 1, pero una parte grande lo pierde todo de golpe, y el promedio queda en negativo.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">40 jugadores con martingala <span class="muted">· capital 100, apuesta base 1, se retiran al llegar a 150</span></div>
+    <div class="screen"><canvas id="cvmart" style="height:300px"></canvas></div>
+    <div class="controls" id="martctl"></div>
+    <div id="martst"></div>
+  </div>
+  <div class="cols">
+    <a class="demo" href="../montecarlo/martingala.html"><span class="ico">↗</span><span><b>Demo completo: martingala</b><span>Sesión individual tirada por tirada contra miles de sesiones, con la distribución de ganancia final.</span></span></a>
+    <a class="demo" href="../montecarlo/blackjack.html"><span class="ico">↗</span><span><b>Caso integrador: blackjack</b><span>"Imitar al crupier" contra la estrategia básica. Montecarlo como validación experimental de un modelo: estimar la ventaja de la casa sin hacer la cuenta.</span></span></a>
+  </div>
+  <div class="game"><strong>Para el proyecto</strong>
+    Si tu juego genera mapas, generá 10.000 y medí qué porcentaje tiene salida, cuánto mide el camino más corto o cuántos cofres quedan inaccesibles. Si tiene economía, simulá 1.000 partidas con un jugador "promedio" que compra al azar y mirá en qué minuto se queda sin plata. Montecarlo es el <em>test automático</em> del diseño.
+  </div>
+</main>
+<script>
+/* ====================================================================
+   Unidad 9 – Eventos discretos y Montecarlo · helpers compartidos (se inlinea en cada página)
+   ==================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+/* ---------------- azar con semilla ---------------- */
+/* mulberry32: 32 bits de estado, rápido y suficientemente bueno para juegos */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+class Rng {
+  constructor(seed = (Math.random() * 2 ** 32) >>> 0) { this.seed = seed >>> 0; this.next = mulberry32(this.seed); }
+  float(a = 0, b = 1) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }       // entero en [a, b]
+  exp(mean) { return -mean * Math.log(1 - this.next()); }                // exponencial (transformada inversa)
+  normal(mu = 0, sd = 1) {                                               // Box-Muller
+    const u1 = 1 - this.next(), u2 = this.next();
+    return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(this.next() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+}
+
+/* ---------------- min-heap (cola de prioridad) ---------------- */
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  get size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) >= 0) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a; if (!a.length) return undefined; const top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0; const n = a.length;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < n && this.cmp(a[l], a[m]) < 0) m = l; if (r < n && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top; }
+  clear() { this.a.length = 0; }
+  sorted() { return [...this.a].sort(this.cmp); }
+}
+
+/* ---------------- UI helpers ---------------- */
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') el.className = v; else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(k));
+  return el;
+}
+function paintRange(r) { const p = (r.value - r.min) / (r.max - r.min) * 100; r.style.setProperty('--p', p + '%'); }
+/* slider con label y valor. opts: {label,min,max,step,value,fmt,log,oninput,onchange} */
+function slider(parent, o) {
+  const id = 'r' + Math.random().toString(36).slice(2, 8);
+  const out = h('output', { for: id });
+  const r = h('input', { type: 'range', id, min: 0, max: 1000, step: 1 });
+  const toPos = v => o.log ? 1000 * Math.log(v / o.min) / Math.log(o.max / o.min) : 1000 * (v - o.min) / (o.max - o.min);
+  const fromPos = p => { let v = o.log ? o.min * Math.pow(o.max / o.min, p / 1000) : o.min + (o.max - o.min) * p / 1000; if (o.step) v = Math.round(v / o.step) * o.step; return clamp(+v.toFixed(6), o.min, o.max); };
+  const fmt = o.fmt || (v => v);
+  const wrap = h('div', { class: 'ctl' }, h('label', { for: id }, h('span', {}, o.label), out), r);
+  const api = {
+    el: wrap, input: r, value: o.value,
+    set(v, fire) { api.value = v; r.value = toPos(v); out.textContent = fmt(v); paintRange(r); if (fire) o.oninput && o.oninput(v); },
+  };
+  r.addEventListener('input', () => { api.value = fromPos(+r.value); out.textContent = fmt(api.value); paintRange(r); o.oninput && o.oninput(api.value); });
+  if (o.onchange) r.addEventListener('change', () => o.onchange(api.value));
+  api.set(o.value);
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return api;
+}
+/* grupo de botones excluyentes. options: [{v,label}] */
+function seg(parent, options, value, onchange) {
+  const el = h('div', { class: 'seg', role: 'group' });
+  const api = { el, value, set(v, fire) { api.value = v; for (const b of el.children) b.setAttribute('aria-pressed', b.dataset.v === String(v)); if (fire) onchange && onchange(v); } };
+  for (const op of options) {
+    const b = h('button', { type: 'button', 'data-v': op.v, title: op.title || null }, op.label);
+    b.addEventListener('click', () => api.set(op.v, true)); el.append(b);
+  }
+  api.set(value);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return api;
+}
+function toggle(parent, label, checked, onchange) {
+  const inp = h('input', { type: 'checkbox' }); inp.checked = !!checked;
+  inp.addEventListener('change', () => onchange && onchange(inp.checked));
+  const el = h('label', { class: 'toggle' }, inp, label);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return inp;
+}
+function button(parent, label, onclick, cls = '') {
+  const b = h('button', { type: 'button', class: cls }, label); b.addEventListener('click', onclick);
+  (typeof parent === 'string' ? $(parent) : parent).append(b); return b;
+}
+/* fila de "stats": stats('#x', [['n','Dardos'],['pi','π estimado','amber']]) -> {n: el, pi: el} */
+function stats(parent, defs) {
+  const wrap = h('div', { class: 'stats' }), out = {};
+  for (const [k, label, cls] of defs) { const b = h('b', {}, '–'); wrap.append(h('div', { class: 'stat ' + (cls || '') }, h('span', {}, label), b)); out[k] = b; }
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return out;
+}
+const NF = {};
+const fmtNum = (v, d = 0) => { if (!isFinite(v)) return v > 0 ? '∞' : '–'; const k = d; return (NF[k] || (NF[k] = new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }))).format(v); };
+const fmtInt = v => fmtNum(Math.round(v), 0);
+const fmtPct = (v, d = 1) => fmtNum(v * 100, d) + '%';
+const fmtCompact = v => v >= 1e6 ? fmtNum(v / 1e6, v >= 1e7 ? 0 : 1) + ' M' : v >= 1e4 ? fmtNum(v / 1e3, 0) + ' k' : fmtInt(v);
+
+/* ---------------- canvas ---------------- */
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), hh = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+const COL = { amber: '#ffb23f', cyan: '#5ed0e6', red: '#ff6b5a', violet: '#b99cff', green: '#8fd694', ink: '#e9eef1', muted: '#9eadb8', dim: '#5d717b', grid: '#1b282d', grid2: '#25363d', screen: '#0f171b' };
+function clearScreen(g, w, h, gridX = 10, gridY = 4, mid = false) {
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, h);
+  g.strokeStyle = COL.grid; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < gridX; i++) { const x = Math.round(i * w / gridX) + .5; g.moveTo(x, 0); g.lineTo(x, h); }
+  for (let i = 1; i < gridY; i++) { const y = Math.round(i * h / gridY) + .5; g.moveTo(0, y); g.lineTo(w, y); }
+  g.stroke();
+  if (mid) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(h / 2) + .5); g.lineTo(w, Math.round(h / 2) + .5); g.stroke(); }
+}
+function glowLine(g, color, width = 2) { g.strokeStyle = color; g.lineWidth = width; g.shadowColor = color; g.shadowBlur = 6; g.lineJoin = 'round'; }
+function noGlow(g) { g.shadowBlur = 0; }
+function text(g, s, x, y, color = COL.muted, align = 'left', font = '12px JetBrains Mono, monospace') {
+  g.fillStyle = color; g.font = font; g.textAlign = align; g.fillText(s, x, y); g.textAlign = 'left';
+}
+/* histograma: counts[] dibujado en el rectángulo (x,y,w,h). opts: {max, color, fill, gap} */
+function drawHist(g, x, y, w, hh, counts, color, o = {}) {
+  const n = counts.length; if (!n) return;
+  const max = o.max || Math.max(1, ...counts), bw = w / n, gap = o.gap ?? (bw > 4 ? 1 : 0);
+  g.fillStyle = color; g.globalAlpha = o.alpha ?? 0.85;
+  for (let i = 0; i < n; i++) { const bh = Math.min(hh, counts[i] / max * hh); if (bh > 0) g.fillRect(x + i * bw + gap / 2, y + hh - bh, Math.max(1, bw - gap), bh); }
+  g.globalAlpha = 1;
+}
+/* curva: f(t) con t en [0,1] -> valor en [0,1] (0 abajo) */
+function drawCurve(g, x, y, w, hh, f, color, width = 2, steps = 200) {
+  glowLine(g, color, width); g.beginPath();
+  for (let i = 0; i <= steps; i++) { const t = i / steps, v = f(t); const px = x + t * w, py = y + hh - v * hh; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  g.stroke(); noGlow(g);
+}
+/* Loop de animación compartido: solo dibuja los canvas visibles */
+const _anims = [];
+function animate(canvas, fn) {
+  const a = { canvas, fn, visible: true }; _anims.push(a);
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => a.visible = e.isIntersecting)).observe(canvas);
+  return a;
+}
+let _lastT = performance.now();
+(function loop(now) { const dt = Math.min(0.1, ((now || performance.now()) - _lastT) / 1000); _lastT = now || performance.now();
+  for (const a of _anims) if (a.visible) { try { const c = fitCanvas(a.canvas); c.dt = dt; a.fn(c); } catch (e) { console.error(e); } }
+  requestAnimationFrame(loop); })();
+
+/* ---------------- resaltado de código JS ---------------- */
+function highlight(src) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = /(\/\/.*$|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\b(const|let|var|function|return|new|if|else|for|while|class|extends|this|async|await|of|in|true|false|null|undefined|super|static|import|export|from|break|continue|switch|case|default)\b|\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b|\b([A-Z][A-Za-z0-9]+)\b|(\.?[a-zA-Z_]\w*)(?=\()/gm;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'k' : m[4] ? 'n' : m[5] ? 't' : 'f';
+    out += `<span class="tk-${cls}">${esc(m[0])}</span>`; last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
+}
+function highlightAll() { $$('pre code').forEach(c => { if (!c.dataset.hl) { c.innerHTML = highlight(c.textContent.replace(/^\n/, '')); c.dataset.hl = 1; } }); }
+
+/* ---------------- barra superior / navegación ---------------- */
+const PAGES = [
+  ['index.html', 'Inicio'], ['01-azar.html', 'Azar con forma'], ['02-poisson-disk.html', 'Poisson disk'],
+  ['03-montecarlo.html', 'Montecarlo'], ['04-montecarlo-juegos.html', 'MC en juegos'], ['05-eventos-discretos.html', 'Eventos discretos'],
+  ['06-cola-de-eventos.html', 'Cola de eventos'], ['07-eventos-en-juegos.html', 'DES en juegos'], ['08-mcts.html', 'MCTS']];
+function buildChrome(current) {
+  const nav = h('nav', { 'aria-label': 'Temas de la clase' });
+  PAGES.slice(1).forEach(([href, name], i) => nav.append(h('a', { href, 'aria-current': href === current ? 'page' : null }, h('b', {}, i + 1), name)));
+  const bar = h('header', { class: 'topbar' },
+    h('a', { class: 'home', href: 'index.html' }, 'Unidad 9: eventos y Montecarlo'), nav);
+  document.body.prepend(bar);
+  const idx = PAGES.findIndex(p => p[0] === current);
+  if (idx >= 0 && $('main')) {
+    const prev = PAGES[idx - 1], next = PAGES[idx + 1];
+    $('main').append(h('div', { class: 'pager' },
+      prev ? h('a', { href: prev[0] }, h('span', {}, 'Anterior'), prev[1]) : h('span'),
+      next ? h('a', { href: next[0], style: { textAlign: 'right' } }, h('span', {}, 'Siguiente'), next[1]) : h('span')));
+  }
+  highlightAll();
+}
+</script>
+<script>
+/* ---------------- 1. críticos PRD ---------------- */
+function prdC(p) {   // C tal que la tasa efectiva de PRD sea p (búsqueda binaria sobre la esperanza exacta)
+  const rate = C => { let E = 0, surv = 1; for (let n = 1; surv > 1e-12; n++) { const q = Math.min(1, C * n); E += n * surv * q; surv *= 1 - q; } return 1 / E; };
+  let lo = 0, hi = p; for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; rate(m) < p ? lo = m : hi = m; } return (lo + hi) / 2;
+}
+const CR = { p: 0.25, C: 0, rows: [[], []], miss: 0, acc: 0, gaps: [[], []], st: [{}, {}] };
+function critSim() {
+  CR.C = prdC(CR.p); const N = 200000, G = 40;
+  for (let m = 0; m < 2; m++) {
+    const gaps = new Array(G + 1).fill(0); let miss = 0, crit = 0, maxMiss = 0, run = 0, maxRun = 0, last = false, pairs = 0;
+    for (let i = 0; i < N; i++) { miss++; const c = m === 0 ? Math.random() < CR.p : Math.random() < CR.C * miss;
+      if (c) { crit++; gaps[Math.min(G, miss)]++; if (miss - 1 > maxMiss) maxMiss = miss - 1; miss = 0; run = last ? run + 1 : 1; if (run > maxRun) maxRun = run; if (last) pairs++; } else run = 0; last = c; }
+    CR.gaps[m] = gaps; CR.st[m] = { rate: crit / N, maxMiss, maxRun, pairs: pairs / crit };
+  }
+  const box = ['#critA', '#critB'];
+  ['Azar puro', 'PRD'].forEach((name, m) => { const s = CR.st[m];
+    $(box[m]).innerHTML = `<div class="readout"><b class="${m ? 'cyan' : 'amber'}">${name}</b>${m ? ` · C = ${fmtNum(CR.C, 4)}` : ''}<br>tasa real <b>${fmtPct(s.rate)}</b> · racha más larga sin crítico <b>${s.maxMiss}</b><br>críticos seguidos (máx.) <b>${s.maxRun}</b> · crítico después de crítico <b>${fmtPct(s.pairs)}</b></div>`; });
+}
+slider('#critctl', { label: 'Probabilidad de crítico', min: 0.05, max: 0.6, step: 0.01, value: CR.p, fmt: v => fmtPct(v, 0), onchange: v => { CR.p = v; critSim(); }, oninput: v => CR.p = v });
+let critSpeed = 8; slider('#critctl', { label: 'Golpes por segundo', min: 1, max: 60, step: 1, value: critSpeed, oninput: v => critSpeed = v });
+critSim();
+const prdMiss = [0, 0];
+for (let i = 0; i < 200; i++) for (let m = 0; m < 2; m++) { prdMiss[m]++; const c = m === 0 ? Math.random() < CR.p : Math.random() < CR.C * prdMiss[m]; if (c) prdMiss[m] = 0; CR.rows[m].push(c); }
+animate($('#cvcrit'), ({ g, w, h: H, dt }) => {
+  CR.acc += dt * critSpeed;
+  while (CR.acc >= 1) { CR.acc--; for (let m = 0; m < 2; m++) { prdMiss[m]++; const c = m === 0 ? Math.random() < CR.p : Math.random() < CR.C * prdMiss[m]; if (c) prdMiss[m] = 0; CR.rows[m].push(c); if (CR.rows[m].length > 400) CR.rows[m].shift(); } }
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, H);
+  const cs = 12, n = Math.floor((w - 100) / cs);
+  ['Azar puro', 'PRD'].forEach((name, m) => { const y = 24 + m * 64; text(g, name, 10, y + 18, m ? COL.cyan : COL.amber, 'left', '600 13px Archivo, sans-serif');
+    const row = CR.rows[m].slice(-n); row.forEach((c, i) => { g.fillStyle = c ? COL.red : '#2b3a44'; g.fillRect(96 + i * cs, y, cs - 2, 30); });
+    let s = 0; for (let i = row.length - 1; i >= 0 && !row[i]; i--) s++; text(g, `sin crítico hace ${s}`, 96, y + 46, COL.dim); });
+});
+animate($('#cvgap'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 10, 4);
+  const G = CR.gaps[0].length, L = 30, R = w - 10, T = 26, Bt = H - 22, bw = (R - L) / G;
+  const tot = [0, 1].map(m => CR.gaps[m].reduce((a, b) => a + b, 0)), mx = Math.max(...[0, 1].flatMap(m => CR.gaps[m].map(c => c / tot[m])));
+  [0, 1].forEach(m => { g.fillStyle = m ? '#5ed0e6aa' : '#ffb23fbb'; CR.gaps[m].forEach((c, i) => { const hh = c / tot[m] / mx * (Bt - T); g.fillRect(L + i * bw + (m ? bw / 2 : 1), Bt - hh, bw / 2 - 1, hh); }); });
+  for (let i = 1; i <= G; i += 5) text(g, i === G ? `${G}+` : i, L + (i - 0.5) * bw, H - 6, COL.dim, 'center');
+  text(g, '■ azar puro', w - 190, 18, COL.amber); text(g, '■ PRD', w - 80, 18, COL.cyan);
+});
+
+/* ---------------- 2. Tetris ---------------- */
+const PIECES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'], PCOL = { I: '#5ed0e6', O: '#ffd34d', T: '#b99cff', S: '#8fd694', Z: '#ff6b5a', J: '#6f8bff', L: '#ffb23f' };
+const TT = { seq: [[], []], gaps: [[], []], st: [{}, {}] };
+function tetGen(mode, n) { const out = []; let bag = [];
+  for (let i = 0; i < n; i++) { if (mode === 0) out.push(PIECES[Math.floor(Math.random() * 7)]); else { if (!bag.length) bag = shuffleBag([...PIECES]); out.push(bag.pop()); } } return out; }
+function shuffleBag(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function tetSim() { const G = 50;
+  for (let m = 0; m < 2; m++) { const s = tetGen(m, 200000), gaps = new Array(G + 1).fill(0); let last = -1, mx = 0, over20 = 0, cnt = 0;
+    s.forEach((p, i) => { if (p === 'I') { if (last >= 0) { const d = i - last - 1; gaps[Math.min(G, d)]++; cnt++; if (d > mx) mx = d; if (d > 20) over20++; } last = i; } });
+    TT.gaps[m] = gaps; TT.st[m] = { mx, over20: over20 / cnt }; TT.seq[m] = s.slice(0, 120); }
+  ['Azar puro', 'Bolsa de 7'].forEach((name, m) => { $(m ? '#tetB' : '#tetA').innerHTML = `<div class="readout"><b class="${m ? 'cyan' : 'amber'}">${name}</b><br>sequía máxima de palos <b>${TT.st[m].mx}</b> piezas · más de 20 sin palo <b>${fmtPct(TT.st[m].over20)}</b></div>`; });
+}
+button('#tetctl', '🎲 Simular de nuevo', tetSim, 'primary');
+tetSim();
+animate($('#cvtet'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 10, 1);
+  const cs = Math.max(6, Math.floor((w - 110) / 60)), n = Math.floor((w - 110) / cs);
+  ['Azar puro', 'Bolsa de 7'].forEach((name, m) => { const y = 14 + m * 34; text(g, name, 10, y + 15, m ? COL.cyan : COL.amber, 'left', '600 13px Archivo, sans-serif');
+    TT.seq[m].slice(0, n).forEach((p, i) => { g.fillStyle = PCOL[p]; g.globalAlpha = p === 'I' ? 1 : 0.35; g.fillRect(100 + i * cs, y, cs - 2, 22); }); g.globalAlpha = 1; });
+  const G = TT.gaps[0].length, L = 30, R = w - 10, T = 96, Bt = H - 22, bw = (R - L) / G;
+  const tot = [0, 1].map(m => TT.gaps[m].reduce((a, b) => a + b, 0)), mx = Math.max(...[0, 1].flatMap(m => TT.gaps[m].map(c => c / tot[m])));
+  [0, 1].forEach(m => { g.fillStyle = m ? '#5ed0e6aa' : '#ffb23fbb'; TT.gaps[m].forEach((c, i) => { const hh = c / tot[m] / mx * (Bt - T); g.fillRect(L + i * bw + (m ? bw / 2 : 1), Bt - hh, bw / 2 - 1, hh); }); });
+  for (let i = 0; i <= G; i += 5) text(g, i === G ? `${G}+` : i, L + (i + 0.5) * bw, H - 6, COL.dim, 'center');
+  text(g, 'piezas entre dos palos (I)', L, T - 6, COL.dim);
+});
+
+/* ---------------- 3. drops con pity ---------------- */
+const DR = { p: 0.01, pity: false, pityN: 150, res: [] };
+function dropSim() { const P = 20000, r = new Int32Array(P);
+  for (let i = 0; i < P; i++) { let n = 1; while (Math.random() >= DR.p && !(DR.pity && n >= DR.pityN)) n++; r[i] = n; }
+  r.sort(); DR.res = r; const q = f => r[Math.min(P - 1, Math.floor(f * P))];
+  let s = 0; for (const v of r) s += v;
+  dSt.mean.textContent = fmtNum(s / P, 1); dSt.p50.textContent = fmtInt(q(.5)); dSt.p90.textContent = fmtInt(q(.9)); dSt.p99.textContent = fmtInt(q(.99)); dSt.max.textContent = fmtInt(r[P - 1]);
+}
+slider('#dropctl', { label: 'Probabilidad de drop', min: 0.002, max: 0.2, log: true, value: DR.p, fmt: v => fmtPct(v, v < 0.01 ? 2 : 1), onchange: v => { DR.p = v; dropSim(); }, oninput: v => DR.p = v });
+toggle('#dropctl', 'Pity (garantizado)', DR.pity, v => { DR.pity = v; dropSim(); });
+slider('#dropctl', { label: 'Pity a los N intentos', min: 10, max: 600, step: 10, value: DR.pityN, fmt: fmtInt, onchange: v => { DR.pityN = v; dropSim(); }, oninput: v => DR.pityN = v });
+const dSt = stats('#dropst', [['mean', 'Promedio'], ['p50', 'Mediana (50%)', 'green'], ['p90', 'Percentil 90', 'amber'], ['p99', 'Percentil 99', 'red'], ['max', 'El de peor suerte', 'violet']]);
+dropSim();
+animate($('#cvdrop'), ({ g, w, h: H }) => {
+  clearScreen(g, w, H, 10, 4); const r = DR.res, P = r.length; if (!P) return;
+  const xmax = r[Math.floor(P * 0.995)] * 1.05, B = 80, bins = new Array(B).fill(0); for (const v of r) { const b = Math.floor(v / xmax * B); if (b < B) bins[b]++; }
+  const L = 10, R = w - 10, T = 24, Bt = H - 22; drawHist(g, L, T, R - L, Bt - T, bins, COL.amber);
+  const X = v => L + v / xmax * (R - L), q = f => r[Math.floor(f * P)];
+  [[.5, 'mediana', COL.green], [.9, 'p90', COL.amber], [.99, 'p99', COL.red]].forEach(([f, lb, c]) => { g.strokeStyle = c; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(X(q(f)), T); g.lineTo(X(q(f)), Bt); g.stroke(); g.setLineDash([]); text(g, lb, X(q(f)) + 4, T + 12, c); });
+  const m = 1 / DR.p; if (!DR.pity) { g.strokeStyle = COL.ink; g.beginPath(); g.moveTo(X(m), T); g.lineTo(X(m), Bt); g.stroke(); text(g, '1/p', X(m) + 4, T + 28, COL.ink); }
+  for (let i = 0; i <= 5; i++) text(g, fmtInt(xmax * i / 5), X(xmax * i / 5), H - 6, COL.dim, i ? (i === 5 ? 'right' : 'center') : 'left');
+  $('#droptag').textContent = DR.pity ? `con pity: nadie pasa de ${DR.pityN}` : `sin tenerlo a los ${fmtInt(1 / DR.p)} intentos: ${fmtPct((1 - DR.p) ** Math.round(1 / DR.p), 0)}`;
+});
+
+/* ---------------- 4. duelo ---------------- */
+const U = [{ vida: 100, dmin: 8, dmax: 14, prec: 0.85, crit: 0.05 }, { vida: 70, dmin: 6, dmax: 12, prec: 0.95, crit: 0.3 }];
+const DU = { first: 'alt', res: null };
+function duel(A, B, aFirst) { const v = [A.vida, B.vida], u = [A, B]; let t = aFirst ? 0 : 1, n = 0;
+  while (v[0] > 0 && v[1] > 0 && n < 1000) { const a = u[t]; if (Math.random() < a.prec) { let d = a.dmin + Math.random() * (a.dmax - a.dmin); if (Math.random() < a.crit) d *= 2; v[1 - t] -= d; } t = 1 - t; n++; }
+  return [v[0] > 0, n]; }
+function duelSim() { const N = 20000; let wa = 0; const len = new Array(41).fill(0);
+  for (let i = 0; i < N; i++) { const first = DU.first === 'a' ? true : DU.first === 'b' ? false : i % 2 === 0; const [a, n] = duel(U[0], U[1], first); if (a) wa++; len[Math.min(40, n)]++; }
+  const p = wa / N, ci = 1.96 * Math.sqrt(p * (1 - p) / N); DU.res = { p, ci, len };
+  $('#wa').style.width = Math.max(8, p * 100) + '%'; $('#wa').textContent = `Guerrero ${fmtPct(p)}`; $('#wb').style.width = Math.max(8, (1 - p) * 100) + '%'; $('#wb').textContent = `Pícaro ${fmtPct(1 - p)}`;
+  duSt.ci.textContent = `± ${fmtPct(ci)}`; duSt.ver.textContent = Math.abs(p - 0.5) <= ci ? 'parejo' : p > 0.5 ? 'gana el Guerrero' : 'gana el Pícaro';
+}
+[['#ua', 0], ['#ub', 1]].forEach(([id, k]) => { const u = U[k];
+  slider(id, { label: 'Vida', min: 30, max: 200, step: 5, value: u.vida, oninput: v => { u.vida = v; duelSim(); } });
+  slider(id, { label: 'Daño mínimo', min: 1, max: 30, step: 1, value: u.dmin, oninput: v => { u.dmin = v; u.dmax = Math.max(u.dmax, v); duelSim(); } });
+  slider(id, { label: 'Daño máximo', min: 1, max: 40, step: 1, value: u.dmax, oninput: v => { u.dmax = Math.max(v, u.dmin); duelSim(); } });
+  slider(id, { label: 'Precisión', min: 0.3, max: 1, step: 0.01, value: u.prec, fmt: v => fmtPct(v, 0), oninput: v => { u.prec = v; duelSim(); } });
+  slider(id, { label: 'Crítico (×2)', min: 0, max: 0.6, step: 0.01, value: u.crit, fmt: v => fmtPct(v, 0), oninput: v => { u.crit = v; duelSim(); } }); });
+seg('#duelctl', [{ v: 'alt', label: 'Empiezan alternando' }, { v: 'a', label: 'Siempre empieza el Guerrero' }, { v: 'b', label: 'Siempre empieza el Pícaro' }], DU.first, v => { DU.first = v; duelSim(); });
+button('#duelctl', 'Dejarlos idénticos', () => { Object.assign(U[1], U[0]); rebuildDuelSliders(); duelSim(); });
+const duSt = stats('#duelst', [['ci', 'Margen de error (95%)', 'cyan'], ['ver', 'Veredicto', 'green']]);
+function rebuildDuelSliders() { $('#ub').innerHTML = ''; const u = U[1];
+  slider('#ub', { label: 'Vida', min: 30, max: 200, step: 5, value: u.vida, oninput: v => { u.vida = v; duelSim(); } });
+  slider('#ub', { label: 'Daño mínimo', min: 1, max: 30, step: 1, value: u.dmin, oninput: v => { u.dmin = v; u.dmax = Math.max(u.dmax, v); duelSim(); } });
+  slider('#ub', { label: 'Daño máximo', min: 1, max: 40, step: 1, value: u.dmax, oninput: v => { u.dmax = Math.max(v, u.dmin); duelSim(); } });
+  slider('#ub', { label: 'Precisión', min: 0.3, max: 1, step: 0.01, value: u.prec, fmt: v => fmtPct(v, 0), oninput: v => { u.prec = v; duelSim(); } });
+  slider('#ub', { label: 'Crítico (×2)', min: 0, max: 0.6, step: 0.01, value: u.crit, fmt: v => fmtPct(v, 0), oninput: v => { u.crit = v; duelSim(); } }); }
+duelSim();
+animate($('#cvduel'), ({ g, w, h: H }) => { clearScreen(g, w, H, 8, 2); if (!DU.res) return; const len = DU.res.len, L = 10, R = w - 10;
+  drawHist(g, L, 24, R - L, H - 46, len, COL.violet); for (let i = 0; i <= 40; i += 5) text(g, i === 40 ? '40+' : i, L + (i + .5) * (R - L) / 41, H - 6, COL.dim, 'center'); });
+
+/* ---------------- 5. martingala ---------------- */
+const MG = { paths: [], spins: 0, auto: true, acc: 0, P: 40, stats: null };
+function mgReset() { MG.paths = Array.from({ length: MG.P }, () => ({ cap: 100, bet: 1, hist: [100], done: false })); MG.spins = 0; }
+function mgSpin() { for (const p of MG.paths) { if (p.done) continue; const b = Math.min(p.bet, p.cap);
+  if (Math.random() < 18 / 37) { p.cap += b; p.bet = 1; } else { p.cap -= b; p.bet = b * 2; }
+  p.hist.push(p.cap); if (p.cap <= 0 || p.cap >= 150) p.done = true; } MG.spins++; }
+function mgBig() { const N = 20000; let win = 0, ruin = 0, sum = 0;
+  for (let i = 0; i < N; i++) { let cap = 100, bet = 1; while (cap > 0 && cap < 150) { const b = Math.min(bet, cap); if (Math.random() < 18 / 37) { cap += b; bet = 1; } else { cap -= b; bet = b * 2; } } if (cap >= 150) win++; else ruin++; sum += cap - 100; }
+  mgSt.w.textContent = fmtPct(win / N); mgSt.r.textContent = fmtPct(ruin / N); mgSt.e.textContent = fmtNum(sum / N, 2); }
+button('#martctl', '🎲 Otros 40 jugadores', mgReset, 'primary');
+const mgAuto = button('#martctl', '■ Pausar', () => { MG.auto = !MG.auto; mgAuto.textContent = MG.auto ? '■ Pausar' : '▶ Seguir'; mgAuto.classList.toggle('playing', MG.auto); }, 'playing');
+button('#martctl', 'Simular 20.000 sesiones', mgBig);
+const mgSt = stats('#martst', [['w', 'Llegan a 150', 'green'], ['r', 'Quiebran', 'red'], ['e', 'Ganancia promedio por sesión', 'amber']]);
+mgReset(); mgBig();
+animate($('#cvmart'), ({ g, w, h: H, dt }) => {
+  if (MG.auto) { MG.acc += dt * 40; while (MG.acc >= 1) { MG.acc--; mgSpin(); } }
+  clearScreen(g, w, H, 10, 3);
+  const maxT = Math.max(100, MG.spins), Y = v => H - 16 - v / 160 * (H - 30), X = t => 10 + t / maxT * (w - 20);
+  g.strokeStyle = COL.dim; g.setLineDash([4, 4]); [100, 150].forEach(v => { g.beginPath(); g.moveTo(0, Y(v)); g.lineTo(w, Y(v)); g.stroke(); }); g.setLineDash([]);
+  text(g, 'capital inicial 100', 14, Y(100) - 5, COL.dim); text(g, 'meta 150', 14, Y(150) - 5, COL.dim);
+  for (const p of MG.paths) { const c = p.done ? (p.cap >= 150 ? COL.green : COL.red) : COL.cyan; g.strokeStyle = c + (p.done ? 'cc' : '88'); g.lineWidth = 1.2; g.beginPath();
+    p.hist.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(0), Y(v))); g.stroke(); }
+});
+buildChrome('04-montecarlo-juegos.html');
+</script>
+</body>
+</html>
