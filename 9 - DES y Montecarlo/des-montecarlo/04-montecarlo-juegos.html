@@ -193,6 +193,16 @@ p code,li code,td code{white-space:nowrap}
 
   <h2>El azar puro no se siente justo</h2>
   <div class="prose">
+    <p>Primero, qué es un <strong>golpe crítico</strong>. En muchísimos juegos (RPGs, MOBAs, shooters, roguelikes), cada vez que un personaje ataca hay una chance de que ese ataque salga "especialmente bueno" y haga más daño de lo normal, típicamente el doble. Ese ataque de suerte es el crítico, y la chance es una estadística del personaje: "25% de crítico" quiere decir que, en promedio, 1 de cada 4 golpes hace daño doble. En pantalla se nota porque el número de daño sale más grande, de otro color o con un sonido distinto. Lo mismo pasa con las chances de esquivar, de bloquear o de que un hechizo "entre": todas son tiradas de azar en cada acción, y todo lo que sigue vale para cualquiera de ellas.</p>
+  </div>
+  <pre><code>function atacar(atacante, objetivo) {
+  let danio = atacante.danio;
+  const critico = Math.random() &lt; atacante.chanceCritico;   // 0.25 = 25%
+  if (critico) danio *= 2;                                    // crítico: daño doble
+  objetivo.vida -= danio;
+  mostrarNumero(danio, critico ? 'grande y amarillo' : 'normal');
+}</code></pre>
+  <div class="prose">
     <p>Un personaje tiene 25% de chance de crítico. Con azar puro, en cada golpe se tira <code>Math.random() &lt; 0.25</code>, sin importar lo que pasó antes. En promedio da 1 crítico cada 4 golpes, pero las rachas pueden ser feas. La chance de que 10 golpes seguidos salgan <em>sin</em> crítico es 0,75¹⁰ ≈ 5,6%, más o menos una de cada 18 veces. Y un jugador pega miles de golpes por partida, así que le va a pasar seguido. El jugador no ve el 25%: ve la racha, y la vive como un bug o como una trampa.</p>
   </div>
 
