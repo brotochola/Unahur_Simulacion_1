@@ -187,11 +187,32 @@ p code,li code,td code{white-space:nowrap}
 <body>
 <main>
   <h1>Poisson disk sampling</h1>
-  <p class="lead">Querés poner 300 árboles en un mapa. Con <code>Math.random()</code> para x e y, algunos quedan encimados y aparecen claros enormes donde no hay nada. El ojo lee eso como "error". Lo que buscamos es azar <strong>parejo</strong>: puntos al azar, pero con una distancia mínima entre ellos.</p>
+  <p class="lead">Querés poner 300 árboles en un mapa. Con <code>Math.random()</code> para x e y, algunos quedan encimados y en otras zonas aparecen claros enormes sin ningún árbol. El ojo lo lee como un error. Lo que buscamos es azar <strong>parejo</strong>: puntos al azar, pero que respeten una distancia mínima entre sí.</p>
+
+  <h2>¿Qué es?</h2>
+  <div class="prose">
+    <p>Un conjunto de puntos <strong>Poisson disk</strong> es un conjunto de puntos al azar que cumple una sola regla: <strong>ningún par de puntos puede estar a menos de una distancia r</strong>. Otra forma de verlo: cada punto que ponés "prohíbe" un círculo de radio r a su alrededor, y ahí no puede caer el centro de ningún otro punto.</p>
+    <p>El nombre tiene dos partes:</p>
+    <ul>
+      <li><strong>Poisson</strong>: en matemática, puntos tirados completamente al azar, cada uno sin saber nada de los otros (como los dardos del capítulo de Montecarlo), se llaman un <em>proceso de Poisson</em>. Es nuestro punto de partida.</li>
+      <li><strong>Disk</strong> (disco): a ese azar le agregamos el círculo prohibido alrededor de cada punto.</li>
+    </ul>
+    <p>La forma más directa de fabricarlo es literalmente esa: tirar dardos al azar y <strong>descartar los que caen en zona prohibida</strong>. Probalo acá: tocá el panel para poner puntos a mano, o tirá dardos al azar.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Dardos con una regla <span class="muted">· <span class="red">círculo rojo</span>: zona prohibida (radio r) de cada punto · tocá para poner un punto</span></div>
+    <div class="screen"><canvas id="cvdart" style="height:380px;cursor:crosshair"></canvas><span class="tag" id="darttag"></span></div>
+    <div class="controls" id="dartctl"></div>
+    <div id="dartst"></div>
+  </div>
+  <div class="prose">
+    <p>Al principio casi todos los dardos entran. A medida que el panel se llena, la zona libre se achica y casi todos caen en zona prohibida: el porcentaje de rechazo sube hasta casi 100%. Cuando ya no entra ningún punto más, el conjunto está <strong>lleno</strong> (los matemáticos dicen <em>maximal</em>), y eso tiene una consecuencia importante: <strong>tampoco quedan huecos grandes</strong>, porque en cualquier hueco de más de r entraría otro punto.</p>
+    <p>Esas son las dos propiedades que buscábamos para los árboles: <strong>no hay puntos encimados</strong> (por la distancia mínima) y <strong>no hay claros vacíos</strong> (porque está lleno). Y como cada punto sigue cayendo al azar, no se forma ningún patrón regular.</p>
+  </div>
 
   <h2>Tres formas de repartir puntos</h2>
   <div class="prose">
-    <p>Los tres paneles tienen la misma cantidad de puntos. Cada punto dibuja un disco de radio r/2: si dos discos se tocan, los puntos están a menos de r y quedan marcados en rojo.</p>
+    <p>Comparemos con las alternativas. Los tres paneles tienen la misma cantidad de puntos. Alrededor de cada punto se dibuja un disco de radio r/2: si dos discos se pisan, esos dos puntos están a menos de r y se marcan en rojo. Abajo de cada panel: cuántos puntos tienen un vecino demasiado cerca, y cuál es la distancia del par más cercano, medida en unidades de r (1,00·r significa que se respeta la regla).</p>
   </div>
   <div class="rig">
     <div class="rig-title">Uniforme vs. grilla con jitter vs. Poisson disk</div>
@@ -203,14 +224,17 @@ p code,li code,td code{white-space:nowrap}
     <div class="controls" id="cmpctl"></div>
   </div>
   <ul class="prose">
-    <li><strong>Uniforme.</strong> Cada punto ignora a los demás, así que se forman grumos y huecos. Matemáticamente es un "proceso de Poisson" en el plano: de ahí sale el nombre de la técnica.</li>
-    <li><strong>Grilla con jitter.</strong> Una grilla y cada punto movido un poco al azar dentro de su celda. Es barato y parejo, pero si mirás bien se notan las filas y columnas.</li>
-    <li><strong>Poisson disk.</strong> Cada punto reserva un disco a su alrededor donde no puede caer otro. Se ve natural y no hay patrones: es lo que en gráficos se llama <em>blue noise</em>.</li>
+    <li><strong>Uniforme</strong> (<code>Math.random()</code> para x y para y). Cada punto ignora a los demás. Por pura casualidad algunos caen pegados (los rojos) y quedan zonas vacías. Tiene <em>grumos y huecos</em>.</li>
+    <li><strong>Grilla con jitter</strong>. Se arma una grilla y cada punto se mueve un poco al azar dentro de su casilla. No quedan huecos grandes porque hay uno por casilla, pero dos puntos de casillas vecinas igual pueden quedar pegados, y si mirás de lejos se adivinan las filas y columnas.</li>
+    <li><strong>Poisson disk</strong>. Ningún punto rojo, ningún hueco grande y ningún patrón. Se ve como un bosque de verdad, y no es casualidad: en la naturaleza las cosas compiten por espacio (los árboles por luz, las células por lugar), así que terminan separadas por una distancia mínima. Hasta los conos de la retina (las células que detectan color) están repartidos con un patrón muy parecido.</li>
   </ul>
+  <div class="prose">
+    <p>En gráficos a este tipo de patrón se le dice <strong>ruido azul</strong> (<em>blue noise</em>), por analogía con los colores de ruido de la unidad 8. El ruido azul tiene poca variación "grave" (nada de grumos ni huecos grandes) y toda su variación es de detalle fino, de punto a punto. Por eso, mirado de lejos, se ve parejo.</p>
+  </div>
 
   <h2>El algoritmo de Bridson</h2>
   <div class="prose">
-    <p>La versión ingenua (tirar puntos y descartar los que quedan cerca) se vuelve lentísima al final, cuando casi todo tiro cae en zona ocupada. Robert Bridson publicó en 2007 un método que crece desde adentro hacia afuera:</p>
+    <p>Tirar dardos y descartar, como hicimos arriba, funciona, pero se vuelve lentísimo al final: con el panel casi lleno hay que tirar cientos de dardos para que entre uno, y nunca sabés si ya está lleno o tuviste mala suerte. Robert Bridson publicó en 2007 un método que crece desde adentro hacia afuera y prueba candidatos solo <em>cerca</em> de puntos que ya existen:</p>
   </div>
   <ol class="steps prose">
     <li>Poné un primer punto al azar y agregalo a la lista de <strong class="amber">activos</strong>.</li>
@@ -491,6 +515,40 @@ function bridson(W, H, rOf, rMax, k, rnd, rMin) {
     if (!ok) { active[ai] = active[active.length - 1]; active.pop(); } }
   return pts;
 }
+
+/* ---------- 0. dardos con una regla ---------- */
+const DT = { r: 34, pts: [], thrown: 0, rej: 0, win: [], rates: [], flash: [], auto: false, acc: 0, rate: 20, zones: true, W: 0, H: 0 };
+function dtReset() { DT.pts = []; DT.thrown = 0; DT.rej = 0; DT.win = []; DT.rates = []; DT.flash = []; }
+function dtTry(x, y, manual) { const ok = DT.pts.every(([px, py]) => (px - x) ** 2 + (py - y) ** 2 >= DT.r * DT.r);
+  if (!manual) { DT.thrown++; DT.win.push(ok ? 0 : 1); if (!ok) DT.rej++; if (DT.win.length === 50) { DT.rates.push(DT.win.reduce((a, b) => a + b, 0) / 50); DT.win = []; if (DT.rates.length > 200) DT.rates.shift(); } }
+  if (ok) DT.pts.push([x, y]); DT.flash.push({ x, y, ok, t: 0 }); if (DT.flash.length > 40) DT.flash.shift(); return ok; }
+function dtThrow(k) { for (let i = 0; i < k; i++) dtTry(Math.random() * DT.W, Math.random() * DT.H, false); }
+$('#cvdart').addEventListener('click', e => { const r = e.target.getBoundingClientRect(); dtTry(e.clientX - r.left, e.clientY - r.top, true); });
+const dtRow = h('div', { class: 'row' }); $('#dartctl').append(dtRow);
+button(dtRow, 'Tirar 1 dardo', () => dtThrow(1), 'primary'); button(dtRow, '+50', () => dtThrow(50)); button(dtRow, '+1.000', () => dtThrow(1000));
+const dtAuto = button(dtRow, '▶ Lluvia', () => { DT.auto = !DT.auto; dtAuto.textContent = DT.auto ? '■ Pausar' : '▶ Lluvia'; dtAuto.classList.toggle('playing', DT.auto); });
+button(dtRow, 'Limpiar', dtReset);
+slider('#dartctl', { label: 'Distancia mínima r', min: 12, max: 80, step: 1, value: DT.r, fmt: v => v + ' px', oninput: v => { DT.r = v; dtReset(); } });
+slider('#dartctl', { label: 'Dardos por segundo (lluvia)', min: 2, max: 2000, log: true, value: DT.rate, fmt: fmtInt, oninput: v => DT.rate = v });
+toggle('#dartctl', 'Mostrar zonas prohibidas', DT.zones, v => DT.zones = v);
+const dtSt = stats('#dartst', [['p', 'Puntos aceptados', 'green'], ['t', 'Dardos tirados'], ['r', 'Rechazados', 'red'], ['l', 'Rechazo en los últimos 50', 'amber']]);
+animate($('#cvdart'), ({ g, w, h: H, dt }) => {
+  DT.W = w; DT.H = H - 60;
+  if (DT.auto) { DT.acc += dt * DT.rate; const k = Math.floor(DT.acc); DT.acc -= k; dtThrow(k); }
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, H);
+  if (DT.zones) { g.fillStyle = '#ff6b5a1c'; g.strokeStyle = '#ff6b5a55'; g.lineWidth = 1; for (const [x, y] of DT.pts) { g.beginPath(); g.arc(x, y, DT.r, 0, 7); g.fill(); g.stroke(); } }
+  g.fillStyle = COL.ink; for (const [x, y] of DT.pts) { g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
+  for (const f of DT.flash) { f.t += dt * 1.5; const a = Math.max(0, 1 - f.t); g.globalAlpha = a; g.strokeStyle = f.ok ? COL.green : COL.red; g.lineWidth = 2; g.beginPath();
+    if (f.ok) g.arc(f.x, f.y, 6 + f.t * 10, 0, 7); else { g.moveTo(f.x - 5, f.y - 5); g.lineTo(f.x + 5, f.y + 5); g.moveTo(f.x + 5, f.y - 5); g.lineTo(f.x - 5, f.y + 5); } g.stroke(); g.globalAlpha = 1; }
+  DT.flash = DT.flash.filter(f => f.t < 1);
+  // franja inferior: % de rechazo
+  const y0 = H - 54; g.fillStyle = '#0b1215'; g.fillRect(0, y0, w, 54); g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, y0 + .5); g.lineTo(w, y0 + .5); g.stroke();
+  if (DT.rates.length) { const bw = Math.min(8, (w - 20) / DT.rates.length); DT.rates.forEach((r, i) => { const bh = r * 32; g.fillStyle = r > 0.9 ? COL.red : COL.amber; g.fillRect(10 + i * bw, H - 8 - bh, Math.max(1, bw - 1), bh); }); }
+  text(g, '% de dardos rechazados (cada barra: 50 dardos)', 10, y0 + 13, COL.dim); text(g, '100%', w - 8, y0 + 13, COL.dim, 'right');
+  $('#darttag').textContent = DT.pts.length ? `r = ${DT.r} px` : 'tocá el panel o tirá dardos';
+  dtSt.p.textContent = fmtInt(DT.pts.length); dtSt.t.textContent = fmtInt(DT.thrown); dtSt.r.textContent = fmtInt(DT.rej);
+  dtSt.l.textContent = DT.rates.length ? fmtPct(DT.rates[DT.rates.length - 1], 0) : '–';
+});
 
 /* ---------- 1. comparación ---------- */
 const CMP = { r: 0.07, sets: [[], [], []], showDisk: true };
