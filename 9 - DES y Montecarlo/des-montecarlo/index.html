@@ -175,6 +175,19 @@ td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
 
 p code,li code,td code{white-space:nowrap}
 .screen .tag{background:#0f171bb3;padding:1px 6px;border-radius:4px}
+/* ---------- tooltips y explicaciones ---------- */
+.term{border-bottom:1.5px dotted #9eadb8;cursor:help;outline:none}
+.term:hover,.term:focus{border-bottom-color:var(--amber);color:#fff}
+.ctl label > span:first-child,.stat > span{cursor:help;text-decoration:underline dotted #556676;text-underline-offset:3px}
+.tipbox{position:fixed;z-index:100;display:none;max-width:min(340px,90vw);background:#0b1215;color:var(--ink);border:1px solid #556676;border-radius:8px;padding:8px 11px;font:14px/1.45 var(--font);box-shadow:0 8px 24px #0009;pointer-events:none}
+details.how{margin:-4px 0 10px;font-size:15px;color:#cbd5dc}
+details.how summary{cursor:pointer;color:var(--cyan);font-weight:600;font-size:14px;list-style:none;display:inline-flex;gap:6px;align-items:center}
+details.how summary::-webkit-details-marker{display:none}
+details.how summary::before{content:"?";display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--cyan);color:#06232a;font:700 12px var(--font)}
+details.how[open] summary{margin-bottom:6px}
+details.how ul{margin:0 0 6px;padding-left:20px}
+details.how li{margin:3px 0}
+details.how p{margin:0 0 6px}
 </style>
 <style>
 .hero{position:relative;margin:-12px 0 0;padding:0;border-radius:var(--radius);overflow:hidden;border:1px solid #0a1013}
@@ -218,6 +231,8 @@ p code,li code,td code{white-space:nowrap}
     <li><a href="07-eventos-en-juegos.html"><span class="n">7</span><b>DES en juegos</b><span>Progreso offline de un idle, turnos por velocidad, timers, billar sin tunneling y el simulador del pueblo.</span></a></li>
     <li><a href="08-mcts.html"><span class="n">8</span><b>MCTS</b><span>Montecarlo para decidir: Montecarlo plano y su trampa, el árbol con UCB fase por fase y un 4 en línea para jugarle.</span></a></li>
   </ol>
+
+  <div class="warn" style="margin-top:24px"><strong>Cómo leer las páginas.</strong> Las palabras <span class="term" tabindex="0" data-tip="¡Así! Pasá el mouse o tocá para ver la explicación.">subrayadas con puntos</span> tienen una explicación: pasá el mouse o tocalas. Los nombres de los sliders, botones y números de los demos también (en el celular, tocalos). Y cada demo tiene un desplegable <b class="cyan">¿Qué estoy viendo?</b> que explica qué muestra el gráfico y qué conviene probar.</div>
 
   <h2>Plan de la clase (3 horas)</h2>
   <div style="overflow-x:auto"><table class="plan">
@@ -451,7 +466,219 @@ function buildChrome(current) {
       prev ? h('a', { href: prev[0] }, h('span', {}, 'Anterior'), prev[1]) : h('span'),
       next ? h('a', { href: next[0], style: { textAlign: 'right' } }, h('span', {}, 'Siguiente'), next[1]) : h('span')));
   }
-  highlightAll();
+  highlightAll(); if (typeof markTerms === 'function') markTerms();
+}
+
+/* ---------------- glosario y tooltips ---------------- */
+/* Cada término: patrón (regex, sin bordes) y explicación. Se subraya la primera aparición en cada sección. */
+const GLOSARIO = [
+  ['pseudoaleatorio|generador pseudoaleatorio|PRNG', 'Función que produce números que parecen al azar pero salen de una cuenta determinista. Con la misma semilla da siempre la misma secuencia.'],
+  ['semillas?', 'El número inicial de un generador pseudoaleatorio. Misma semilla, mismos números: así se repite un mapa, un replay o un bug.'],
+  ['determinista', 'Que con la misma entrada da siempre la misma salida. No hay azar real adentro.'],
+  ['replays?', 'Repetición de una partida. Se guarda la semilla y lo que hizo el jugador, y se vuelve a simular.'],
+  ['lockstep', 'Multijugador donde cada máquina simula todo por su cuenta y solo se mandan los inputs. Exige que la simulación sea determinista.'],
+  ['distribuci[oó]n(es)?', 'Descripción de qué valores salen y con qué frecuencia cuando generás muchos números al azar. Se ve con un histograma.'],
+  ['histogramas?', 'Gráfico de barras: se divide el rango en franjas y cada barra cuenta cuántos valores cayeron en esa franja.'],
+  ['uniformes?', 'Distribución donde todos los valores del rango tienen la misma chance. Math.random() es uniforme entre 0 y 1.'],
+  ['distribuci[oó]n normal|la normal|una normal|normal estándar|normales|campana de Gauss', 'Distribución con forma de campana: casi todos los valores cerca del promedio y pocos en los extremos. Se define con media y desvío.'],
+  ['exponencial(es)?', 'Distribución del tiempo de espera hasta que pasa algo que ocurre al azar a ritmo constante. Muchas esperas cortas y pocas muy largas.'],
+  ['media', 'El promedio: la suma de todos los valores dividida por la cantidad.'],
+  ['desv[ií]o( estándar)?|desv[ií]os', 'Cuánto se desparraman los valores alrededor de la media. Aproximadamente, la distancia típica entre un valor y el promedio.'],
+  ['varianza', 'El desvío al cuadrado. Aparece en fórmulas porque las varianzas de cosas independientes se suman.'],
+  ['acumulada|funci[oó]n acumulada', 'F(x): qué fracción de los valores es menor o igual a x. Arranca en 0, siempre sube y termina en 1.'],
+  ['densidad', 'La curva a la que tiende un histograma con infinitas muestras y barras infinitamente finas.'],
+  ['transformada inversa', 'Técnica para generar cualquier distribución: tirás u uniforme entre 0 y 1 y buscás el x cuya acumulada vale u.'],
+  ['teorema central del l[ií]mite', 'Si sumás muchos números al azar independientes, la suma tiene forma de campana (normal), sea cual sea la forma de cada uno.'],
+  ['Box-Muller', 'Receta exacta para generar una normal a partir de dos uniformes: un ángulo al azar y un radio √(−2·ln u).'],
+  ['regla 68-95-99,7', 'En cualquier normal: 68% de los valores cae a menos de 1 desvío de la media, 95% a menos de 2 y 99,7% a menos de 3.'],
+  ['proceso de Poisson', 'Puntos (o eventos en el tiempo) que caen completamente al azar, cada uno sin saber nada de los otros.'],
+  ['Poisson disk', 'Puntos al azar con una regla: ningún par puede estar a menos de una distancia r. No hay grumos ni huecos grandes.'],
+  ['jitter', 'Mover un poco al azar algo que estaba en una posición regular, como cada punto dentro de su casilla de la grilla.'],
+  ['maximal', 'Que ya no entra ningún elemento más sin romper la regla. En Poisson disk: no queda lugar libre para otro punto.'],
+  ['ruido azul|blue noise', 'Patrón al azar sin grumos ni huecos grandes: toda su variación es de detalle fino. Se ve parejo de lejos.'],
+  ['Bridson', 'Algoritmo de 2007 que genera Poisson disk rápido: prueba candidatos en un anillo alrededor de puntos que ya existen.'],
+  ['spatial hash', 'Grilla que guarda qué objetos hay en cada celda, para buscar vecinos mirando solo las celdas cercanas.'],
+  ['Voronoi', 'Partición del plano en regiones: cada región tiene los puntos más cercanos a una semilla dada.'],
+  ['Montecarlo', 'Método de estimar algo simulando muchas veces al azar y mirando los resultados, en vez de calcularlo con una fórmula.'],
+  ['ley de los grandes n[uú]meros', 'Con más y más tiradas, el promedio de las tiradas se acerca al valor verdadero.'],
+  ['intervalos? de confianza', 'Rango "estimación ± margen" que contiene al valor verdadero con una probabilidad dada (por ejemplo 95%).'],
+  ['integrar|integral(es)?', 'Calcular un área (o un promedio sobre una región). Montecarlo lo hace tirando puntos al azar y contando.'],
+  ['path tracing', 'Técnica de render que promedia muchos rayos de luz al azar por pixel, con rebotes. Es Montecarlo aplicado a la luz.'],
+  ['ambient occlusion', 'Sombreado suave en rincones: qué fracción de rayos al azar desde un punto escapa sin chocar con nada.'],
+  ['denoiser', 'Filtro (muchas veces una red neuronal) que limpia el ruido de una imagen hecha con pocos rayos al azar.'],
+  ['penumbra', 'La zona de sombra parcial, donde un obstáculo tapa solo una parte de la fuente de luz.'],
+  ['golpes? cr[ií]ticos?|cr[ií]ticos?', 'Ataque que sale "especialmente bueno" por azar y hace más daño, típicamente el doble.'],
+  ['pseudo-random distribution|PRD', 'Técnica de Dota 2 y Warcraft III: la chance de crítico crece con cada golpe sin crítico (C·n) y se resetea al acertar.'],
+  ['rachas?', 'Varios resultados iguales seguidos, como 10 golpes sin crítico.'],
+  ['b[uú]squeda binaria', 'Encontrar un valor partiendo el rango a la mitad en cada paso, según si te pasaste o te quedaste corto.'],
+  ['percentil(es)?', 'El percentil 90 es el valor que deja por debajo al 90% de los casos. Mide "qué le pasa al 10% con peor suerte".'],
+  ['mediana', 'El valor del medio: la mitad de los casos queda por debajo y la otra mitad por encima.'],
+  ['pity', 'Garantía de premio: si llegaste a N intentos sin conseguirlo, el siguiente es seguro.'],
+  ['gacha|loot box(es)?', 'Mecánica de premio al azar (a veces pago). Por eso se regula con probabilidades publicadas y pity.'],
+  ['martingala', 'Estrategia de apuestas: duplicar la apuesta cada vez que perdés. Gana poquito seguido y a veces pierde todo.'],
+  ['simulaci[oó]n de eventos discretos|eventos discretos|DES', 'Simulación donde el reloj no avanza de a poco: salta directo al próximo momento en que algo cambia.'],
+  ['paso fijo|dt', 'Avanzar la simulación de a intervalos iguales de tiempo (dt), actualizando todo en cada uno.'],
+  ['lista de eventos futuros|FEL|cola de eventos', 'Los eventos ya agendados, ordenados por tiempo. El simulador siempre saca el más próximo.'],
+  ['manejador(es)?', 'La función que se ejecuta para un tipo de evento: cambia el estado y agenda los eventos siguientes.'],
+  ['teor[ií]a de colas', 'Rama de la matemática que estudia esperas en filas: cuánto se espera y cuánta gente hay según el ritmo de llegada y de atención.'],
+  ['M/M/c|M/M/1', 'Cola con llegadas al azar (exponenciales), atenciones al azar (exponenciales) y c cajas. Tiene fórmulas exactas.'],
+  ['ocupaci[oó]n', 'Fracción del tiempo que las cajas están atendiendo: ρ = λ / (c·μ). Si llega a 1, la cola crece sin límite.'],
+  ['warm-up', 'Período inicial que se descarta porque la simulación arrancó en un estado poco típico (por ejemplo, el súper vacío).'],
+  ['Little', 'Regla de Little: gente en el sistema = ritmo de llegada × tiempo promedio adentro (L = λ·W).'],
+  ['matchmaking', 'El sistema que junta jugadores para armar partidas online. Funciona como una cola.'],
+  ['heaps?|min-heap|max-heap', 'Árbol binario guardado en un array donde cada padre es menor (min-heap) o mayor (max-heap) que sus hijos. El mínimo o máximo queda en la raíz.'],
+  ['cola de prioridad', 'Estructura donde siempre se saca el elemento de mayor prioridad (en DES, el evento más próximo). Se implementa con un heap.'],
+  ['sift up|sift down', 'Mover un elemento hacia arriba o hacia abajo en el heap, intercambiándolo con su padre o su hijo, hasta que cumpla la regla.'],
+  ['heapify', 'Armar un heap a partir de un array desordenado de una sola vez, de abajo hacia arriba. Cuesta O(n).'],
+  ['heap sort', 'Ordenar usando un max-heap: sacar el máximo, ponerlo al final, repetir. O(n log n) sin memoria extra.'],
+  ['O\\(n\\)|O\\(1\\)|O\\(log n\\)|O\\(n log n\\)|O\\(n·log n\\)', 'Notación de complejidad: cómo crece el costo con la cantidad n de elementos. O(1) constante, O(log n) muy lento de crecer, O(n) proporcional.'],
+  ['estable', 'Un orden es estable si los elementos iguales salen en el mismo orden en que entraron. Un heap no lo es.'],
+  ['hold model', 'Benchmark típico de colas de eventos: sacar el próximo evento y agendar uno nuevo un poco más adelante, muchas veces.'],
+  ['idle games?', 'Juegos que progresan solos aunque no los mires (Cookie Clicker, AdVenture Capitalist).'],
+  ['CTB', 'Conditional Turn-Based: sistema de turnos donde los personajes más rápidos actúan más seguido, con una barra de próximos turnos.'],
+  ['tunneling', 'Cuando un objeto rápido atraviesa una pared fina porque en un cuadro está de un lado y en el siguiente del otro.'],
+  ['detecci[oó]n continua de colisiones|CCD', 'Calcular el momento exacto de impacto dentro del cuadro, para que los objetos rápidos no atraviesen paredes.'],
+  ['invalidaci[oó]n perezosa', 'En vez de borrar eventos viejos del heap, se los deja y se descartan al sacarlos si ya no valen.'],
+  ['storyteller|narrador', 'En RimWorld, el sistema que decide cuándo y qué incidentes ocurren según cómo le va a la colonia.'],
+  ['MCTS|Monte Carlo Tree Search', 'IA que elige jugadas construyendo un árbol de partidas y jugando partidas al azar desde sus hojas.'],
+  ['playouts?', 'Partida jugada al azar hasta el final para estimar quién gana desde una posición.'],
+  ['UCB1?', 'Fórmula que elige qué jugada investigar: promedio de victorias + un premio para las jugadas poco probadas.'],
+  ['explorar|explotar|exploraci[oó]n', 'Explotar: insistir con lo que viene funcionando. Explorar: probar opciones poco vistas por si son mejores.'],
+  ['retropropagaci[oó]n', 'En MCTS, subir por el camino de la iteración sumando la visita y el resultado a cada nodo.'],
+  ['minimax', 'Algoritmo que revisa todas las jugadas suponiendo que los dos jugadores juegan perfecto. Exacto pero carísimo en juegos grandes.'],
+  ['determinizaci[oó]n', 'Para juegos con cartas ocultas: repartir al azar lo que no se ve y analizar como si fuera conocido. Se repite con muchos repartos.'],
+  ['nodos?', 'Cada elemento de un árbol. En un heap guarda un valor; en MCTS, una posición del juego con cuántas veces se visitó y cuántas se ganó desde ahí.'],
+];
+/* tooltips de controles: por texto de la etiqueta (sin emojis). PAGE_TIPS de cada página tiene prioridad. */
+const CONTROL_TIPS = {
+  'reiniciar': 'Vuelve todo al estado inicial.', 'limpiar': 'Borra todo lo dibujado.', 'borrar': 'Borra los datos acumulados.', 'borrar puntos': 'Borra los puntos del gráfico.',
+  'pausar': 'Detiene la animación. Lo que ya se acumuló queda.', 'lluvia': 'Genera valores solos, sin parar, hasta que lo pauses.', 'seguir': 'Retoma la animación.',
+  'congelar': 'Deja de sumar muestras; la imagen queda como está.', 'seguir acumulando': 'Vuelve a sumar muestras por pixel.', 'empezar de cero': 'Descarta las muestras acumuladas y arranca de nuevo.',
+  'automático': 'Ejecuta eventos solos, al ritmo del slider.', '+1': 'Agrega una muestra (animada).', '+10': 'Agrega 10.', '+50': 'Agrega 50.', '+100': 'Agrega 100.', '+1.000': 'Agrega mil, sin animación.', '+10.000': 'Agrega diez mil, sin animación.', '+100.000': 'Agrega cien mil de golpe.', '+1.000.000': 'Agrega un millón de golpe: mirá cómo se achica el error.',
+  // cap 1
+  'generar con esta semilla': 'Arma el mapa con el número del recuadro. Mismo número, mismo mapa.', 'semilla nueva': 'Elige una semilla al azar y arma el mapa.',
+  'con math.random() (irrepetible)': 'Arma el mapa sin semilla: cada vez sale distinto y no se puede repetir.', 'tirar 1': 'Genera un número y lo deja caer en su barra.',
+  'math.random()': 'Números uniformes entre 0 y 1.', 'un dado': 'Enteros del 1 al 6, todos con la misma chance.', 'dos dados sumados': 'La suma de dos dados: del 2 al 12, el 7 es lo más común.',
+  'espera exponencial (media 1)': 'Tiempos de espera al azar con promedio 1.', 'normal (media 0, desvío 1)': 'La campana estándar, generada con Box-Muller.',
+  'mostrar media y desvío': 'Dibuja la media (línea) y la franja de ± 1 desvío.', 'tiradas': 'Cuántos números se generaron.', 'último valor': 'El último número que salió.',
+  'media': 'El promedio de todas las tiradas hasta ahora.', 'desvío': 'Cuánto se desparraman los valores alrededor de la media.',
+  'media (cm)': 'Dónde está el pico de la campana: la altura promedio.', 'desvío (cm)': 'Qué tan ancha es la campana: cuánto varían las alturas.', 'otros 40 npcs': 'Genera otro pueblo con la misma media y desvío.',
+  'cantidad de dados': 'Cuántos dados (o uniformes) se suman en cada tirada.', 'dado de 6 caras': 'Cada sumando es un dado común.', 'uniforme [0, 1)': 'Cada sumando es un Math.random().', 'volver a tirar': 'Repite las 20.000 tiradas.',
+  'media (1/λ)': 'Espera promedio de la exponencial. λ es el ritmo: eventos por unidad de tiempo.', 'muestras': 'Cuántos valores se generaron.', 'promedio muestral': 'El promedio de los valores generados: tiende a la media teórica.', 'media teórica': 'El promedio exacto de la distribución.',
+  'disparar 500': 'Agrega 500 impactos en cada panel.',
+  // cap 2
+  'tirar 1 dardo': 'Tira un punto al azar. Si cae en zona prohibida, se rechaza.', 'distancia mínima r': 'Ningún par de puntos puede estar más cerca que esto.', 'dardos por segundo (lluvia)': 'Velocidad de la lluvia de dardos.',
+  'mostrar zonas prohibidas': 'Dibuja el círculo de radio r alrededor de cada punto.', 'puntos aceptados': 'Dardos que cayeron fuera de toda zona prohibida.', 'dardos tirados': 'Total de intentos.', 'rechazados': 'Dardos que cayeron en zona prohibida.',
+  'rechazo en los últimos 50': 'Qué porcentaje de los últimos 50 dardos se rechazó. Cerca de 100% = panel lleno.',
+  'regenerar': 'Vuelve a generar los tres paneles con la misma cantidad de puntos.', 'mostrar discos': 'Dibuja un disco de radio r/2 por punto: si dos se pisan, están demasiado cerca.',
+  'pasos por cuadro': 'Cuántos pasos del algoritmo se ejecutan por cuadro de animación.', 'radio r (px)': 'La distancia mínima entre puntos.', 'candidatos k': 'Cuántos candidatos se prueban antes de dar por "rodeado" a un punto.',
+  'un paso': 'Ejecuta un solo paso: elige un activo y prueba candidatos.', 'grilla': 'Muestra la grilla de fondo (celdas de r/√2).', 'anillo': 'Muestra el anillo entre r y 2r donde se buscan candidatos.',
+  'puntos': 'Puntos aceptados hasta ahora.', 'activos': 'Puntos que todavía pueden tener vecinos nuevos alrededor.', 'candidatos probados': 'Total de candidatos generados.', 'candidatos por punto': 'Intentos promedio para conseguir cada punto.',
+  'r mínimo (bosque denso)': 'Separación entre árboles donde el ruido es bajo.', 'r máximo (claros)': 'Separación donde el ruido es alto: ahí se abren claros.', 'otra semilla': 'Otro ruido, otro bosque.', 'ver el ruido': 'Muestra el ruido que controla la densidad (claro = árboles más separados).',
+  // cap 3
+  'dardos': 'Cuántos dardos se tiraron.', 'adentro': 'Cuántos cayeron dentro del círculo.', 'π estimado': '4 × adentro / total.', 'error real': 'Distancia entre la estimación y π verdadero.',
+  'error esperado ≈ 1,64/√n': 'Lo que la teoría dice que te deberías equivocar con esta cantidad de dardos.', 'dardos por cuadro (lluvia)': 'Velocidad de la lluvia.',
+  'dardos por experimento (n)': 'Cuántos dardos usa cada uno de los 50 experimentos.', 'repetir los 50': 'Vuelve a hacer los 50 experimentos.',
+  'contienen a π': 'Cuántos intervalos contienen el valor verdadero. Debería ser cerca de 95%.', 'desvío medido entre experimentos': 'Cuánto varían las 50 estimaciones entre sí.', 'teórico: 1,64/√n': 'El desvío que predice la fórmula σ/√N.',
+  'rayos por pixel por cuadro': 'Cuántos rayos al azar se suman por pixel en cada cuadro.', 'radio de la lámpara': 'Lámpara más grande = penumbra más ancha. Radio casi 0 = sombra dura.',
+  // cap 4
+  'c (cuánto sube la chance por golpe)': 'La chance del golpe n desde el último crítico es C·n.', 'simular 100.000 golpes': 'Mide la tasa real de crítico con el C actual.',
+  'buscar c automáticamente': 'Búsqueda binaria: prueba un C, simula, y lo sube o lo baja según la tasa medida.', 'crítico nominal buscado': 'El porcentaje que el diseñador quiere en promedio.',
+  'c elegido': 'El valor actual de C.', 'tasa de crítico medida': 'Porcentaje de críticos en la simulación.', 'objetivo': 'La tasa que buscamos.',
+  'probabilidad de crítico': 'Chance nominal de crítico para los dos métodos.', 'golpes por segundo': 'Velocidad de la tira de golpes de arriba.', 'simular de nuevo': 'Otras 200.000 piezas por método.',
+  'probabilidad de drop': 'Chance de que el ítem caiga en cada intento.', 'pity (garantizado)': 'Activa el premio garantizado al llegar a N intentos.', 'pity a los n intentos': 'En qué intento el premio es seguro.',
+  'promedio': 'Intentos promedio para conseguir el ítem.', 'mediana (50%)': 'La mitad de los jugadores lo consigue antes de esto.', 'percentil 90': 'El 90% lo consigue antes; el 10% con peor suerte tarda más.',
+  'percentil 99': 'Lo que tarda el 1% con peor suerte.', 'el de peor suerte': 'El jugador que más intentos necesitó entre los 20.000.',
+  'vida': 'Puntos de vida de la unidad.', 'daño mínimo': 'Daño más bajo de un golpe normal.', 'daño máximo': 'Daño más alto de un golpe normal.', 'precisión': 'Chance de acertar cada golpe.', 'crítico (×2)': 'Chance de que un golpe acertado haga daño doble.',
+  'empiezan alternando': 'La mitad de los duelos empieza cada uno.', 'siempre empieza el guerrero': 'El guerrero pega primero en todos los duelos.', 'siempre empieza el pícaro': 'El pícaro pega primero en todos los duelos.',
+  'dejarlos idénticos': 'Copia las stats del guerrero al pícaro, para ver el efecto de quién empieza.', 'margen de error (95%)': 'Cuánto podría variar el % de victorias por el azar de la simulación.',
+  'veredicto': 'Conclusión según el margen de error.', 'otros 40 jugadores': 'Otras 40 sesiones animadas.', 'simular 20.000 sesiones': 'Corre 20.000 sesiones completas y resume.',
+  'llegan a 150': 'Sesiones que alcanzaron la meta.', 'quiebran': 'Sesiones que perdieron todo el capital.', 'ganancia promedio por sesión': 'Promedio de (capital final − 100). Negativo: la estrategia pierde.',
+  // cap 5
+  'dt del paso fijo': 'Cada cuánto tiempo simulado avanza el loop de paso fijo.', 'otra hora': 'Otra hora de llegadas al azar.', 'pasos fijos procesados': 'Cuántas veces corrió el loop de paso fijo.',
+  'pasos con algo que hacer': 'Porcentaje de pasos en los que llegó algún cliente.', 'eventos procesados (des)': 'Cuántas veces trabajó el simulador por eventos: una por llegada.',
+  'retraso medio por redondeo': 'Cuánto tarde, en promedio, procesa cada llegada el paso fijo.',
+  'siguiente evento': 'Saca el próximo evento de la lista y lo ejecuta.', 'eventos por segundo': 'Velocidad del modo automático.', 'cajas': 'Cantidad de cajeros.',
+  'llegada promedio cada': 'Tiempo promedio entre clientes (exponencial).', 'atención promedio': 'Tiempo promedio que tarda una caja con un cliente (exponencial).',
+  'reloj': 'Tiempo simulado actual. Salta de evento en evento.', 'en cola': 'Clientes esperando.', 'atendidos': 'Clientes que ya salieron.', 'espera promedio': 'Tiempo promedio en la cola antes de llegar a una caja.',
+  'cola máxima': 'La cola más larga que hubo.', 'ocupación de cajas': 'Fracción del tiempo que las cajas estuvieron atendiendo.',
+  'cajas (c)': 'Cantidad de cajas en el modelo M/M/c.', 'ocupación ρ': 'λ / (c·μ): qué tan cargadas están las cajas.', 'simular este ρ': 'Simula muchos clientes con este ρ y agrega un punto.', 'barrido de ρ': 'Simula ρ de 10% a 95% de a 5%.',
+  'clientes por hora': 'Ritmo de llegada promedio.', 'costo de un cajero por día': 'Lo que cuesta tener una caja abierta un día.', 'costo por minuto de espera': 'Cuánto "cuesta" (en clientes enojados) cada minuto que alguien espera.',
+  'otros 200 días': 'Repite las 200 simulaciones por opción.', 'conviene abrir': 'La cantidad de cajas con menor costo total esperado.', 'costo esperado': 'Cajeros + espera, promediado en los 200 días.', 'ocupación': 'Qué tan cargadas están las cajas con esa cantidad.',
+  // cap 6
+  'insertar': 'Agrega el número del recuadro al heap (sube con sift up).', 'insertar al azar': 'Agrega un número al azar.', 'sacar mínimo': 'Saca la raíz; el último pasa arriba y baja con sift down.',
+  'sacar todos': 'Saca todos uno por uno: salen ordenados.', 'vaciar': 'Borra el heap.', 'velocidad (ms por paso)': 'Cuánto dura cada comparación o intercambio en la animación.',
+  'heapify': 'Arma un max-heap con el array actual, de abajo hacia arriba.', 'heapify + heap sort': 'Arma el heap y después ordena el array.', 'mezclar': 'Nuevos valores al azar.',
+  'fase': 'Qué está haciendo la animación.', 'comparaciones planificadas': 'Cuántas comparaciones necesita la operación.', 'intercambios planificados': 'Cuántos intercambios necesita.',
+  'medir': 'Corre el benchmark. La página se congela uno o dos segundos.', 'otro armado del heap': 'Cambia los eventos que rodean a A…J, y con eso la forma del árbol.',
+  // cap 7
+  'estuviste afuera': 'Cuánto tiempo estuvo cerrada la app.', 'volver a la app': 'Simula de golpe todo lo que pasó mientras estuviste afuera.',
+  'eventos procesados': 'Cuántos eventos tuvo que procesar el simulador.', 'cuadros a 60 fps': 'Cuántos cuadros habría tenido que simular un loop de paso fijo.', 'tiempo de cálculo': 'Lo que tardó tu navegador en ponerse al día.',
+  'granjas': 'Granjas al volver (máximo 30).', 'oro': 'Oro acumulado.', 'comida': 'Comida acumulada.',
+  'siguiente turno': 'Le da el turno al primero de la barra y lo vuelve a agendar.', '10 turnos': 'Avanza 10 turnos.', 'prisa': 'Duplica la velocidad del personaje por 3 turnos.', 'lentitud': 'Divide la velocidad a la mitad por 3 turnos.',
+  'velocidad máxima': 'Qué tan rápido pueden ir las bolas. Más rápido = más tunneling en paso fijo.', 'cámara lenta': 'Ralentiza las dos simulaciones para ver los choques.',
+  'paso fijo: cruzaron la pared': 'Bolas que atravesaron la pared fina: el bug del tunneling.', 'eventos: cruzaron la pared': 'Siempre 0: por eventos no se escapa ningún choque.',
+  'choques procesados (eventos)': 'Choques válidos ejecutados.', 'eventos en el heap': 'Choques agendados, incluidos los que quedaron viejos.',
+  // cap 8
+  'posición trampa': 'Le toca a O y tiene que tapar la columna del medio. Montecarlo plano se equivoca.', 'tablero vacío': 'Empieza de cero.', 'deshacer': 'Saca la última jugada.',
+  'partidas al azar por cuadro': 'Cuántas partidas al azar se simulan por cuadro, repartidas entre las casillas libres.',
+  'fase siguiente': 'Avanza una fase de MCTS: selección, expansión, simulación o retropropagación.', '+1 iteración': 'Una iteración completa (las cuatro fases).', 'reiniciar árbol': 'Borra el árbol y empieza de nuevo.',
+  'exploración c': 'Peso del premio por incertidumbre en UCB. 0 = solo explota; alto = explora mucho.',
+  'simulaciones por jugada': 'Cuántas iteraciones de MCTS hace la compu antes de jugar. Es la dificultad.', 'empiezo yo': 'Vos jugás primero.', 'empieza la compu': 'La compu juega primero.', 'nueva partida': 'Tablero vacío.',
+  'simulaciones': 'Iteraciones que usó en su última jugada.', 'tiempo pensando': 'Lo que tardó en elegir.', 'cree que gana': '% de victorias que estima para la jugada que eligió.',
+};
+const _tip = (() => { const el = document.createElement('div'); el.className = 'tipbox'; el.setAttribute('role', 'tooltip'); return el; })();
+let _tipFor = null;
+function tipShow(target, html) {
+  if (!_tip.isConnected) document.body.append(_tip);
+  _tip.innerHTML = html; _tip.style.display = 'block'; _tipFor = target;
+  const r = target.getBoundingClientRect(), tw = _tip.offsetWidth, th = _tip.offsetHeight;
+  let x = clamp(r.left + r.width / 2 - tw / 2, 8, innerWidth - tw - 8), y = r.bottom + 8;
+  if (y + th > innerHeight - 8) y = r.top - th - 8;
+  _tip.style.left = x + 'px'; _tip.style.top = y + 'px';
+}
+function tipHide() { _tip.style.display = 'none'; _tipFor = null; }
+const _normKey = s => s.replace(/[▶■▸🎲↗✓]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+function controlTip(el) {
+  let key = null;
+  if (el.matches('.ctl label')) key = el.querySelector('span')?.textContent;
+  else if (el.matches('.stat')) key = el.querySelector('span')?.textContent;
+  else if (el.matches('.toggle')) key = el.textContent;
+  else if (el.matches('button')) key = el.textContent;
+  if (!key) return null; key = _normKey(key);
+  const P = window.PAGE_TIPS || {}; return P[key] || CONTROL_TIPS[key] || null;
+}
+function tipTargetOf(node) {
+  const el = node.closest && node.closest('.term, .ctl label, .stat, .toggle, main button'); if (!el) return null;
+  const html = el.dataset.tip || controlTip(el); return html ? [el, html] : null;
+}
+document.addEventListener('pointerover', e => { const t = tipTargetOf(e.target); if (t) { if (t[0] !== _tipFor) tipShow(t[0], t[1]); } else if (_tipFor && !_tipFor.contains(e.target)) tipHide(); });
+document.addEventListener('focusin', e => { const t = tipTargetOf(e.target); if (t) tipShow(t[0], t[1]); });
+document.addEventListener('focusout', tipHide);
+document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('.term'); if (t) { _tipFor === t ? tipHide() : tipShow(t, t.dataset.tip); } });
+addEventListener('scroll', tipHide, { passive: true });
+/* marca los términos del glosario: primera aparición en cada sección (h2) */
+function markTerms() {
+  const main = $('main'); if (!main) return;
+  const items = GLOSARIO.map(([pat, def]) => ({ re: new RegExp(`(?<![\\p{L}\\d])(?:${pat})(?![\\p{L}\\d])`, 'iu'), def }));
+  let used = new Set();
+  const skip = n => n.closest('pre, code, .formula, a, h1, h2, h3, h4, button, label, .tag, .stat, .panel, .readout, .rig-title, .tipbox, .term, summary, th, .topics, .seg, .plan, .noterm');
+  const walker = document.createTreeWalker(main, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  const texts = []; let n;
+  while ((n = walker.nextNode())) { if (n.nodeType === 1 && n.tagName === 'H2') texts.push('H2'); else if (n.nodeType === 3 && n.nodeValue.trim() && !skip(n.parentElement)) texts.push(n); }
+  for (const t of texts) {
+    if (t === 'H2') { used = new Set(); continue; }
+    let node = t;
+    for (;;) {
+      let best = null;
+      items.forEach((it, i) => { if (used.has(i)) return; const m = it.re.exec(node.nodeValue); if (m && (!best || m.index < best.m.index)) best = { m, i, it }; });
+      if (!best) break;
+      used.add(best.i);
+      const before = node.splitText(best.m.index), after = before.splitText(best.m[0].length);
+      const span = h('span', { class: 'term', tabindex: 0, 'data-tip': best.it.def }, before.nodeValue);
+      before.replaceWith(span); node = after;
+    }
+  }
 }
 </script>
 <script>
