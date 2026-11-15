@@ -1,0 +1,1275 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>7 · Joints · Box2D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+
+:root{
+  --bg:#26303a;
+  --bg-2:#2f3b46;
+  --bg-3:#384653;
+  --screen:#0f171b;
+  --grid:#1b282d;
+  --grid-2:#243840;
+  --ink:#e9eef1;
+  --muted:#9eadb8;
+  --line:#465663;
+  --amber:#ffb23f;
+  --cyan:#5ed0e6;
+  --red:#ff6b5a;
+  --violet:#b99cff;
+  --green:#8fd694;
+  --radius:10px;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:18px;line-height:1.55;font-variation-settings:"wdth" 100}
+a{color:var(--cyan);text-underline-offset:3px}
+a:hover{color:#9fe6f3}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+::selection{background:var(--amber);color:#1a1a1a}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:#1f2830;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 20px;flex-wrap:wrap}
+.topbar .home{color:var(--ink);text-decoration:none;font-weight:700;font-variation-settings:"wdth" 118;white-space:nowrap;font-size:15px}
+.topbar nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.topbar nav a{color:var(--muted);text-decoration:none;font-size:14px;padding:5px 9px;border-radius:6px;white-space:nowrap}
+.topbar nav a b{color:var(--ink);font-weight:600;margin-right:5px;font-variant-numeric:tabular-nums}
+.topbar nav a:hover{background:var(--bg-2);color:var(--ink)}
+.topbar nav a[aria-current]{background:var(--bg-3);color:var(--ink)}
+.topbar nav a[aria-current] b{color:var(--amber)}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 22px 80px}
+.prose{max-width:72ch}
+h1{font-size:clamp(34px,5vw,58px);line-height:1.02;margin:10px 0 18px;font-weight:800;font-variation-settings:"wdth" 122;letter-spacing:-.01em}
+h2{font-size:clamp(25px,3vw,34px);line-height:1.1;margin:64px 0 14px;font-weight:750;font-variation-settings:"wdth" 116}
+h3{font-size:21px;line-height:1.2;margin:34px 0 8px;font-weight:700;font-variation-settings:"wdth" 110}
+h4{font-size:17px;margin:20px 0 6px;font-weight:700}
+p{margin:0 0 14px}
+.lead{font-size:21px;color:#d5dde3;max-width:64ch}
+.muted{color:var(--muted)}
+small,.small{font-size:14px}
+ul,ol{padding-left:22px;margin:0 0 14px}
+li{margin:4px 0}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}
+.kbd,kbd{font:600 13px var(--mono);background:var(--bg-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+code{font-family:var(--mono);font-size:.86em;background:#1c252c;padding:1px 5px;border-radius:4px;color:#f2d7a6}
+.amber{color:var(--amber)}.cyan{color:var(--cyan)}.red{color:var(--red)}.violet{color:var(--violet)}.green{color:var(--green)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:22px;align-items:start}
+.cols-2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media (max-width:860px){.cols-2{grid-template-columns:1fr}}
+
+/* ---------- instruments ---------- */
+.rig{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:18px 0 22px;box-shadow:inset 0 1px 0 #ffffff0d}
+.rig > .rig-title{font-weight:700;font-size:15px;margin:0 0 10px;color:var(--ink);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rig > .rig-title .muted{font-weight:400}
+.screen{position:relative;background:var(--screen);border-radius:7px;border:1px solid #0a1013;box-shadow:inset 0 0 0 1px #ffffff08, inset 0 6px 24px #0008;overflow:hidden}
+.screen canvas{display:block;width:100%;touch-action:none}
+.screen .tag{position:absolute;left:10px;top:7px;font:12px var(--mono);color:var(--muted);pointer-events:none}
+.screen .tag-r{left:auto;right:10px}
+.screens{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+@media (max-width:760px){.screens{grid-template-columns:1fr}}
+.controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:end;margin-top:12px}
+.ctl{display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 170px;max-width:300px}
+.ctl label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl label output{color:var(--ink);font:600 13px var(--mono);white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.readout{font:13px var(--mono);color:var(--muted);background:var(--screen);border:1px solid #0a1013;border-radius:6px;padding:8px 10px;line-height:1.6}
+.readout b{color:var(--ink);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:linear-gradient(90deg,var(--amber) var(--p,50%),#1a2329 var(--p,50%));border-radius:2px}
+input[type=range]::-moz-range-track{height:4px;background:#1a2329;border-radius:2px}
+input[type=range]::-moz-range-progress{height:4px;background:var(--amber);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;margin-top:-7px;box-shadow:0 1px 3px #0009}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;box-shadow:0 1px 3px #0009}
+
+button,.btn{font:600 15px var(--font);color:var(--ink);background:var(--bg-3);border:1px solid #556676;border-radius:8px;padding:8px 14px;cursor:pointer;line-height:1.2;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+button:hover,.btn:hover{background:#43535f}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--amber);border-color:var(--amber);color:#21180a}
+button.primary:hover{background:#ffc66d}
+button.playing{background:var(--cyan);border-color:var(--cyan);color:#06232a}
+button.small{font-size:13px;padding:5px 10px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #556676;border-radius:8px;overflow:hidden;background:#222c34}
+.seg button{border:0;border-radius:0;background:transparent;border-right:1px solid #44535f;font-size:14px;padding:7px 12px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#18212a}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px;cursor:pointer;user-select:none}
+.toggle input{appearance:none;width:38px;height:22px;border-radius:11px;background:#1a2329;border:1px solid #556676;position:relative;cursor:pointer;margin:0;flex:none}
+.toggle input::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#aab6be;top:2px;left:2px;transition:left .15s}
+.toggle input:checked{background:var(--cyan);border-color:var(--cyan)}
+.toggle input:checked::after{left:18px;background:#fff}
+select{font:15px var(--font);background:var(--bg-3);color:var(--ink);border:1px solid #556676;border-radius:8px;padding:7px 10px}
+
+
+/* ---------- code ---------- */
+pre{background:#161e23;border:1px solid #0d1417;border-radius:8px;padding:14px 16px;overflow:auto;font:14px/1.6 var(--mono);color:#d6e1e8;margin:12px 0 18px;tab-size:2}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.tk-c{color:#71828e;font-style:italic}.tk-s{color:#a8e0a0}.tk-k{color:#ff9e7a}.tk-n{color:#ffcf73}.tk-t{color:#7fd8ec}.tk-f{color:#e0c2ff}
+
+/* ---------- callouts ---------- */
+.game{border:1px solid #3e5a49;background:#26372f;border-radius:var(--radius);padding:14px 18px;margin:18px 0}
+.game > strong:first-child{color:var(--green);display:block;margin-bottom:4px}
+.warn{border:1px solid #6a4a2c;background:#3a2f25;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.figure{margin:18px 0}
+.figure figcaption{font-size:14px;color:var(--muted);margin-top:6px}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:12px 0 20px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
+
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:70px;border-top:1px solid var(--line);padding-top:20px;flex-wrap:wrap}
+.pager a{text-decoration:none;color:var(--ink);font-weight:600}
+.pager a span{display:block;font-size:13px;color:var(--muted);font-weight:400}
+.credits{font-size:13px;color:var(--muted);margin-top:30px;max-width:90ch}
+
+@media (max-width:700px){
+  .topbar{position:static;gap:8px}
+  .topbar nav{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+}
+@media (max-width:600px){
+  body{font-size:17px}
+  main{padding:24px 16px 60px}
+  .topbar{padding:8px 12px}
+  .rig{padding:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- unidad 9: extras ---------- */
+.topbar .tag9{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stat{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:6px 11px;min-width:110px}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+.stat b{font:600 17px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.stat.amber b{color:var(--amber)}.stat.cyan b{color:var(--cyan)}.stat.red b{color:var(--red)}.stat.green b{color:var(--green)}.stat.violet b{color:var(--violet)}
+.demo{display:flex;gap:14px;align-items:center;border:1px solid #3f5466;background:#263644;border-radius:var(--radius);padding:12px 16px;margin:18px 0;text-decoration:none;color:var(--ink)}
+.demo:hover{background:#2d4152;color:var(--ink)}
+.demo .ico{font:700 22px var(--mono);color:var(--cyan);flex:none}
+.demo b{display:block}
+.demo span{color:var(--muted);font-size:15px}
+.formula{font:600 17px var(--mono);background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 14px;margin:12px 0 16px;color:#f2d7a6;overflow:auto;white-space:nowrap}
+.formula small{color:var(--muted);font-weight:400}
+.screen .tag-b{top:auto;bottom:7px}
+.panel{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:8px 10px;font:13px/1.55 var(--mono);color:var(--muted);overflow:auto}
+.panel .hi{color:var(--ink);background:#2b3a1f;border-radius:3px}
+.panel .ev{display:flex;gap:10px;white-space:nowrap;padding:1px 4px}
+.panel .ev .t{color:var(--amber);min-width:62px;text-align:right}
+.panel .ev .k-arr{color:var(--cyan)}.panel .ev .k-end{color:var(--green)}.panel .ev .k-x{color:var(--violet)}
+.side{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+@media (max-width:860px){.side{grid-template-columns:1fr}}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin:10px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--bg-3);border:1px solid #556676;font:700 14px/28px var(--font);text-align:center;color:var(--amber)}
+.timebox{display:inline-block;font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+
+p code,li code,td code{white-space:nowrap}
+.screen .tag{background:#0f171bb3;padding:1px 6px;border-radius:4px}
+/* ---------- tooltips y explicaciones ---------- */
+.term{border-bottom:1.5px dotted #9eadb8;cursor:help;outline:none}
+.term:hover,.term:focus{border-bottom-color:var(--amber);color:#fff}
+.ctl label > span:first-child,.stat > span{cursor:help;text-decoration:underline dotted #556676;text-underline-offset:3px}
+.tipbox{position:fixed;z-index:100;display:none;max-width:min(340px,90vw);background:#0b1215;color:var(--ink);border:1px solid #556676;border-radius:8px;padding:8px 11px;font:14px/1.45 var(--font);box-shadow:0 8px 24px #0009;pointer-events:none}
+details.how{margin:-4px 0 10px;font-size:15px;color:#cbd5dc}
+details.how summary{cursor:pointer;color:var(--cyan);font-weight:600;font-size:14px;list-style:none;display:inline-flex;gap:6px;align-items:center}
+details.how summary::-webkit-details-marker{display:none}
+details.how summary::before{content:"?";display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--cyan);color:#06232a;font:700 12px var(--font)}
+details.how[open] summary{margin-bottom:6px}
+details.how ul{margin:0 0 6px;padding-left:20px}
+details.how li{margin:3px 0}
+details.how p{margin:0 0 6px}
+
+/* ---------- unidad 10: extras ---------- */
+.topbar nav a.ed{color:var(--ink);background:#2f3f2b;border:1px solid #3e5a49}
+.topbar nav a.ed b{color:var(--green)}
+.topbar nav a.ed[aria-current]{background:#3e5a49}
+.ptitle{font:600 12px var(--font);color:var(--muted);margin:0 0 4px;text-transform:uppercase;letter-spacing:.06em}
+.screen canvas{cursor:grab}
+.keys{font:13px var(--mono);color:var(--muted)}
+.chip{display:inline-block;font:600 12px var(--mono);border-radius:999px;padding:2px 9px;border:1px solid var(--line);color:var(--muted);vertical-align:2px}
+.chip.on{color:#06232a;background:var(--cyan);border-color:var(--cyan)}
+.matrix{border-collapse:collapse;width:auto;margin:6px 0}
+.matrix td,.matrix th{padding:4px 8px;border:1px solid var(--line);text-align:center}
+.matrix input{width:18px;height:18px;accent-color:var(--amber)}
+.jt td:first-child{white-space:nowrap;font-weight:700}
+.api{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px 18px;margin:12px 0 18px}
+.api div{background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 12px;font-size:15px}
+.api div b{display:block;font:600 13px var(--mono);color:#f2d7a6;margin-bottom:3px}
+.pad{display:flex;gap:6px;flex-wrap:wrap}
+.pad button{min-width:46px;justify-content:center}
+.bug{border:1px solid #6a2c2c;background:#3a2525;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.bug > strong:first-child{color:var(--red)}
+@media (max-width:700px){body{overflow-x:hidden}main table{display:block;overflow-x:auto}.matrix{display:table}.side{grid-template-columns:1fr}.cols-2{grid-template-columns:1fr!important}}
+@media (max-width:700px){p code,li code,td code{white-space:normal;overflow-wrap:anywhere}}
+
+</style>
+</head>
+<body>
+<main>
+  <h1>Joints</h1>
+  <p class="lead">Un <strong>joint</strong> (articulación) es una restricción entre dos cuerpos: "este punto de A y este punto de B están siempre juntos", "B solo se desliza por este riel", "estos dos puntos están a 2 metros". Con siete tipos de joint se arman puertas, autos, puentes, grúas, ragdolls y máquinas de Rube Goldberg.</p>
+
+  <h2>Los siete joints de Box2D v3</h2>
+  <table class="jt">
+    <tr><th>Joint</th><th>Restringe</th><th>Extras</th><th>Ejemplos</th></tr>
+    <tr><td>Revolute</td><td>un punto en común: B gira alrededor de A (el "pin")</td><td>límite de ángulo, motor, resorte</td><td>bisagras, ruedas simples, codos, molinos</td></tr>
+    <tr><td>Prismatic</td><td>B se desliza por un eje de A, sin girar</td><td>límites, motor, resorte</td><td>pistones, ascensores, puertas corredizas</td></tr>
+    <tr><td>Distance</td><td>la distancia entre dos puntos</td><td>resorte, rango mín/máx, motor</td><td>barras, resortes, sogas</td></tr>
+    <tr><td>Weld</td><td>todo: A y B quedan pegados</td><td>puede ser blando (Hz)</td><td>romper objetos en pedazos, vigas que se doblan</td></tr>
+    <tr><td>Wheel</td><td>B se mueve por un eje de A y gira libre</td><td>resorte (suspensión), motor</td><td>autos, motos, tanques</td></tr>
+    <tr><td>Motor</td><td>lleva B hacia una posición y ángulo relativos a A</td><td>fuerza y torque máximos</td><td>plataformas que siguen un camino, personajes con física</td></tr>
+    <tr><td>Mouse</td><td>lleva un punto de B hacia un objetivo, como un resorte</td><td>Hz, amortiguación, fuerza máxima</td><td>arrastrar con el mouse (todas las demos de esta unidad)</td></tr>
+  </table>
+  <div class="prose">
+    <p>Todos se crean igual: una definición con los dos cuerpos y las <strong>anclas</strong> en coordenadas <em>locales</em> de cada cuerpo. Lo más cómodo es pensar el punto en el mundo y convertirlo con <code>b2Body_GetLocalPoint</code>. Por defecto los cuerpos unidos por un joint <strong>no chocan entre sí</strong> (<code>collideConnected = false</code>), que casi siempre es lo que querés.</p>
+  </div>
+  <pre><code>const def = b2DefaultRevoluteJointDef();
+def.bodyIdA = suelo; def.bodyIdB = brazo;
+const pivote = new b2Vec2(0, 3);                              // en el mundo
+def.localAnchorA = b2Body_GetLocalPoint(suelo, pivote);
+def.localAnchorB = b2Body_GetLocalPoint(brazo, pivote);
+def.enableLimit = true; def.lowerAngle = -0.5; def.upperAngle = 0.5;   // radianes
+def.enableMotor = true; def.motorSpeed = 2; def.maxMotorTorque = 50;
+const jointId = b2CreateRevoluteJoint(worldId, def);
+// y en vivo:
+b2RevoluteJoint_SetMotorSpeed(jointId, -2); b2RevoluteJoint_EnableLimit(jointId, false);
+b2Joint_WakeBodies(jointId);                                  // si los cuerpos dormían, que se enteren</code></pre>
+
+  <h2>Revolute: bisagra con límite, motor y resorte</h2>
+  <div class="rig">
+    <div class="rig-title">Un brazo con pivote en el centro <span class="muted">· tirale cajas o arrastralo</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Una barra dinámica unida al fondo por un revolute en su centro (el círculo rojo es el dibujo del joint de Box2D).</li>
+<li>Límite: no puede pasar del rango de ángulos. Motor: intenta girar a la velocidad pedida, con un torque máximo; si la carga pide más, no llega. Resorte: vuelve al ángulo de reposo como un muelle.</li>
+<li>Probá: motor lento con torque bajo y tirale cajas; se frena. Después prendé el resorte solo y empujá el brazo.</li></ul></details>
+    <div class="screen"><canvas id="cvrev" style="height:320px"></canvas></div>
+    <div class="controls" id="revctl"></div>
+    <div id="revst"></div>
+  </div>
+
+  <h2>Prismatic: el riel</h2>
+  <div class="rig">
+    <div class="rig-title">Un ascensor <span class="muted">· la plataforma solo se mueve en vertical</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>La plataforma está unida al piso por un prismatic con eje vertical: no gira ni se va de costado. La línea de Box2D marca el eje y los topes.</li>
+<li>Con el motor sube o baja a velocidad constante; si la carga es pesada y la fuerza máxima baja, no puede subir.</li>
+<li>Con el resorte, rebota como una cama elástica.</li></ul></details>
+    <div class="screen"><canvas id="cvpri" style="height:320px"></canvas></div>
+    <div class="controls" id="prictl"></div>
+    <div id="prist"></div>
+  </div>
+
+  <h2>Distance: barra, resorte y soga</h2>
+  <div class="prose">
+    <p>El distance joint mantiene dos puntos a una distancia. Sin resorte es una <strong>barra rígida</strong>. Con resorte (<code>enableSpring</code> y <code>hertz</code>) se estira y oscila. Y con resorte de 0 Hz más un rango <code>[minLength, maxLength]</code> es una <strong>soga</strong>: no tira hasta que se estira del todo, y se puede aflojar.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Tres péndulos <span class="muted">· mismo peso, mismo largo</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Izquierda: barra rígida. Medio: resorte (frecuencia y amortiguación con los sliders). Derecha: soga (solo largo máximo).</li>
+<li>"Sacudir" les da un empujón de costado a los tres. La soga se afloja cuando el peso sube más rápido de lo que cae.</li></ul></details>
+    <div class="screen"><canvas id="cvdist" style="height:320px"></canvas></div>
+    <div class="controls" id="distctl"></div>
+  </div>
+  <pre><code>const d = b2DefaultDistanceJointDef();
+d.bodyIdA = techo; d.bodyIdB = peso; d.localAnchorA = …; d.localAnchorB = …;
+d.length = 3;
+d.enableSpring = true; d.hertz = 2; d.dampingRatio = 0.1;   // resorte
+// soga: resorte sin fuerza (0 Hz) + límite
+d.enableSpring = true; d.hertz = 0; d.enableLimit = true; d.minLength = 0; d.maxLength = 3;</code></pre>
+
+  <h2>Weld: pegar, y pegar blando</h2>
+  <div class="prose">
+    <p>Un weld deja dos cuerpos pegados como si fueran uno. ¿Para qué no usar un solo cuerpo con dos formas? Porque el weld se puede <strong>romper</strong> (lo vemos en el puente) y porque puede ser <strong>blando</strong>: con <code>linearHertz</code> y <code>angularHertz</code> distintos de 0 se comporta como un resorte. Una fila de cajas soldadas blandas es una viga que se dobla.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Un trampolín de cajas soldadas <span class="muted">· 0 Hz = rígido</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Diez cajas unidas por weld joints, la primera a la pared. Con frecuencia angular baja la viga se dobla bajo su peso; por debajo de unos 10 Hz se cae como una soga.</li>
+<li>"Tirar peso" deja caer una caja pesada en la punta.</li></ul></details>
+    <div class="screen"><canvas id="cvweld" style="height:300px"></canvas></div>
+    <div class="controls" id="weldctl"></div>
+  </div>
+
+  <h2>Wheel: un auto</h2>
+  <div class="prose">
+    <p>El wheel joint combina un riel con resorte (la suspensión) y una rotación libre con motor (la tracción). Un auto es un chasis y dos ruedas con un wheel joint cada una, con el eje vertical. La velocidad del motor está en radianes por segundo: negativa hace girar la rueda en sentido horario, y el auto avanza a la derecha.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Manejá <span class="muted">· flechas ← → o A D (con el mouse arriba del canvas), o los botones</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Chasis, dos ruedas y dos wheel joints. La línea vertical en cada rueda es el eje de la suspensión.</li>
+<li>Con frecuencia de suspensión baja el auto es una lancha; con alta, un carrito de supermercado.</li>
+<li>El torque máximo decide si puede subir la loma o patina.</li></ul></details>
+    <div class="screen"><canvas id="cvcar" style="height:320px" tabindex="0"></canvas></div>
+    <div class="controls" id="carctl"></div>
+  </div>
+  <pre><code>const w = b2DefaultWheelJointDef();
+w.bodyIdA = chasis; w.bodyIdB = rueda;
+w.localAnchorA = b2Body_GetLocalPoint(chasis, centroRueda); w.localAnchorB = new b2Vec2(0, 0);
+w.localAxisA = new b2Vec2(0, 1);                      // la suspensión trabaja en vertical
+w.enableSpring = true; w.hertz = 4; w.dampingRatio = 0.7;
+w.enableMotor = true; w.maxMotorTorque = 40; w.motorSpeed = 0;
+const eje = b2CreateWheelJoint(worldId, w);
+b2WheelJoint_SetMotorSpeed(eje, -20);                 // acelerar</code></pre>
+
+  <h2>Motor joint: seguir un camino con fuerza limitada</h2>
+  <div class="prose">
+    <p>El motor joint lleva a B hacia una posición y un ángulo relativos a A (<code>linearOffset</code>, <code>angularOffset</code>), pero con una <strong>fuerza máxima</strong>. Es como un cinemático que se puede frenar: si le cargás demasiado peso, no llega. Sirve para plataformas que siguen una trayectoria y para personajes controlados por física.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Una plataforma que dibuja un ocho <span class="muted">· el círculo hueco es a donde quiere ir</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>La plataforma es dinámica. En cada paso le cambiamos el <code>linearOffset</code> del motor joint para que siga un ocho; el círculo hueco es el objetivo.</li>
+<li>Con fuerza máxima baja, cuando le caen cajas se atrasa y se hunde.</li></ul></details>
+    <div class="screen"><canvas id="cvmot" style="height:300px"></canvas></div>
+    <div class="controls" id="motctl"></div>
+  </div>
+
+  <h2>Mouse joint: arrastrar</h2>
+  <div class="prose">
+    <p>Todas las demos de la unidad usan un mouse joint para arrastrar: un resorte entre el puntero y el punto que agarraste del cuerpo, con frecuencia, amortiguación y una fuerza máxima. Por eso un cuerpo arrastrado empuja y choca con los demás de forma creíble, en vez de atravesarlos como pasaría si lo teletransportaras.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Arrastrá la caja liviana y la pesada <span class="muted">· la pesada tiene 40 veces más masa</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>La línea punteada une el puntero con el punto agarrado: es el resorte del mouse joint.</li>
+<li>Con fuerza máxima baja, la caja pesada no se levanta del piso. Con frecuencia baja, todo se siente blando y con retraso.</li></ul></details>
+    <div class="screen"><canvas id="cvmouse" style="height:280px"></canvas></div>
+    <div class="controls" id="mousectl"></div>
+  </div>
+
+  <h2>Puente que se rompe</h2>
+  <div class="prose">
+    <p>Box2D no rompe joints solo, pero te dice cuánta fuerza está haciendo cada uno: <code>b2Joint_GetConstraintForce</code>. Si después de cada paso destruís los que pasan de un umbral, tenés estructuras que se rompen. Así se hacen los puentes de Poly Bridge o los castillos de Angry Birds (ahí con welds).</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Un puente de 16 tablones <span class="muted">· el color de cada unión es su carga</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Tablones unidos por revolute joints; los extremos, a los pilares. Cada unión se pinta de blanco (sin carga) a <span class="red">rojo</span> (cerca de romperse).</li>
+<li>Después de cada paso destruimos las uniones cuya fuerza supera el umbral.</li>
+<li>Probá: tirá cajas pesadas con el umbral alto, y después bajalo.</li></ul></details>
+    <div class="screen"><canvas id="cvbridge" style="height:300px"></canvas></div>
+    <div class="controls" id="bridgectl"></div>
+  </div>
+  <pre><code>b2World_Step(worldId, 1 / 60, 4);
+for (const j of uniones) {
+  if (!b2Joint_IsValid(j)) continue;
+  const f = b2Joint_GetConstraintForce(j);            // b2Vec2, en newtons
+  if (Math.hypot(f.x, f.y) > UMBRAL) b2DestroyJoint(j);
+}</code></pre>
+
+  <h2>Ragdolls</h2>
+  <div class="prose">
+    <p>Un ragdoll es un esqueleto de cápsulas unidas por revolute joints con <strong>límites</strong> (las rodillas no se doblan para adelante) y un <strong>motor con velocidad 0 y torque bajo</strong> en cada unión, que hace de fricción articular. Todas las piezas comparten un <code>groupIndex</code> negativo para no chocar entre sí. Phaser Box2D trae una clase lista: <code>new Ragdoll(Skeletons.sideViewHuman11, x, y, worldId, grupo, color, tamaño)</code>, con esqueletos de humano y de elefante.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Escalera <span class="muted">· ragdolls de Phaser Box2D</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Cada ragdoll son 11 cápsulas y 10 revolute joints con límites. Arrastralos de la cabeza o de una mano.</li>
+<li>El elefante usa el esqueleto <code>Skeletons.sideViewElephant</code> de la librería.</li></ul></details>
+    <div class="screen"><canvas id="cvrag" style="height:340px"></canvas></div>
+    <div class="controls" id="ragctl"></div>
+  </div>
+  <div class="game"><strong>En juegos</strong>
+    Un truco muy usado es el <strong>ragdoll activo</strong>: el personaje se anima normalmente y, al recibir un golpe, se cambia a ragdoll; o los motores de cada joint intentan seguir la animación con torque limitado, así el cuerpo "pelea" contra los golpes (Gang Beasts, Human: Fall Flat). Y para destrucción, se arma el objeto con piezas soldadas y se rompen los welds que superan cierta fuerza.
+  </div>
+</main>
+<script src="phaser-box2d.js"></script>
+<script>
+/* ---------------- glosario: patrón (regex sin bordes) y explicación ----------------
+   Se subraya la primera aparición de cada término en cada sección (h2). */
+const GLOSARIO = [
+  ['cuerpos? rígidos?', 'Un objeto que no se deforma: todos sus puntos se mueven juntos. Se describe con posición, ángulo y sus velocidades.'],
+  ['centro de masa', 'El punto "promedio" de la masa. Una fuerza aplicada ahí mueve el cuerpo sin hacerlo girar.'],
+  ['momento de inercia|inercia', 'Cuánto le cuesta a un cuerpo empezar o dejar de girar. Depende de la masa y de qué tan lejos del centro está.'],
+  ['torque', 'El "empuje de giro": fuerza por brazo de palanca. Cambia la velocidad angular.'],
+  ['impulsos?', 'Un cambio instantáneo de velocidad: una fuerza muy grande durante un instante (un golpe). Se mide en N·s.'],
+  ['velocidad angular', 'Cuánto gira un cuerpo por segundo, en radianes por segundo.'],
+  ['drag|damping', 'Freno proporcional a la velocidad. En Box2D: linearDamping y angularDamping.'],
+  ['integrar|integrador(?:es)?', 'Método para avanzar el tiempo: pasar de aceleraciones a velocidades y de velocidades a posiciones de a pasos chicos.'],
+  ['Euler explícito', 'Integrador que avanza la posición con la velocidad vieja. Simple pero inestable: gana energía.'],
+  ['Euler semi-implícito|semi-implícit[oa]', 'Integrador que primero actualiza la velocidad y después avanza la posición con la velocidad nueva. Estable y barato: el de Box2D.'],
+  ['simpléctico', 'Un integrador que no acumula error de energía: oscila alrededor del valor correcto en vez de alejarse.'],
+  ['Verlet', 'Integrador que usa la posición actual y la anterior en vez de la velocidad. Base de la dinámica basada en posiciones.'],
+  ['RK4|Runge-Kutta', 'Integrador de cuarto orden: cuatro evaluaciones por paso. Muy preciso, caro, y poco usado en juegos.'],
+  ['restricci(?:ón|ones)|constraints?', 'Una regla que el solver tiene que cumplir: no atravesarse, mantener una distancia, compartir un punto.'],
+  ['Baumgarte', 'Corregir el error de una restricción agregando una velocidad proporcional a ese error. Simple, pero mete energía.'],
+  ['PBD|dinámica basada en posiciones', 'Position-based dynamics: se mueven directamente las posiciones hasta cumplir las restricciones. Muy usado en tela y sogas.'],
+  ['iteraci(?:ón|ones)', 'Cada pasada del solver por todas las restricciones. Con más iteraciones, más preciso y más caro.'],
+  ['solver', 'La parte del motor que calcula los impulsos para cumplir todas las restricciones (contactos y joints).'],
+  ['soft step', 'El solver de Box2D v3: subpasos, restricciones blandas (resortes duros) y una pasada de relajación.'],
+  ['subpasos?', 'Cada paso de b2World_Step se parte en estos pedazos más chicos; en cada uno se integra y se resuelve.'],
+  ['paso fijo', 'Avanzar la física siempre con el mismo dt (por ejemplo 1/60 s), sin importar cuánto duró el cuadro.'],
+  ['acumulador', 'Variable donde se junta el tiempo real hasta que alcanza para dar uno o más pasos fijos.'],
+  ['determinista|determinismo', 'Que con la misma entrada da siempre exactamente el mismo resultado.'],
+  ['lockstep', 'Multijugador donde cada máquina simula todo y solo se mandan los inputs. Exige determinismo.'],
+  ['handle', 'Un número que identifica un objeto sin ser el objeto. Los ids de Box2D tienen índice, mundo y revisión.'],
+  ['estáticos?', 'Cuerpo que no se mueve nunca: masa infinita. Piso, paredes.'],
+  ['cinemáticos?', 'Cuerpo de masa infinita que se mueve con la velocidad que le pongas. No lo afectan fuerzas ni choques.'],
+  ['dinámicos?', 'Cuerpo que simula Box2D: tiene masa, lo afectan la gravedad, las fuerzas y los choques.'],
+  ['densidad', 'Masa por unidad de área (kg/m²). Box2D calcula la masa de cada forma multiplicando por su área.'],
+  ['islas?', 'Grupo de cuerpos conectados por contactos o joints. Se duermen y se despiertan juntos.'],
+  ['sleepThreshold|umbral de sueño', 'Velocidad debajo de la cual un cuerpo cuenta como quieto (5 cm/s por defecto).'],
+  ['envolvente convexa', 'El polígono convexo más chico que contiene a un conjunto de puntos.'],
+  ['convexos?', 'Sin entradas: el segmento entre dos puntos cualesquiera queda adentro. Box2D solo acepta polígonos convexos.'],
+  ['cápsulas?', 'Dos semicírculos unidos por un rectángulo: un segmento con radio.'],
+  ['cadenas?', 'Muchos segmentos conectados, de una sola cara, sin enganches en las uniones. Para terrenos estáticos.'],
+  ['colisi(?:ón|ones) fantasma', 'Contacto falso en la unión de dos piezas de piso: hace que algo que se desliza se trabe.'],
+  ['vértices fantasma', 'En una cadena, los vecinos de cada segmento: sirven para descartar contactos falsos en las uniones.'],
+  ['fricción', 'Fuerza que se opone a que dos superficies deslicen. En Box2D se combina con la media geométrica.'],
+  ['restitución', 'Qué fracción de la velocidad de choque se devuelve: 0 no rebota, 1 rebota perfecto.'],
+  ['media geométrica', 'La raíz del producto: √(a·b). Si una vale 0, el resultado es 0.'],
+  ['fase amplia|broadphase', 'Primera etapa de la detección: descarta rápido los pares que no pueden tocarse usando cajas.'],
+  ['fase fina|narrowphase', 'Segunda etapa: calcula los puntos de contacto exactos de los pares que pasaron la fase amplia.'],
+  ['AABB', 'Axis-aligned bounding box: la caja más chica, alineada con los ejes, que contiene a una forma.'],
+  ['OBB', 'Oriented bounding box: una caja que gira con el objeto.'],
+  ['BVH|jerarquía de volúmenes envolventes', 'Bounding volume hierarchy: árbol de cajas donde cada nodo contiene a sus hijos. Permite descartar ramas enteras.'],
+  ['árbol dinámico|b2DynamicTree', 'La BVH de Box2D: se actualiza mientras las formas se mueven y se rebalancea sola.'],
+  ['SAT|teorema del eje separador', 'Dos convexos no se tocan si y solo si hay un eje donde sus proyecciones no se superponen.'],
+  ['MTV', 'Minimum translation vector: el menor movimiento que separa dos formas que se superponen.'],
+  ['GJK', 'Algoritmo para medir la distancia entre dos formas convexas usando su diferencia de Minkowski.'],
+  ['manifold', 'El resultado de una colisión: una normal y uno o dos puntos de contacto con su separación.'],
+  ['especulativos?', 'Contactos que se crean antes de que las formas se toquen, para frenarlas a tiempo.'],
+  ['sensor(?:es)?', 'Forma que no choca: solo avisa cuando otras formas empiezan o dejan de superponerse con ella.'],
+  ['categoryBits|maskBits|groupIndex', 'Campos del filtro de colisión: a qué categoría pertenece la forma, con cuáles choca y su grupo.'],
+  ['pre-solve', 'Callback que se llama antes de resolver cada contacto. Si devuelve false, ese contacto se ignora en este paso.'],
+  ['callback', 'Una función tuya que la librería llama cuando pasa algo (un impacto de rayo, un contacto nuevo).'],
+  ['joints?', 'Restricción entre dos cuerpos: bisagra, riel, resorte, soldadura…'],
+  ['anclas?', 'El punto de cada cuerpo donde se engancha un joint, en coordenadas locales de ese cuerpo.'],
+  ['revolute', 'Joint que obliga a dos cuerpos a compartir un punto: una bisagra.'],
+  ['prismatic', 'Joint que deja deslizar un cuerpo por un eje del otro, sin girar.'],
+  ['weld', 'Joint que pega dos cuerpos. Puede ser blando.'],
+  ['wheel joint|wheel', 'Joint de rueda: riel con resorte (suspensión) más rotación libre con motor.'],
+  ['mouse joint', 'Resorte entre un punto de un cuerpo y un objetivo que se mueve. Así se arrastra con el mouse.'],
+  ['motor joint', 'Joint que lleva un cuerpo a una posición relativa con fuerza máxima limitada.'],
+  ['ragdolls?', 'Muñeco de trapo: cuerpos unidos por joints con límites, que cae de forma creíble.'],
+  ['raycast|rayos?', 'Consulta que tira un segmento y devuelve qué formas corta, dónde y con qué normal.'],
+  ['shape casts?', 'Como un rayo, pero barriendo una forma con volumen (círculo, cápsula, polígono).'],
+  ['fracción|fraction', 'Posición de un impacto a lo largo del rayo: 0 en el origen, 1 en la punta.'],
+  ['polígono de visibilidad', 'El área que se ve desde un punto, armada con los impactos de muchos rayos.'],
+  ['warm starting', 'Arrancar cada paso del solver con los impulsos del paso anterior, para converger más rápido.'],
+  ['coloreo|colorea', 'Asignar colores a las restricciones para que dos del mismo color no compartan cuerpo y se puedan resolver en paralelo.'],
+  ['SIMD', 'Instrucciones del procesador que hacen la misma cuenta sobre 4 u 8 números a la vez.'],
+  ['tunneling', 'Cuando algo rápido atraviesa una pared fina porque en ningún paso discreto llegó a tocarla.'],
+  ['CCD|colisión continua', 'Continuous collision detection: buscar el instante exacto del impacto a lo largo del movimiento.'],
+  ['tiempo de impacto|TOI', 'El momento, entre dos pasos, en que dos formas que se mueven empiezan a tocarse.'],
+  ['balas?|bullet', 'Cuerpo marcado con isBullet: hace colisión continua también contra otros dinámicos.'],
+  ['interpola(?:r|ción)', 'Dibujar una mezcla entre el estado anterior y el actual para que el movimiento se vea suave.'],
+  ['userData', 'Un dato tuyo guardado en un cuerpo, forma o joint, para encontrar tu objeto desde un id de Box2D.'],
+  ['MKS|metros, kilogramos y segundos', 'Las unidades de Box2D. Conviene que los objetos midan entre 10 cm y 10 m.'],
+];
+/* tooltips de los controles que se repiten en todas las páginas (cada página agrega los suyos en PAGE_TIPS) */
+const CONTROL_TIPS = {
+  'pausar': 'Detiene la simulación.', 'seguir': 'Retoma la simulación.', 'un paso': 'Avanza exactamente un b2World_Step y queda en pausa.', 'reiniciar': 'Vuelve a armar la escena desde cero.',
+  'cámara lenta': 'Simula a un quinto de la velocidad (el paso sigue siendo el mismo, solo se dan menos por segundo).',
+  'joints': 'Dibuja los joints como los dibuja Box2D.', 'aabb': 'Dibuja las cajas alineadas a los ejes (las gordas, del árbol).', 'centro de masa': 'Dibuja el centro de masa y la masa de cada cuerpo dinámico.',
+  'puntos de contacto': 'Puntos de contacto: verde = nuevo, azul = persistente, gris = especulativo.', 'normales': 'Normal de cada contacto.', 'impulsos': 'Impulso normal de cada contacto (magenta).', 'fricción': 'Impulso de fricción de cada contacto (amarillo).',
+  'colores del grafo': 'Pinta cada contacto con su color del grafo de restricciones.',
+  'cuerpos': 'Cuerpos dinámicos en el mundo.', 'despiertos': 'Cuerpos que Box2D está simulando ahora.', 'ms por paso': 'Tiempo promedio de cada b2World_Step en tu navegador.',
+};
+
+
+/* ====================================================================
+   Unidad 10 – Box2D · helpers compartidos (se inlinea en cada página)
+   ==================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+/* ---------------- azar con semilla ---------------- */
+/* mulberry32: 32 bits de estado, rápido y suficientemente bueno para juegos */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+class Rng {
+  constructor(seed = (Math.random() * 2 ** 32) >>> 0) { this.seed = seed >>> 0; this.next = mulberry32(this.seed); }
+  float(a = 0, b = 1) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }       // entero en [a, b]
+  exp(mean) { return -mean * Math.log(1 - this.next()); }                // exponencial (transformada inversa)
+  normal(mu = 0, sd = 1) {                                               // Box-Muller
+    const u1 = 1 - this.next(), u2 = this.next();
+    return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(this.next() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+}
+
+/* ---------------- min-heap (cola de prioridad) ---------------- */
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  get size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) >= 0) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a; if (!a.length) return undefined; const top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0; const n = a.length;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < n && this.cmp(a[l], a[m]) < 0) m = l; if (r < n && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top; }
+  clear() { this.a.length = 0; }
+  sorted() { return [...this.a].sort(this.cmp); }
+}
+
+/* ---------------- UI helpers ---------------- */
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') el.className = v; else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(k));
+  return el;
+}
+function paintRange(r) { const p = (r.value - r.min) / (r.max - r.min) * 100; r.style.setProperty('--p', p + '%'); }
+/* slider con label y valor. opts: {label,min,max,step,value,fmt,log,oninput,onchange} */
+function slider(parent, o) {
+  const id = 'r' + Math.random().toString(36).slice(2, 8);
+  const out = h('output', { for: id });
+  const r = h('input', { type: 'range', id, min: 0, max: 1000, step: 1 });
+  const toPos = v => o.log ? 1000 * Math.log(v / o.min) / Math.log(o.max / o.min) : 1000 * (v - o.min) / (o.max - o.min);
+  const fromPos = p => { let v = o.log ? o.min * Math.pow(o.max / o.min, p / 1000) : o.min + (o.max - o.min) * p / 1000; if (o.step) v = Math.round(v / o.step) * o.step; return clamp(+v.toFixed(6), o.min, o.max); };
+  const fmt = o.fmt || (v => v);
+  const wrap = h('div', { class: 'ctl' }, h('label', { for: id }, h('span', {}, o.label), out), r);
+  const api = {
+    el: wrap, input: r, value: o.value,
+    set(v, fire) { api.value = v; r.value = toPos(v); out.textContent = fmt(v); paintRange(r); if (fire) o.oninput && o.oninput(v); },
+  };
+  r.addEventListener('input', () => { api.value = fromPos(+r.value); out.textContent = fmt(api.value); paintRange(r); o.oninput && o.oninput(api.value); });
+  if (o.onchange) r.addEventListener('change', () => o.onchange(api.value));
+  api.set(o.value);
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return api;
+}
+/* grupo de botones excluyentes. options: [{v,label}] */
+function seg(parent, options, value, onchange) {
+  const el = h('div', { class: 'seg', role: 'group' });
+  const api = { el, value, set(v, fire) { api.value = v; for (const b of el.children) b.setAttribute('aria-pressed', b.dataset.v === String(v)); if (fire) onchange && onchange(v); } };
+  for (const op of options) {
+    const b = h('button', { type: 'button', 'data-v': op.v, title: op.title || null }, op.label);
+    b.addEventListener('click', () => api.set(op.v, true)); el.append(b);
+  }
+  api.set(value);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return api;
+}
+function toggle(parent, label, checked, onchange) {
+  const inp = h('input', { type: 'checkbox' }); inp.checked = !!checked;
+  inp.addEventListener('change', () => onchange && onchange(inp.checked));
+  const el = h('label', { class: 'toggle' }, inp, label);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return inp;
+}
+function button(parent, label, onclick, cls = '') {
+  const b = h('button', { type: 'button', class: cls }, label); b.addEventListener('click', onclick);
+  (typeof parent === 'string' ? $(parent) : parent).append(b); return b;
+}
+/* fila de "stats": stats('#x', [['n','Dardos'],['pi','π estimado','amber']]) -> {n: el, pi: el} */
+function stats(parent, defs) {
+  const wrap = h('div', { class: 'stats' }), out = {};
+  for (const [k, label, cls] of defs) { const b = h('b', {}, '–'); wrap.append(h('div', { class: 'stat ' + (cls || '') }, h('span', {}, label), b)); out[k] = b; }
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return out;
+}
+const NF = {};
+const fmtNum = (v, d = 0) => { if (!isFinite(v)) return v > 0 ? '∞' : '–'; const k = d; return (NF[k] || (NF[k] = new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }))).format(v); };
+const fmtInt = v => fmtNum(Math.round(v), 0);
+const fmtPct = (v, d = 1) => fmtNum(v * 100, d) + '%';
+const fmtCompact = v => v >= 1e6 ? fmtNum(v / 1e6, v >= 1e7 ? 0 : 1) + ' M' : v >= 1e4 ? fmtNum(v / 1e3, 0) + ' k' : fmtInt(v);
+
+/* ---------------- canvas ---------------- */
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), hh = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+const COL = { amber: '#ffb23f', cyan: '#5ed0e6', red: '#ff6b5a', violet: '#b99cff', green: '#8fd694', ink: '#e9eef1', muted: '#9eadb8', dim: '#5d717b', grid: '#1b282d', grid2: '#25363d', screen: '#0f171b' };
+function clearScreen(g, w, h, gridX = 10, gridY = 4, mid = false) {
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, h);
+  g.strokeStyle = COL.grid; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < gridX; i++) { const x = Math.round(i * w / gridX) + .5; g.moveTo(x, 0); g.lineTo(x, h); }
+  for (let i = 1; i < gridY; i++) { const y = Math.round(i * h / gridY) + .5; g.moveTo(0, y); g.lineTo(w, y); }
+  g.stroke();
+  if (mid) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(h / 2) + .5); g.lineTo(w, Math.round(h / 2) + .5); g.stroke(); }
+}
+function glowLine(g, color, width = 2) { g.strokeStyle = color; g.lineWidth = width; g.shadowColor = color; g.shadowBlur = 6; g.lineJoin = 'round'; }
+function noGlow(g) { g.shadowBlur = 0; }
+function text(g, s, x, y, color = COL.muted, align = 'left', font = '12px JetBrains Mono, monospace') {
+  g.fillStyle = color; g.font = font; g.textAlign = align; g.fillText(s, x, y); g.textAlign = 'left';
+}
+/* histograma: counts[] dibujado en el rectángulo (x,y,w,h). opts: {max, color, fill, gap} */
+function drawHist(g, x, y, w, hh, counts, color, o = {}) {
+  const n = counts.length; if (!n) return;
+  const max = o.max || Math.max(1, ...counts), bw = w / n, gap = o.gap ?? (bw > 4 ? 1 : 0);
+  g.fillStyle = color; g.globalAlpha = o.alpha ?? 0.85;
+  for (let i = 0; i < n; i++) { const bh = Math.min(hh, counts[i] / max * hh); if (bh > 0) g.fillRect(x + i * bw + gap / 2, y + hh - bh, Math.max(1, bw - gap), bh); }
+  g.globalAlpha = 1;
+}
+/* curva: f(t) con t en [0,1] -> valor en [0,1] (0 abajo) */
+function drawCurve(g, x, y, w, hh, f, color, width = 2, steps = 200) {
+  glowLine(g, color, width); g.beginPath();
+  for (let i = 0; i <= steps; i++) { const t = i / steps, v = f(t); const px = x + t * w, py = y + hh - v * hh; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  g.stroke(); noGlow(g);
+}
+/* Loop de animación compartido: solo dibuja los canvas visibles */
+const _anims = [];
+function animate(canvas, fn) {
+  const a = { canvas, fn, visible: true }; _anims.push(a);
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => a.visible = e.isIntersecting)).observe(canvas);
+  return a;
+}
+let _lastT = performance.now();
+(function loop(now) { const dt = Math.min(0.1, ((now || performance.now()) - _lastT) / 1000); _lastT = now || performance.now();
+  for (const a of _anims) if (a.visible) { try { const c = fitCanvas(a.canvas); c.dt = dt; a.fn(c); } catch (e) { console.error(e); } }
+  requestAnimationFrame(loop); })();
+
+/* ---------------- resaltado de código JS ---------------- */
+function highlight(src) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = /(\/\/.*$|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\b(const|let|var|function|return|new|if|else|for|while|class|extends|this|async|await|of|in|true|false|null|undefined|super|static|import|export|from|break|continue|switch|case|default)\b|\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b|\b([A-Z][A-Za-z0-9]+)\b|(\.?[a-zA-Z_]\w*)(?=\()/gm;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'k' : m[4] ? 'n' : m[5] ? 't' : 'f';
+    out += `<span class="tk-${cls}">${esc(m[0])}</span>`; last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
+}
+function highlightAll() { $$('pre code').forEach(c => { if (!c.dataset.hl) { c.innerHTML = highlight(c.textContent.replace(/^\n/, '')); c.dataset.hl = 1; } }); }
+
+/* ---------------- barra superior / navegación ---------------- */
+const PAGES = [
+  ['index.html', 'Inicio'], ['01-cuerpo-rigido.html', 'Cuerpo rígido'], ['02-mundo.html', 'El mundo'],
+  ['03-cuerpos.html', 'Cuerpos'], ['04-formas.html', 'Formas'], ['05-colisiones.html', 'Colisiones'],
+  ['06-eventos.html', 'Eventos'], ['07-joints.html', 'Joints'], ['08-consultas.html', 'Consultas'],
+  ['09-solver.html', 'Solver'], ['10-juegos.html', 'En juegos'], ['editor.html', 'Editor']];
+function buildChrome(current) {
+  const nav = h('nav', { 'aria-label': 'Temas de la clase' });
+  PAGES.slice(1).forEach(([href, name], i) => nav.append(h('a', { href, 'aria-current': href === current ? 'page' : null, class: href === 'editor.html' ? 'ed' : null }, href === 'editor.html' ? h('b', {}, '✎') : h('b', {}, i + 1), name)));
+  const bar = h('header', { class: 'topbar' },
+    h('a', { class: 'home', href: 'index.html' }, 'Unidad 10: Box2D'), nav);
+  document.body.prepend(bar);
+  const idx = PAGES.findIndex(p => p[0] === current);
+  if (idx >= 0 && $('main') && current !== 'editor.html') {
+    const prev = PAGES[idx - 1], next = PAGES[idx + 1];
+    $('main').append(h('div', { class: 'pager' },
+      prev ? h('a', { href: prev[0] }, h('span', {}, 'Anterior'), prev[1]) : h('span'),
+      next ? h('a', { href: next[0], style: { textAlign: 'right' } }, h('span', {}, 'Siguiente'), next[1]) : h('span')));
+  }
+  highlightAll(); if (typeof markTerms === 'function') markTerms();
+}
+
+/* ---------------- tooltips ---------------- */
+const _tip = (() => { const el = document.createElement('div'); el.className = 'tipbox'; el.setAttribute('role', 'tooltip'); return el; })();
+let _tipFor = null;
+function tipShow(target, html) {
+  if (!_tip.isConnected) document.body.append(_tip);
+  _tip.innerHTML = html; _tip.style.display = 'block'; _tipFor = target;
+  const r = target.getBoundingClientRect(), tw = _tip.offsetWidth, th = _tip.offsetHeight;
+  let x = clamp(r.left + r.width / 2 - tw / 2, 8, innerWidth - tw - 8), y = r.bottom + 8;
+  if (y + th > innerHeight - 8) y = r.top - th - 8;
+  _tip.style.left = x + 'px'; _tip.style.top = y + 'px';
+}
+function tipHide() { _tip.style.display = 'none'; _tipFor = null; }
+const _normKey = s => s.replace(/[▶■▸🎲↗✓]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+function controlTip(el) {
+  let key = null;
+  if (el.matches('.ctl label')) key = el.querySelector('span')?.textContent;
+  else if (el.matches('.stat')) key = el.querySelector('span')?.textContent;
+  else if (el.matches('.toggle')) key = el.textContent;
+  else if (el.matches('button')) key = el.textContent;
+  if (!key) return null; key = _normKey(key);
+  const P = window.PAGE_TIPS || {}; return P[key] || CONTROL_TIPS[key] || null;
+}
+function tipTargetOf(node) {
+  const el = node.closest && node.closest('.term, .ctl label, .stat, .toggle, main button'); if (!el) return null;
+  const html = el.dataset.tip || controlTip(el); return html ? [el, html] : null;
+}
+document.addEventListener('pointerover', e => { const t = tipTargetOf(e.target); if (t) { if (t[0] !== _tipFor) tipShow(t[0], t[1]); } else if (_tipFor && !_tipFor.contains(e.target)) tipHide(); });
+document.addEventListener('focusin', e => { const t = tipTargetOf(e.target); if (t) tipShow(t[0], t[1]); });
+document.addEventListener('focusout', tipHide);
+document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('.term'); if (t) { _tipFor === t ? tipHide() : tipShow(t, t.dataset.tip); } });
+addEventListener('scroll', tipHide, { passive: true });
+/* marca los términos del glosario: primera aparición en cada sección (h2) */
+function markTerms() {
+  const main = $('main'); if (!main) return;
+  const items = GLOSARIO.map(([pat, def]) => ({ re: new RegExp(`(?<![\\p{L}\\d])(?:${pat})(?![\\p{L}\\d])`, 'iu'), def }));
+  let used = new Set();
+  const skip = n => n.closest('pre, code, .formula, a, h1, h2, h3, h4, button, label, .tag, .stat, .panel, .readout, .rig-title, .tipbox, .term, summary, th, .topics, .seg, .plan, .noterm');
+  const walker = document.createTreeWalker(main, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  const texts = []; let n;
+  while ((n = walker.nextNode())) { if (n.nodeType === 1 && n.tagName === 'H2') texts.push('H2'); else if (n.nodeType === 3 && n.nodeValue.trim() && !skip(n.parentElement)) texts.push(n); }
+  for (const t of texts) {
+    if (t === 'H2') { used = new Set(); continue; }
+    let node = t;
+    for (;;) {
+      let best = null;
+      items.forEach((it, i) => { if (used.has(i)) return; const m = it.re.exec(node.nodeValue); if (m && (!best || m.index < best.m.index)) best = { m, i, it }; });
+      if (!best) break;
+      used.add(best.i);
+      const before = node.splitText(best.m.index), after = before.splitText(best.m[0].length);
+      const span = h('span', { class: 'term', tabindex: 0, 'data-tip': best.it.def }, before.nodeValue);
+      before.replaceWith(span); node = after;
+    }
+  }
+}
+
+
+/* ====================================================================
+   Unidad 10 – Box2D · lab.js: un mundo de Phaser Box2D dentro de un canvas
+   (se inlinea en cada página; usa el global B2 de phaser-box2d.js)
+   ==================================================================== */
+const B = window.B2;
+B.b2CreateWorldArray();
+const V2 = (x, y) => new B.b2Vec2(x, y);
+const DYN = B.b2BodyType.b2_dynamicBody, STA = B.b2BodyType.b2_staticBody, KIN = B.b2BodyType.b2_kinematicBody;
+const HC = B.b2HexColor;
+const hexCss = (c, a = 1) => { c &= 0xffffff; const r = c >> 16, g = (c >> 8) & 255, b = c & 255; return a >= 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`; };
+/* colores de la paleta, como enteros para customColor */
+const PC = { amber: 0xffb23f, cyan: 0x5ed0e6, red: 0xff6b5a, violet: 0xb99cff, green: 0x8fd694, ink: 0xe9eef1, muted: 0x9eadb8, blue: 0x6f9bff, pink: 0xff8fc7, sand: 0xd9b77e };
+/* b2World_Draw pinta cada forma con un color que codifica el estado del cuerpo: lo traducimos a la estética de la clase */
+const STATE = new Map([
+  [HC.b2_colorPink, 'awake'], [HC.b2_colorSalmon, 'awake'], [HC.b2_colorYellow, 'awake'], [HC.b2_colorGray, 'sleep'],
+  [HC.b2_colorPaleGreen, 'static'], [HC.b2_colorRoyalBlue, 'kin'], [HC.b2_colorWheat, 'sensor'], [HC.b2_colorTurquoise, 'bullet'],
+  [HC.b2_colorRed, 'bad'], [HC.b2_colorSlateGray, 'disabled'],
+  [HC.b2_colorAqua, 'static']]);   // las cadenas no tienen customColor y heredan el aqua por defecto de b2ShapeDef
+const LOOK = {
+  awake: ['rgba(255,178,63,.16)', '#ffb23f'], sleep: ['rgba(110,128,138,.14)', '#6b7f89'], static: ['#1f2d34', '#7d8f99'],
+  kin: ['rgba(94,208,230,.16)', '#5ed0e6'], sensor: ['rgba(185,156,255,.08)', '#b99cff'], bullet: ['rgba(94,208,230,.3)', '#9fefff'],
+  bad: ['rgba(255,107,90,.3)', '#ff6b5a'], disabled: ['rgba(70,86,99,.2)', '#465663'],
+};
+const LABS = [];
+
+class Lab {
+  /* o: {view:[xmin,xmax,ymin], gravity:[x,y], hz, sub, setup(lab), preStep(lab,h), onStep(lab,h), under(lab,g), over(lab,g),
+         pointer(type,p,e,lab)->true si lo consume, drag:true, flags:{}, sleep:true, continuous:true, tag:'' , autoStart:true} */
+  constructor(sel, o = {}) {
+    this.cv = typeof sel === 'string' ? $(sel) : sel;
+    this.o = o; this.view = o.view || [-10, 10, -1];
+    this.hz = o.hz || 60; this.sub = o.sub || 4; this.timeScale = 1; this.paused = !!o.paused;
+    this.flags = Object.assign({ shapes: true, joints: true, aabbs: false, mass: false, contacts: false, normals: false, impulses: false, friction: false, graph: false }, o.flags || {});
+    this.world = null; this.acc = 0; this.time = 0; this.steps = 0; this.stepMs = 0; this.drag = null;
+    this.pointer = null; this.hover = false; this.w = 300; this.h = 200; this.scale = 20; this.state = {};
+    this.dd = this._makeDraw();
+    this._bindPointer();
+    LABS.push(this);
+    animate(this.cv, c => this.frame(c));
+  }
+  /* ---------- ciclo de vida ---------- */
+  reset() {
+    if (this.drag) this.drag = null;
+    if (this.world) { try { B.b2DestroyWorld(this.world); } catch (e) { console.warn(e); } }
+    const wd = B.b2DefaultWorldDef();
+    const g = this.o.gravity || [0, -10]; wd.gravity = V2(g[0], g[1]);
+    if (this.o.sleep === false) wd.enableSleep = false;
+    if (this.o.continuous === false) wd.enableContinuous = false;
+    if (this.o.worldDef) this.o.worldDef(wd);
+    this.world = B.b2CreateWorld(wd);
+    this.bodies = []; this.joints = []; this.acc = 0; this.time = 0; this.steps = 0; this.state = {};
+    this.anchor = this.body(0, 0, { type: STA, track: false });   // cuerpo estático invisible: ancla del mouse joint
+    if (this.o.setup) this.o.setup(this);
+    return this;
+  }
+  ensure() { if (!this.world) this.reset(); return this; }
+  /* ---------- cámara ---------- */
+  fit(w, h) {
+    this.w = w; this.h = h; const [x0, x1, y0] = this.view;
+    this.scale = w / (x1 - x0); this.x0 = x0; this.y0 = y0;
+  }
+  sx(x) { return (x - this.x0) * this.scale; }
+  sy(y) { return this.h - (y - this.y0) * this.scale; }
+  wx(px) { return px / this.scale + this.x0; }
+  wy(py) { return (this.h - py) / this.scale + this.y0; }
+  get ytop() { return this.wy(0); }
+  /* ---------- crear cosas (todo en metros) ---------- */
+  body(x, y, o = {}) {
+    const bd = B.b2DefaultBodyDef();
+    bd.type = o.type ?? DYN; bd.position = V2(x, y);
+    if (o.angle) bd.rotation = B.b2MakeRot(o.angle);
+    if (o.vel) bd.linearVelocity = V2(o.vel[0], o.vel[1]);
+    if (o.angVel) bd.angularVelocity = o.angVel;
+    if (o.linDamp) bd.linearDamping = o.linDamp;
+    if (o.angDamp) bd.angularDamping = o.angDamp;
+    if (o.gravityScale != null) bd.gravityScale = o.gravityScale;
+    if (o.fixedRotation) bd.fixedRotation = true;
+    if (o.bullet) bd.isBullet = true;
+    if (o.sleep === false) bd.enableSleep = false;
+    if (o.awake === false) bd.isAwake = false;
+    if (o.sleepThreshold != null) bd.sleepThreshold = o.sleepThreshold;
+    bd.userData = o.data ?? null;
+    const id = B.b2CreateBody(this.world, bd);
+    if (o.track !== false) this.bodies.push(id);
+    return id;
+  }
+  sdef(o = {}) {
+    const sd = B.b2DefaultShapeDef();
+    sd.density = o.density ?? 1; sd.friction = o.friction ?? 0.6; sd.restitution = o.restitution ?? 0;
+    sd.customColor = o.color ?? 0;
+    if (o.sensor) sd.isSensor = true;
+    if (o.hit) sd.enableHitEvents = true;
+    if (o.preSolve) sd.enablePreSolveEvents = true;
+    if (o.contactEvents === false) sd.enableContactEvents = false;
+    if (o.sensorEvents === false) sd.enableSensorEvents = false;
+    if (o.cat != null) sd.filter.categoryBits = o.cat;
+    if (o.mask != null) sd.filter.maskBits = o.mask;
+    if (o.group != null) sd.filter.groupIndex = o.group;
+    sd.userData = o.shapeData ?? null;
+    return sd;
+  }
+  _b(x, y, o) { return o.body || this.body(x, y, o); }
+  box(x, y, hw, hh, o = {}) {
+    const b = this._b(x, y, o);
+    const poly = o.offset ? B.b2MakeOffsetBox(hw, hh, V2(o.offset[0], o.offset[1]), o.offAngle || 0)
+      : o.radius ? B.b2MakeRoundedBox(hw, hh, o.radius) : B.b2MakeBox(hw, hh);
+    o.shape = B.b2CreatePolygonShape(b, this.sdef(o), poly); return b;
+  }
+  circle(x, y, r, o = {}) {
+    const b = this._b(x, y, o);
+    o.shape = B.b2CreateCircleShape(b, this.sdef(o), new B.b2Circle(V2(...(o.offset || [0, 0])), r)); return b;
+  }
+  /* cápsula horizontal de largo total 2*(hl+r), o con centros locales c1, c2 */
+  capsule(x, y, hl, r, o = {}) {
+    const b = this._b(x, y, o); const c = new B.b2Capsule();
+    c.center1 = V2(...(o.c1 || [-hl, 0])); c.center2 = V2(...(o.c2 || [hl, 0])); c.radius = r;
+    o.shape = B.b2CreateCapsuleShape(b, this.sdef(o), c); return b;
+  }
+  /* polígono convexo a partir de puntos locales (se calcula la envolvente convexa, máx. 8 vértices) */
+  poly(x, y, pts, o = {}) {
+    const hull = B.b2ComputeHull(pts.map(p => V2(p[0], p[1])), pts.length);
+    if (!hull || hull.count < 3) return null;
+    const b = this._b(x, y, o);
+    o.shape = B.b2CreatePolygonShape(b, this.sdef(o), B.b2MakePolygon(hull, o.radius || 0)); return b;
+  }
+  ngon(x, y, n, r, o = {}) { const pts = []; for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + (o.rot || 0); pts.push([Math.cos(a) * r, Math.sin(a) * r]); } return this.poly(x, y, pts, o); }
+  segment(x1, y1, x2, y2, o = {}) {
+    const b = o.body || this.body(0, 0, Object.assign({ type: STA }, o));
+    o.shape = B.b2CreateSegmentShape(b, this.sdef(o), new B.b2Segment(V2(x1, y1), V2(x2, y2))); return b;
+  }
+  /* cadena: lista de puntos [[x,y],...] en coordenadas de mundo (o locales si o.body) */
+  chain(pts, o = {}) {
+    const b = o.body || this.body(0, 0, Object.assign({ type: STA }, o));
+    const cd = B.b2DefaultChainDef();
+    cd.points = pts.map(p => V2(p[0], p[1])); cd.count = pts.length; cd.isLoop = !!o.loop;
+    cd.friction = o.friction ?? 0.6; cd.restitution = o.restitution ?? 0;
+    if (o.cat != null) cd.filter.categoryBits = o.cat;
+    if (o.mask != null) cd.filter.maskBits = o.mask;
+    o.chain = B.b2CreateChain(b, cd); return b;
+  }
+  /* piso y paredes estáticas que siguen la vista */
+  ground(o = {}) {
+    const [x0, x1, y0] = this.view, b = this.body(0, 0, { type: STA });
+    const y = o.y ?? y0 + 0.5, top = y0 + (x1 - x0) * 2;
+    const sd = this.sdef(o);
+    B.b2CreatePolygonShape(b, sd, B.b2MakeOffsetBox((x1 - x0) / 2 + 1, 0.5, V2((x0 + x1) / 2, y - 0.5), 0));
+    if (o.walls !== false) {
+      B.b2CreatePolygonShape(b, sd, B.b2MakeOffsetBox(0.5, (top - y) / 2, V2(x0 - 0.5, (y + top) / 2), 0));
+      B.b2CreatePolygonShape(b, sd, B.b2MakeOffsetBox(0.5, (top - y) / 2, V2(x1 + 0.5, (y + top) / 2), 0));
+    }
+    return b;
+  }
+  joint(kind, def) {
+    const fn = { revolute: B.b2CreateRevoluteJoint, weld: B.b2CreateWeldJoint, distance: B.b2CreateDistanceJoint, prismatic: B.b2CreatePrismaticJoint,
+      wheel: B.b2CreateWheelJoint, motor: B.b2CreateMotorJoint, mouse: B.b2CreateMouseJoint }[kind];
+    const id = fn(this.world, def); this.joints.push(id); return id;
+  }
+  /* definiciones de joints con anclas en coordenadas de MUNDO (como hace Box2D en sus samples) */
+  jdef(kind, bA, bB, anchor, o = {}) {
+    const mk = { revolute: B.b2DefaultRevoluteJointDef, weld: B.b2DefaultWeldJointDef, distance: B.b2DefaultDistanceJointDef, prismatic: B.b2DefaultPrismaticJointDef,
+      wheel: B.b2DefaultWheelJointDef, motor: B.b2DefaultMotorJointDef }[kind];
+    // si el joint va al "fondo", usamos un cuerpo estático propio en el pivote: así el dibujo de Box2D
+    // no traza una línea desde el origen del mundo hasta el ancla
+    if (bA === this.anchor && anchor) bA = this.body(anchor[0], anchor[1], { type: STA, track: false });
+    const d = mk(); d.bodyIdA = bA; d.bodyIdB = bB;
+    if (anchor && 'localAnchorA' in d) {
+      const a = V2(anchor[0], anchor[1]), b = o.anchorB ? V2(o.anchorB[0], o.anchorB[1]) : a;
+      d.localAnchorA = B.b2Body_GetLocalPoint(bA, a); d.localAnchorB = B.b2Body_GetLocalPoint(bB, b);
+    }
+    if ('referenceAngle' in d) d.referenceAngle = B.b2RelativeAngle(B.b2Body_GetRotation(bB), B.b2Body_GetRotation(bA));
+    if (o.axis && 'localAxisA' in d) d.localAxisA = B.b2Body_GetLocalVector(bA, B.b2Normalize(V2(o.axis[0], o.axis[1])));
+    for (const k in o) if (k in d && !['anchorB', 'axis'].includes(k)) d[k] = o[k];
+    return d;
+  }
+  /* ---------- consultas ---------- */
+  pick(p, onlyDynamic = true) {
+    let found = null; const P = V2(p.x, p.y);
+    const aabb = new B.b2AABB(p.x - 0.01, p.y - 0.01, p.x + 0.01, p.y + 0.01);
+    B.b2World_OverlapAABB(this.world, aabb, B.b2DefaultQueryFilter(), (shapeId) => {
+      const body = B.b2Shape_GetBody(shapeId);
+      if (onlyDynamic && B.b2Body_GetType(body) !== DYN) return true;
+      if (B.b2Shape_TestPoint(shapeId, P)) { found = { shapeId, body }; return false; }
+      return true;
+    }, null);
+    return found;
+  }
+  awakeCount() { let n = 0; for (const b of this.bodies) if (B.b2Body_IsValid(b) && B.b2Body_GetType(b) === DYN && B.b2Body_IsAwake(b)) n++; return n; }
+  dynCount() { let n = 0; for (const b of this.bodies) if (B.b2Body_IsValid(b) && B.b2Body_GetType(b) === DYN) n++; return n; }
+  /* ---------- simulación ---------- */
+  stepOnce() {
+    const h = 1 / this.hz;
+    if (this.o.preStep) this.o.preStep(this, h);
+    const t0 = performance.now();
+    B.b2World_Step(this.world, h, this.sub);
+    const ms = performance.now() - t0; this.stepMs = this.stepMs ? this.stepMs * 0.9 + ms * 0.1 : ms;
+    this.time += h; this.steps++;
+    if (this.o.onStep) this.o.onStep(this, h);
+  }
+  frame({ g, w, h, dt }) {
+    this.fit(w, h);
+    if (!this.world) { this.reset(); }
+    if (!this.paused && this.o.stepper) this.o.stepper(this, dt * this.timeScale);
+    else if (!this.paused) {
+      this.acc = Math.min(this.acc + dt * this.timeScale, 0.2);
+      const hs = 1 / this.hz; let n = 0;
+      while (this.acc >= hs && n < 8) { this.stepOnce(); this.acc -= hs; n++; }
+    }
+    this.draw(g);
+  }
+  /* ---------- dibujo ---------- */
+  grid(g) {
+    g.fillStyle = COL.screen; g.fillRect(0, 0, this.w, this.h);
+    const s = this.scale, step = s < 9 ? 5 : 1;
+    g.lineWidth = 1; g.strokeStyle = COL.grid; g.beginPath();
+    for (let x = Math.ceil(this.x0 / step) * step; this.sx(x) < this.w; x += step) { const X = Math.round(this.sx(x)) + .5; g.moveTo(X, 0); g.lineTo(X, this.h); }
+    for (let y = Math.ceil(this.y0 / step) * step; this.sy(y) > 0; y += step) { const Y = Math.round(this.sy(y)) + .5; g.moveTo(0, Y); g.lineTo(this.w, Y); }
+    g.stroke();
+    if (this.o.axes !== false && this.sy(0) < this.h && this.sy(0) > 0) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(this.sy(0)) + .5); g.lineTo(this.w, Math.round(this.sy(0)) + .5); g.stroke(); }
+  }
+  draw(g) {
+    this.g = g;
+    this.grid(g);
+    if (this.o.under) this.o.under(this, g);
+    const d = this.dd, f = this.flags;
+    d.drawShapes = f.shapes; d.drawJoints = f.joints; d.drawAABBs = f.aabbs; d.drawMass = false;
+    d.drawContacts = f.contacts || f.graph; d.drawContactNormals = f.normals; d.drawContactImpulses = f.impulses; d.drawFrictionImpulses = f.friction; d.drawGraphColors = f.graph;
+    if (this.o.drawWorld !== false) B.b2World_Draw(this.world, d);
+    if (f.mass) for (const b of this.bodies) {   // centro de masa y masa de los dinámicos (el de Box2D también dibuja los estáticos)
+      if (!B.b2Body_IsValid(b) || B.b2Body_GetType(b) !== DYN) continue;
+      const c = B.b2Body_GetWorldCenterOfMass(b); d.DrawTransform(new B.b2Transform(c, B.b2Body_GetRotation(b)));
+      text(g, fmtNum(B.b2Body_GetMass(b), 2) + ' kg', this.sx(c.x) + 6, this.sy(c.y) - 6, '#cfd8de', 'left', '11px JetBrains Mono, monospace');
+    }
+    if (this.o.over) this.o.over(this, g);
+    if (this.drag && B.b2Joint_IsValid(this.drag.joint)) {
+      const t = this.drag.target, b = B.b2Body_GetWorldPoint(this.drag.body, this.drag.local);
+      g.strokeStyle = '#e9eef1aa'; g.setLineDash([4, 4]); g.lineWidth = 1.2; g.beginPath(); g.moveTo(this.sx(b.x), this.sy(b.y)); g.lineTo(this.sx(t.x), this.sy(t.y)); g.stroke(); g.setLineDash([]);
+      g.fillStyle = COL.ink; g.beginPath(); g.arc(this.sx(t.x), this.sy(t.y), 3.5, 0, 7); g.fill();
+    }
+    if (this.paused && !this.o.hidePause) text(g, 'EN PAUSA', this.w - 10, 18, COL.amber, 'right', '600 12px JetBrains Mono, monospace');
+  }
+  /* trazos auxiliares en coordenadas de mundo */
+  line(x1, y1, x2, y2, color = COL.ink, width = 1.5, dash) {
+    const g = this.g; g.strokeStyle = color; g.lineWidth = width; if (dash) g.setLineDash(dash);
+    g.beginPath(); g.moveTo(this.sx(x1), this.sy(y1)); g.lineTo(this.sx(x2), this.sy(y2)); g.stroke(); if (dash) g.setLineDash([]);
+  }
+  arrow(x, y, dx, dy, color = COL.ink, width = 2) {
+    const g = this.g, X1 = this.sx(x), Y1 = this.sy(y), X2 = this.sx(x + dx), Y2 = this.sy(y + dy);
+    const L = Math.hypot(X2 - X1, Y2 - Y1); if (L < 1) return; const ux = (X2 - X1) / L, uy = (Y2 - Y1) / L, hl = Math.min(10, L * 0.4);
+    g.strokeStyle = color; g.fillStyle = color; g.lineWidth = width; g.beginPath(); g.moveTo(X1, Y1); g.lineTo(X2 - ux * hl * 0.6, Y2 - uy * hl * 0.6); g.stroke();
+    g.beginPath(); g.moveTo(X2, Y2); g.lineTo(X2 - ux * hl - uy * hl * 0.5, Y2 - uy * hl + ux * hl * 0.5); g.lineTo(X2 - ux * hl + uy * hl * 0.5, Y2 - uy * hl - ux * hl * 0.5); g.closePath(); g.fill();
+  }
+  dot(x, y, r = 3, color = COL.ink) { const g = this.g; g.fillStyle = color; g.beginPath(); g.arc(this.sx(x), this.sy(y), r, 0, 7); g.fill(); }
+  ring(x, y, rm, color = COL.ink, width = 1.5, dash) { const g = this.g; g.strokeStyle = color; g.lineWidth = width; if (dash) g.setLineDash(dash); g.beginPath(); g.arc(this.sx(x), this.sy(y), rm * this.scale, 0, 7); g.stroke(); if (dash) g.setLineDash([]); }
+  label(s, x, y, color = COL.muted, align = 'center', font) { text(this.g, s, this.sx(x), this.sy(y), color, align, font); }
+  _makeDraw() {
+    const d = new B.b2DebugDraw(), lab = this;
+    const look = c => { const st = STATE.get(c); return st ? LOOK[st].concat(st) : [hexCss(c, 0.2), hexCss(c), 'custom']; };
+    const finish = (g, L) => { g.fillStyle = L[0]; g.fill(); g.strokeStyle = L[1]; g.lineWidth = 1.5; if (L[2] === 'sensor') g.setLineDash([5, 4]); g.stroke(); g.setLineDash([]); };
+    d.DrawSolidPolygon = (xf, vs, n, radius, color) => {
+      const g = lab.g, L = look(color), c = xf.q.c, s = xf.q.s, px = xf.p.x, py = xf.p.y;
+      g.beginPath();
+      if (radius > 0) {   // polígono redondeado: cada vértice se reemplaza por un arco de radio r
+        const W = vs.slice(0, n).map(v => [px + c * v.x - s * v.y, py + s * v.x + c * v.y]);
+        let first = true;
+        for (let i = 0; i < n; i++) {
+          const a = W[(i + n - 1) % n], b = W[i], d = W[(i + 1) % n];
+          let a0 = Math.atan2(-(b[0] - a[0]), b[1] - a[1]), a1 = Math.atan2(-(d[0] - b[0]), d[1] - b[1]);
+          while (a1 < a0) a1 += Math.PI * 2;
+          for (let k = 0; k <= 5; k++) { const t = a0 + (a1 - a0) * k / 5, X = lab.sx(b[0] + Math.cos(t) * radius), Y = lab.sy(b[1] + Math.sin(t) * radius); first ? g.moveTo(X, Y) : g.lineTo(X, Y); first = false; }
+        }
+      } else for (let i = 0; i < n; i++) { const v = vs[i], X = lab.sx(px + c * v.x - s * v.y), Y = lab.sy(py + s * v.x + c * v.y); i ? g.lineTo(X, Y) : g.moveTo(X, Y); }
+      g.closePath(); g.lineJoin = 'round'; finish(g, L);
+    };
+    d.DrawSolidCircle = (xf, r, color) => {
+      const g = lab.g, L = look(color), X = lab.sx(xf.p.x), Y = lab.sy(xf.p.y), R = r * lab.scale;
+      g.beginPath(); g.arc(X, Y, R, 0, Math.PI * 2); finish(g, L);
+      g.strokeStyle = L[1]; g.beginPath(); g.moveTo(X, Y); g.lineTo(X + xf.q.c * R, Y - xf.q.s * R); g.stroke();
+    };
+    d.DrawSolidCapsule = (p1, p2, r, color) => {
+      const g = lab.g, L = look(color), X1 = lab.sx(p1.x), Y1 = lab.sy(p1.y), X2 = lab.sx(p2.x), Y2 = lab.sy(p2.y), R = r * lab.scale;
+      const a = Math.atan2(Y2 - Y1, X2 - X1);
+      g.beginPath(); g.arc(X1, Y1, R, a + Math.PI / 2, a + Math.PI * 1.5); g.arc(X2, Y2, R, a - Math.PI / 2, a + Math.PI / 2); g.closePath(); finish(g, L);
+      g.strokeStyle = L[1]; g.beginPath(); g.moveTo(X1, Y1); g.lineTo(X2, Y2); g.globalAlpha = 0.4; g.stroke(); g.globalAlpha = 1;
+    };
+    d.DrawSegment = (p1, p2, color) => {
+      const g = lab.g, st = STATE.get(color), col = st ? LOOK[st][1] : hexCss(color);
+      g.strokeStyle = st === 'static' ? '#9fb0ba' : col; g.lineWidth = st ? 2.5 : 1.5; g.beginPath(); g.moveTo(lab.sx(p1.x), lab.sy(p1.y)); g.lineTo(lab.sx(p2.x), lab.sy(p2.y)); g.stroke();
+    };
+    d.DrawPolygon = (xf, vs, n, color) => {
+      const g = lab.g; g.strokeStyle = hexCss(color, 0.55); g.lineWidth = 1; g.beginPath();
+      for (let i = 0; i < n; i++) { const v = xf ? B.b2TransformPoint(xf, vs[i]) : vs[i]; i ? g.lineTo(lab.sx(v.x), lab.sy(v.y)) : g.moveTo(lab.sx(v.x), lab.sy(v.y)); }
+      g.closePath(); g.stroke();
+    };
+    d.DrawCircle = (p, r, color) => { const g = lab.g; g.strokeStyle = hexCss(color, 0.8); g.lineWidth = 1; g.beginPath(); g.arc(lab.sx(p.x), lab.sy(p.y), Math.max(2, r * lab.scale), 0, 7); g.stroke(); };
+    d.DrawPoint = (x, y, size, color) => { const g = lab.g; g.fillStyle = hexCss(color); g.beginPath(); g.arc(lab.sx(x), lab.sy(y), Math.max(1.5, size * 0.45), 0, 7); g.fill(); };
+    d.DrawTransform = (xf) => {
+      const g = lab.g, X = lab.sx(xf.p.x), Y = lab.sy(xf.p.y), L = 14;
+      g.lineWidth = 1.5; g.strokeStyle = COL.red; g.beginPath(); g.moveTo(X, Y); g.lineTo(X + xf.q.c * L, Y - xf.q.s * L); g.stroke();
+      g.strokeStyle = COL.green; g.beginPath(); g.moveTo(X, Y); g.lineTo(X - xf.q.s * L, Y - xf.q.c * L); g.stroke();
+      g.fillStyle = COL.ink; g.beginPath(); g.arc(X, Y, 2.5, 0, 7); g.fill();
+    };
+    d.DrawString = (p, s) => { text(lab.g, String(s).trim(), lab.sx(p.x) + 4, lab.sy(p.y) - 4, '#cfd8de', 'left', '11px JetBrains Mono, monospace'); };
+    d.DrawImagePolygon = d.DrawImageCircle = d.DrawImageCapsule = () => {};
+    return d;
+  }
+  /* ---------- mouse: arrastrar con un mouse joint ---------- */
+  _bindPointer() {
+    const cv = this.cv;
+    const P = e => { const r = cv.getBoundingClientRect(); return { x: this.wx(e.clientX - r.left), y: this.wy(e.clientY - r.top) }; };
+    cv.addEventListener('pointerdown', e => {
+      if (!this.world) return; const p = P(e); this.pointer = p;
+      if (this.o.pointer && this.o.pointer('down', p, e, this)) { cv.setPointerCapture(e.pointerId); return; }
+      if (this.o.drag === false) return;
+      const hit = this.pick(p); if (!hit) return;
+      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      const md = B.b2DefaultMouseJointDef();
+      md.bodyIdA = this.anchor; md.bodyIdB = hit.body; md.target = V2(p.x, p.y);
+      md.hertz = this.o.dragHz || 5; md.dampingRatio = 0.7;
+      md.maxForce = (this.o.dragForce || 1000) * Math.max(0.5, B.b2Body_GetMass(hit.body)) * 10;
+      const joint = B.b2CreateMouseJoint(this.world, md);
+      B.b2Body_SetAwake(hit.body, true);
+      this.drag = { joint, body: hit.body, target: V2(p.x, p.y), local: B.b2Body_GetLocalPoint(hit.body, V2(p.x, p.y)) };
+    });
+    cv.addEventListener('pointermove', e => {
+      if (!this.world) return; const p = P(e); this.pointer = p; this.hover = true;
+      if (this.o.pointer && this.o.pointer('move', p, e, this)) return;
+      if (this.drag && B.b2Joint_IsValid(this.drag.joint)) { this.drag.target = V2(p.x, p.y); B.b2MouseJoint_SetTarget(this.drag.joint, this.drag.target); B.b2Body_SetAwake(this.drag.body, true); }
+    });
+    const up = e => {
+      if (!this.world) return; const p = P(e);
+      if (this.o.pointer) this.o.pointer('up', p, e, this);
+      if (this.drag) { if (B.b2Joint_IsValid(this.drag.joint)) B.b2DestroyJoint(this.drag.joint); this.drag = null; }
+    };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('pointerleave', () => { this.hover = false; });
+    cv.style.cursor = this.o.cursor || 'grab';
+  }
+  /* ---------- controles estándar ---------- */
+  controls(parent, opts = {}) {
+    const row = h('div', { class: 'row' });
+    const bp = button(row, this.paused ? 'Seguir' : 'Pausar', () => { this.paused = !this.paused; bp.textContent = this.paused ? 'Seguir' : 'Pausar'; });
+    this._pauseBtn = bp;
+    button(row, 'Un paso', () => { this.ensure(); if (!this.paused) { this.paused = true; bp.textContent = 'Seguir'; } this.stepOnce(); });
+    button(row, 'Reiniciar', () => { this.reset(); if (opts.onReset) opts.onReset(); }, 'primary');
+    if (opts.slow !== false) toggle(row, 'Cámara lenta', false, v => this.timeScale = v ? 0.2 : 1);
+    (typeof parent === 'string' ? $(parent) : parent).append(row);
+    return row;
+  }
+  setPaused(v) { this.paused = v; if (this._pauseBtn) this._pauseBtn.textContent = v ? 'Seguir' : 'Pausar'; }
+}
+
+/* toggles de "qué dibujar": flagToggles('#ctl', lab, ['aabbs','mass','contacts']) */
+const FLAG_NAMES = { joints: 'Joints', aabbs: 'AABB', mass: 'Centro de masa', contacts: 'Puntos de contacto', normals: 'Normales', impulses: 'Impulsos', friction: 'Fricción', graph: 'Colores del grafo' };
+function flagToggles(parent, lab, keys) {
+  const row = h('div', { class: 'row' });
+  for (const k of keys) toggle(row, FLAG_NAMES[k], lab.flags[k], v => lab.flags[k] = v);
+  (typeof parent === 'string' ? $(parent) : parent).append(row); return row;
+}
+/* leer posición/ángulo cómodo */
+const pos = b => B.b2Body_GetPosition(b);
+const ang = b => B.b2Rot_GetAngle(B.b2Body_GetRotation(b));
+const vel = b => B.b2Body_GetLinearVelocity(b);
+/* identidad de ids (los ids son objetos nuevos en cada llamada) */
+const idKey = id => id ? id.index1 * 65536 + id.revision : -1;
+const sameId = (a, b) => a && b && a.index1 === b.index1 && a.revision === b.revision && a.world0 === b.world0;
+/* rayo al más cercano con b2World_CastRay y el callback clásico: devolver fraction recorta el rayo hasta ese impacto
+   (es lo que hace b2World_CastRayClosest por dentro; ver los parches del capítulo 8) */
+function rayClosest(world, o, t, filter = B.b2DefaultQueryFilter()) {
+  let best = null;
+  B.b2World_CastRay(world, V2(o.x, o.y), V2(t.x, t.y), filter, (shapeId, point, normal, fraction) => {
+    best = { shapeId, point: V2(point.x, point.y), normal: V2(normal.x, normal.y), fraction }; return fraction;
+  }, null);
+  return best;
+}
+/* formas de un cuerpo (b2Body_GetShapes llena un array y devuelve la cantidad) */
+function shapesOf(b) { const a = []; B.b2Body_GetShapes(b, a); return a; }
+/* contactos que están tocando a un cuerpo (b2Body_GetContactData necesita un array ya lleno de b2ContactData) */
+function contactsOf(b) { const n = B.b2Body_GetContactCapacity(b); if (!n) return []; const a = Array.from({ length: n }, () => new B.b2ContactData()); const c = B.b2Body_GetContactData(b, a, n); return a.slice(0, c); }
+
+</script>
+<script>
+window.PAGE_TIPS = {
+  'límite': 'Activa el límite del joint.', 'rango ±': 'Ángulo máximo hacia cada lado.', 'motor': 'Activa el motor del joint.', 'velocidad del motor': 'Velocidad a la que intenta mover el motor.',
+  'torque máximo': 'Lo máximo que puede hacer el motor. Si la carga pide más, no llega a la velocidad.', 'resorte': 'Activa el resorte del joint.', 'frecuencia del resorte': 'Hz: oscilaciones por segundo. Más alto = más duro.',
+  'tirar cajas': 'Suelta cajas encima.', 'ángulo': 'b2RevoluteJoint_GetAngle: ángulo actual respecto del de reposo.', 'torque del motor': 'b2RevoluteJoint_GetMotorTorque: lo que está haciendo el motor ahora.',
+  'fuerza máxima': 'Lo máximo que puede hacer el motor o el joint, en newtons.', 'fuerza del motor': 'b2PrismaticJoint_GetMotorForce: lo que está haciendo el motor ahora.', 'carga pesada': 'Suelta una caja de 400 kg en la plataforma.',
+  'amortiguación': 'dampingRatio: 0 oscila para siempre, 1 vuelve sin pasarse.', 'largo': 'Largo de los tres joints (b2DistanceJoint_SetLength).', 'sacudir': 'Empujón horizontal a los tres pesos.',
+  'frecuencia angular': 'angularHertz del weld: 0 es rígido.', 'frecuencia lineal': 'linearHertz del weld: 0 es rígido.', 'tirar peso': 'Una caja pesada sobre la punta.',
+  'acelerar': 'Mantené apretado para acelerar hacia la derecha.', 'frenar / atrás': 'Mantené apretado para ir hacia atrás.', 'frecuencia de suspensión': 'hertz del resorte de los wheel joints.', 'amortiguación de suspensión': 'dampingRatio de la suspensión.',
+  'velocidad': 'Velocidad del auto en km/h.', 'frecuencia del mouse': 'hertz del mouse joint: qué tan rápido sigue al puntero.', 'fuerza máxima del mouse': 'Fuerza máxima, en veces el peso del cuerpo que agarrás.',
+  'umbral de rotura': 'Fuerza a partir de la cual una unión se destruye.', 'cajas pesadas': 'Suelta tres cajas de 80 kg.', 'rearmar': 'Vuelve a armar el puente.',
+  'tirar ragdoll': 'Suelta un ragdoll humano.', 'tirar elefante': 'Suelta un ragdoll de elefante.', 'uniones rotas': 'Joints destruidos desde que se armó el puente.',
+};
+/* ---------- revolute ---------- */
+const REV = { lim: false, deg: 45, mot: false, spd: 1.5, tq: 400, spr: true, hz: 1.5 };
+const rev = new Lab('#cvrev', { view: [-9, 9, -0.6], setup(L) {
+  L.ground(); const arm = L.box(0, 2.6, 3.2, 0.15, { density: 2 });
+  const d = L.jdef('revolute', L.anchor, arm, [0, 2.6], { enableLimit: REV.lim, lowerAngle: -REV.deg * Math.PI / 180, upperAngle: REV.deg * Math.PI / 180, enableMotor: REV.mot, motorSpeed: REV.spd, maxMotorTorque: REV.tq, enableSpring: REV.spr, hertz: REV.hz, dampingRatio: 0.2, drawSize: 0.4 });
+  L.state.j = L.joint('revolute', d); L.box(-2, 4.5, 0.4, 0.4, {}); L.box(2.2, 4.8, 0.3, 0.3, {});
+}});
+const revJ = () => (rev.ensure(), rev.state.j);
+rev.controls('#revctl');
+const rvc = $('#revctl');
+toggle(rvc, 'Límite', REV.lim, v => { REV.lim = v; B.b2RevoluteJoint_EnableLimit(revJ(), v); B.b2Joint_WakeBodies(revJ()); });
+slider(rvc, { label: 'Rango ±', min: 5, max: 170, step: 1, value: REV.deg, fmt: v => v + '°', oninput: v => { REV.deg = v; B.b2RevoluteJoint_SetLimits(revJ(), -v * Math.PI / 180, v * Math.PI / 180); B.b2Joint_WakeBodies(revJ()); } });
+toggle(rvc, 'Motor', REV.mot, v => { REV.mot = v; B.b2RevoluteJoint_EnableMotor(revJ(), v); B.b2Joint_WakeBodies(revJ()); });
+slider(rvc, { label: 'Velocidad del motor', min: -6, max: 6, step: 0.1, value: REV.spd, fmt: v => fmtNum(v, 1) + ' rad/s', oninput: v => { REV.spd = v; B.b2RevoluteJoint_SetMotorSpeed(revJ(), v); B.b2Joint_WakeBodies(revJ()); } });
+slider(rvc, { label: 'Torque máximo', min: 5, max: 2000, step: 5, value: REV.tq, log: true, fmt: v => fmtInt(v) + ' N·m', oninput: v => { REV.tq = v; B.b2RevoluteJoint_SetMaxMotorTorque(revJ(), v); } });
+toggle(rvc, 'Resorte', REV.spr, v => { REV.spr = v; B.b2RevoluteJoint_EnableSpring(revJ(), v); B.b2Joint_WakeBodies(revJ()); });
+slider(rvc, { label: 'Frecuencia del resorte', min: 0.2, max: 10, step: 0.1, value: REV.hz, fmt: v => fmtNum(v, 1) + ' Hz', oninput: v => { REV.hz = v; B.b2RevoluteJoint_SetSpringHertz(revJ(), v); } });
+button(rvc, 'Tirar cajas', () => { rev.ensure(); for (let i = 0; i < 3; i++) rev.box(-3 + Math.random() * 6, rev.ytop - 0.5, 0.3 + Math.random() * 0.2, 0.3, { angle: Math.random() }); });
+const revS = stats('#revst', [['a', 'Ángulo', 'amber'], ['t', 'Torque del motor', 'cyan']]);
+setInterval(() => { if (!rev.world) return; revS.a.textContent = fmtNum(B.b2RevoluteJoint_GetAngle(rev.state.j) * 180 / Math.PI, 1) + '°'; revS.t.textContent = fmtNum(B.b2RevoluteJoint_GetMotorTorque(rev.state.j), 0) + ' N·m'; }, 150);
+
+/* ---------- prismatic ---------- */
+const PRI = { mot: true, spd: 1, f: 2000, spr: false, hz: 2 };
+const pri = new Lab('#cvpri', { view: [-9, 9, -0.6], setup(L) {
+  L.ground(); const p = L.box(0, 1, 1.8, 0.15, { density: 3, color: PC.cyan });
+  L.state.j = L.joint('prismatic', L.jdef('prismatic', L.anchor, p, [0, 1], { axis: [0, 1], enableLimit: true, lowerTranslation: 0, upperTranslation: 3.5, enableMotor: PRI.mot, motorSpeed: PRI.spd, maxMotorForce: PRI.f, enableSpring: PRI.spr, hertz: PRI.hz, dampingRatio: 0.1 }));
+  L.box(-0.8, 2, 0.4, 0.4, {}); L.box(0.7, 2, 0.35, 0.35, {});
+  L.box(-5, 1.5, 2, 0.1, { type: STA }); L.box(5, 4.5, 2, 0.1, { type: STA });
+}, preStep(L) { if (!PRI.mot) return; const j = L.state.j, x = pos(B.b2Joint_GetBodyB(j)).y - 1; if (x > 3.4 && PRI.spd > 0 || x < 0.05 && PRI.spd < 0) { PRI.spd = -PRI.spd; B.b2PrismaticJoint_SetMotorSpeed(j, PRI.spd); } } });
+const priJ = () => (pri.ensure(), pri.state.j);
+pri.controls('#prictl');
+const prc = $('#prictl');
+toggle(prc, 'Motor', PRI.mot, v => { PRI.mot = v; B.b2PrismaticJoint_EnableMotor(priJ(), v); B.b2Joint_WakeBodies(priJ()); });
+slider(prc, { label: 'Fuerza máxima', min: 50, max: 20000, step: 50, value: PRI.f, log: true, fmt: v => fmtInt(v) + ' N', oninput: v => { PRI.f = v; B.b2PrismaticJoint_SetMaxMotorForce(priJ(), v); } });
+toggle(prc, 'Resorte', PRI.spr, v => { PRI.spr = v; B.b2PrismaticJoint_EnableSpring(priJ(), v); B.b2Joint_WakeBodies(priJ()); });
+slider(prc, { label: 'Frecuencia del resorte', min: 0.2, max: 10, step: 0.1, value: PRI.hz, fmt: v => fmtNum(v, 1) + ' Hz', oninput: v => { PRI.hz = v; B.b2PrismaticJoint_SetSpringHertz(priJ(), v); } });
+button(prc, 'Carga pesada', () => { pri.ensure(); const p = pos(B.b2Joint_GetBodyB(pri.state.j)); pri.box(p.x, p.y + 2.5, 0.5, 0.5, { density: 400, color: PC.red }); });
+const priS = stats('#prist', [['f', 'Fuerza del motor', 'cyan']]);
+setInterval(() => { if (pri.world) priS.f.textContent = fmtInt(B.b2PrismaticJoint_GetMotorForce(pri.state.j)) + ' N'; }, 150);
+
+/* ---------- distance ---------- */
+const DIS = { L: 3, hz: 1.5, z: 0.1 };
+const dist = new Lab('#cvdist', { view: [-8, 8, -0.6], setup(L) {
+  L.ground(); L.state.j = []; L.state.w = [];
+  [-4, 0, 4].forEach((x, i) => { const top = 4.8, w = L.circle(x + 1.5, top - DIS.L * 0.8, 0.35, { density: 3, color: [PC.amber, PC.cyan, PC.violet][i] });
+    const pin = L.body(x, top, { type: STA, track: false });
+    const d = L.jdef('distance', pin, w, null, { length: DIS.L, enableSpring: i > 0, hertz: i === 1 ? DIS.hz : 0, dampingRatio: DIS.z, enableLimit: i === 2, minLength: 0, maxLength: DIS.L });
+    d.localAnchorA = V2(0, 0); d.localAnchorB = V2(0, 0);
+    L.state.j.push(L.joint('distance', d)); L.state.w.push(w); });
+}, over(L) { ['barra', 'resorte', 'soga'].forEach((n, i) => L.label(n, [-4, 0, 4][i], 5.1, [COL.amber, COL.cyan, COL.violet][i])); } });
+dist.controls('#distctl');
+const dsc = $('#distctl');
+slider(dsc, { label: 'Largo', min: 1, max: 4.5, step: 0.1, value: DIS.L, fmt: v => fmtNum(v, 1) + ' m', oninput: v => { DIS.L = v; dist.ensure(); dist.state.j.forEach((j, i) => { B.b2DistanceJoint_SetLength(j, v); if (i === 2) B.b2DistanceJoint_SetLengthRange(j, 0, v); B.b2Joint_WakeBodies(j); }); } });
+slider(dsc, { label: 'Frecuencia del resorte', min: 0.3, max: 8, step: 0.1, value: DIS.hz, fmt: v => fmtNum(v, 1) + ' Hz', oninput: v => { DIS.hz = v; dist.ensure(); B.b2DistanceJoint_SetSpringHertz(dist.state.j[1], v); } });
+slider(dsc, { label: 'Amortiguación', min: 0, max: 2, step: 0.05, value: DIS.z, fmt: v => fmtNum(v, 2), oninput: v => { DIS.z = v; dist.ensure(); B.b2DistanceJoint_SetSpringDampingRatio(dist.state.j[1], v); } });
+button(dsc, 'Sacudir', () => { dist.ensure(); dist.state.w.forEach(w => B.b2Body_ApplyLinearImpulse(w, V2(8 * B.b2Body_GetMass(w), 6 * B.b2Body_GetMass(w)), pos(w), true)); }, 'primary');
+
+/* ---------- weld ---------- */
+const WLD = { ah: 120, lh: 0 };
+const weld = new Lab('#cvweld', { view: [-9, 9, -0.6], setup(L) {
+  L.ground(); const wall = L.box(-8.2, 2.5, 0.3, 2.5, { type: STA }); L.state.j = []; let prev = wall;
+  for (let i = 0; i < 10; i++) { const b = L.box(-7.4 + i * 0.8, 4.4, 0.4, 0.15, { density: 2, color: PC.sand });
+    L.state.j.push(L.joint('weld', L.jdef('weld', prev, b, [-7.8 + i * 0.8, 4.4], { angularHertz: WLD.ah, linearHertz: WLD.lh, angularDampingRatio: 0.5, linearDampingRatio: 0.5 }))); prev = b; }
+}});
+weld.flags.joints = false;
+weld.controls('#weldctl');
+const wlc = $('#weldctl');
+slider(wlc, { label: 'Frecuencia angular', min: 0, max: 300, step: 5, value: WLD.ah, fmt: v => v ? fmtNum(v, 1) + ' Hz' : 'rígido', oninput: v => { WLD.ah = v; weld.ensure(); weld.state.j.forEach(j => { B.b2WeldJoint_SetAngularHertz(j, v); B.b2Joint_WakeBodies(j); }); } });
+slider(wlc, { label: 'Frecuencia lineal', min: 0, max: 300, step: 5, value: WLD.lh, fmt: v => v ? fmtNum(v, 1) + ' Hz' : 'rígido', oninput: v => { WLD.lh = v; weld.ensure(); weld.state.j.forEach(j => { B.b2WeldJoint_SetLinearHertz(j, v); B.b2Joint_WakeBodies(j); }); } });
+button(wlc, 'Tirar peso', () => { weld.ensure(); weld.box(0, weld.ytop - 0.5, 0.35, 0.35, { density: 8, color: PC.red }); });
+
+/* ---------- wheel: auto ---------- */
+const CAR = { hz: 4, z: 0.7, tq: 60, dir: 0 };
+const car = new Lab('#cvcar', { view: [-12, 12, -1], setup(L) {
+  const pts = []; for (let x = 160; x >= -30; x -= 1) { let y = 0; if (x > 8) y = 0.5 * Math.sin((x - 8) * 0.5) + 0.3 * Math.sin(x * 1.3) + (x > 40 && x < 60 ? (x - 40) * 0.12 : x >= 60 && x < 80 ? 2.4 - (x - 60) * 0.12 : 0); if (x > 90) y = Math.max(0, Math.sin((x - 90) * 0.15) * 3); pts.push([x, y]); }
+  L.chain(pts, { friction: 0.9 });
+  for (let i = 0; i < 6; i++) L.box(20 + i * 0.6, 0.6 + i * 0.01, 0.25, 0.25, { density: 0.5 });
+  const ch = L.body(-6, 1.6); L.poly(0, 0, [[-1.5, -0.3], [1.5, -0.3], [1.5, 0.05], [0.4, 0.55], [-1.1, 0.55], [-1.5, 0.15]], { body: ch, density: 1.5, color: PC.amber });
+  L.state.ch = ch; L.state.j = [];
+  for (const dx of [-1.05, 1.05]) { const wh = L.circle(-6 + dx, 1.0, 0.42, { density: 1, friction: 1.2, color: PC.ink });
+    L.state.j.push(L.joint('wheel', L.jdef('wheel', ch, wh, [-6 + dx, 1.0], { axis: [0, 1], enableSpring: true, hertz: CAR.hz, dampingRatio: CAR.z, enableMotor: true, maxMotorTorque: CAR.tq, motorSpeed: 0 }))); }
+}, preStep(L) { const sp = CAR.dir * -35; for (const j of L.state.j) { B.b2WheelJoint_SetMotorSpeed(j, sp); B.b2WheelJoint_SetMaxMotorTorque(j, CAR.dir ? CAR.tq : 4); } if (CAR.dir) B.b2Body_SetAwake(L.state.ch, true);
+  const p = pos(L.state.ch); const w = 24; const cx = lerp((L.view[0] + L.view[1]) / 2, p.x + 3, 0.08); L.view = [cx - w / 2, cx + w / 2, lerp(L.view[2], p.y - 2.5, 0.05)]; } });
+car.controls('#carctl', { onReset: () => { car.view = [-12, 12, -1]; } });
+const crc = $('#carctl');
+const pad = h('div', { class: 'pad' }); crc.append(pad);
+const holdBtn = (label, d) => { const b = button(pad, label, () => {}); b.addEventListener('pointerdown', () => { car.ensure(); CAR.dir = d; }); b.addEventListener('pointerup', () => CAR.dir = 0); b.addEventListener('pointerleave', () => { if (CAR.dir === d) CAR.dir = 0; }); };
+holdBtn('Frenar / atrás', -1); holdBtn('Acelerar', 1);
+slider(crc, { label: 'Frecuencia de suspensión', min: 0.5, max: 15, step: 0.1, value: CAR.hz, fmt: v => fmtNum(v, 1) + ' Hz', oninput: v => { CAR.hz = v; car.ensure(); car.state.j.forEach(j => B.b2WheelJoint_SetSpringHertz(j, v)); } });
+slider(crc, { label: 'Amortiguación de suspensión', min: 0, max: 2, step: 0.05, value: CAR.z, fmt: v => fmtNum(v, 2), oninput: v => { CAR.z = v; car.ensure(); car.state.j.forEach(j => B.b2WheelJoint_SetSpringDampingRatio(j, v)); } });
+slider(crc, { label: 'Torque máximo', min: 5, max: 300, step: 1, value: CAR.tq, log: true, fmt: v => fmtInt(v) + ' N·m', oninput: v => CAR.tq = v });
+const keyCar = e => { const k = e.key.toLowerCase(), down = e.type === 'keydown'; let d = null; if (k === 'arrowright' || k === 'd') d = 1; else if (k === 'arrowleft' || k === 'a') d = -1; if (d == null) return; if (!car.hover && document.activeElement !== car.cv) return; e.preventDefault(); car.ensure(); if (down) CAR.dir = d; else if (CAR.dir === d) CAR.dir = 0; };
+addEventListener('keydown', keyCar); addEventListener('keyup', keyCar);
+
+/* ---------- motor joint ---------- */
+const MOT = { f: 600 };
+const mot = new Lab('#cvmot', { view: [-9, 9, -0.6], setup(L) {
+  L.ground(); const p = L.box(0, 2.5, 1.5, 0.15, { density: 2, color: PC.cyan, sleep: false });
+  L.state.j = L.joint('motor', L.jdef('motor', L.anchor, p, null, { maxForce: MOT.f, maxTorque: 500, correctionFactor: 0.3, linearOffset: V2(0, 2.5) }));
+  L.state.p = p; L.state.t = 0;
+}, preStep(L, hs) { L.state.t += hs; const t = L.state.t, x = 5 * Math.sin(t * 0.6), y = 2.6 + 1.4 * Math.sin(t * 1.2); L.state.target = [x, y]; B.b2MotorJoint_SetLinearOffset(L.state.j, V2(x, y)); B.b2MotorJoint_SetAngularOffset(L.state.j, 0); },
+  over(L) { if (L.state.target) L.ring(L.state.target[0], L.state.target[1], 0.25, COL.ink, 1.5); } });
+mot.flags.joints = false;
+mot.controls('#motctl');
+slider($('#motctl'), { label: 'Fuerza máxima', min: 20, max: 5000, step: 10, value: MOT.f, log: true, fmt: v => fmtInt(v) + ' N', oninput: v => { MOT.f = v; mot.ensure(); B.b2MotorJoint_SetMaxForce(mot.state.j, v); } });
+button($('#motctl'), 'Tirar cajas', () => { mot.ensure(); for (let i = 0; i < 3; i++) mot.box(-4 + Math.random() * 8, mot.ytop - 0.4, 0.3, 0.3, { density: 2 }); });
+
+/* ---------- mouse joint ---------- */
+const MJ = { hz: 5, k: 1000 };
+const mouse = new Lab('#cvmouse', { view: [-8, 8, -0.6], setup(L) { L.ground(); L.box(-3, 0.6, 0.6, 0.6, { density: 1, color: PC.green }); L.box(3, 0.6, 0.6, 0.6, { density: 40, color: PC.red }); },
+  over(L) { L.label('liviana', -3, 1.6, COL.green); L.label('pesada (40×)', 3, 1.6, COL.red); } });
+mouse.controls('#mousectl');
+slider($('#mousectl'), { label: 'Frecuencia del mouse', min: 0.3, max: 20, step: 0.1, value: MJ.hz, log: true, fmt: v => fmtNum(v, 1) + ' Hz', oninput: v => { MJ.hz = v; mouse.o.dragHz = v; } });
+slider($('#mousectl'), { label: 'Fuerza máxima del mouse', min: 0.3, max: 1000, step: 0.1, value: 1000, log: true, fmt: v => fmtNum(v, 1) + '× peso', oninput: v => { mouse.o.dragForce = v; } });
+mouse.o.dragForce = 1000;
+
+/* ---------- puente ---------- */
+const BR = { th: 1200, broken: 0 };
+const bridge = new Lab('#cvbridge', { view: [-10, 10, -0.6], setup(L) {
+  L.ground(); BR.broken = 0; const n = 16, w = 0.5, x0 = -n * w;
+  const left = L.box(x0 - 0.5, 1.5, 0.5, 1.5, { type: STA }), right = L.box(-x0 + 0.5, 1.5, 0.5, 1.5, { type: STA });
+  let prev = left; L.state.j = [];
+  for (let i = 0; i < n; i++) { const b = L.box(x0 + w + i * 2 * w, 2.9, w, 0.1, { density: 4, color: PC.sand }); L.state.j.push(L.joint('revolute', L.jdef('revolute', prev, b, [x0 + i * 2 * w, 2.9], { drawSize: 0.05 }))); prev = b; }
+  L.state.j.push(L.joint('revolute', L.jdef('revolute', prev, right, [-x0, 2.9], { drawSize: 0.05 })));
+}, onStep(L) { for (const j of L.state.j) { if (!B.b2Joint_IsValid(j)) continue; const f = B.b2Joint_GetConstraintForce(j); if (Math.hypot(f.x, f.y) > BR.th) { B.b2Joint_WakeBodies(j); B.b2DestroyJoint(j); BR.broken++; } } },
+  over(L) { for (const j of L.state.j) { if (!B.b2Joint_IsValid(j)) continue; const f = B.b2Joint_GetConstraintForce(j), k = clamp(Math.hypot(f.x, f.y) / BR.th, 0, 1), p = B.b2Body_GetWorldPoint(B.b2Joint_GetBodyB(j), B.b2Joint_GetLocalAnchorB(j));
+    L.dot(p.x, p.y, 4, `rgb(${233 + 22 * k | 0},${238 - 131 * k | 0},${241 - 151 * k | 0})`); }
+    L.label(`uniones rotas: ${BR.broken}`, L.x0 + 0.3, L.ytop - 0.5, COL.muted, 'left'); } });
+bridge.flags.joints = false;
+const brc = $('#bridgectl');
+button(brc, 'Rearmar', () => bridge.reset(), 'primary');
+button(brc, 'Cajas pesadas', () => { bridge.ensure(); for (let i = 0; i < 3; i++) bridge.box(-5 + i * 3 + Math.random(), bridge.ytop - 0.5, 0.45, 0.45, { density: 100, color: PC.red }); });
+button(brc, 'Tirar cajas', () => { bridge.ensure(); for (let i = 0; i < 6; i++) bridge.box(-6 + Math.random() * 12, bridge.ytop - 0.5 + i * 0.5, 0.3, 0.3, { density: 2 }); });
+slider(brc, { label: 'Umbral de rotura', min: 200, max: 20000, step: 50, value: BR.th, log: true, fmt: v => fmtInt(v) + ' N', oninput: v => BR.th = v });
+
+/* ---------- ragdolls ---------- */
+const rag = new Lab('#cvrag', { view: [-10, 10, -0.6], setup(L) {
+  L.ground(); for (let i = 0; i < 7; i++) L.box(2 + i * 1.1, 0.4 + i * 0.4, 0.55, 0.2 + i * 0.2, { type: STA, offset: [0, -(0.2 + i * 0.2) + 0.2] });
+  L.state.n = 0; dropRagdoll(L, 7.5, 5); dropRagdoll(L, -5, 3);
+}});
+function dropRagdoll(L, x, y, elephant) { L.state.n = (L.state.n || 0) + 1;
+  new B.Ragdoll(elephant ? B.Skeletons.sideViewElephant : B.Skeletons.sideViewHuman11, x, y, L.world, L.state.n, elephant ? PC.violet : [PC.amber, PC.cyan, PC.green, PC.pink][L.state.n % 4], elephant ? 1.4 : 1.6); }
+rag.flags.joints = false;
+rag.controls('#ragctl');
+button($('#ragctl'), 'Tirar ragdoll', () => { rag.ensure(); dropRagdoll(rag, -6 + Math.random() * 12, rag.ytop - 1.5); });
+button($('#ragctl'), 'Tirar elefante', () => { rag.ensure(); dropRagdoll(rag, -6 + Math.random() * 6, rag.ytop - 2, true); });
+buildChrome('07-joints.html');
+</script>
+</body>
+</html>

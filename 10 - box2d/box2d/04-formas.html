@@ -1,0 +1,1150 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>4 · Formas y materiales · Box2D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+
+:root{
+  --bg:#26303a;
+  --bg-2:#2f3b46;
+  --bg-3:#384653;
+  --screen:#0f171b;
+  --grid:#1b282d;
+  --grid-2:#243840;
+  --ink:#e9eef1;
+  --muted:#9eadb8;
+  --line:#465663;
+  --amber:#ffb23f;
+  --cyan:#5ed0e6;
+  --red:#ff6b5a;
+  --violet:#b99cff;
+  --green:#8fd694;
+  --radius:10px;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:18px;line-height:1.55;font-variation-settings:"wdth" 100}
+a{color:var(--cyan);text-underline-offset:3px}
+a:hover{color:#9fe6f3}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+::selection{background:var(--amber);color:#1a1a1a}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:#1f2830;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 20px;flex-wrap:wrap}
+.topbar .home{color:var(--ink);text-decoration:none;font-weight:700;font-variation-settings:"wdth" 118;white-space:nowrap;font-size:15px}
+.topbar nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.topbar nav a{color:var(--muted);text-decoration:none;font-size:14px;padding:5px 9px;border-radius:6px;white-space:nowrap}
+.topbar nav a b{color:var(--ink);font-weight:600;margin-right:5px;font-variant-numeric:tabular-nums}
+.topbar nav a:hover{background:var(--bg-2);color:var(--ink)}
+.topbar nav a[aria-current]{background:var(--bg-3);color:var(--ink)}
+.topbar nav a[aria-current] b{color:var(--amber)}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 22px 80px}
+.prose{max-width:72ch}
+h1{font-size:clamp(34px,5vw,58px);line-height:1.02;margin:10px 0 18px;font-weight:800;font-variation-settings:"wdth" 122;letter-spacing:-.01em}
+h2{font-size:clamp(25px,3vw,34px);line-height:1.1;margin:64px 0 14px;font-weight:750;font-variation-settings:"wdth" 116}
+h3{font-size:21px;line-height:1.2;margin:34px 0 8px;font-weight:700;font-variation-settings:"wdth" 110}
+h4{font-size:17px;margin:20px 0 6px;font-weight:700}
+p{margin:0 0 14px}
+.lead{font-size:21px;color:#d5dde3;max-width:64ch}
+.muted{color:var(--muted)}
+small,.small{font-size:14px}
+ul,ol{padding-left:22px;margin:0 0 14px}
+li{margin:4px 0}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}
+.kbd,kbd{font:600 13px var(--mono);background:var(--bg-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+code{font-family:var(--mono);font-size:.86em;background:#1c252c;padding:1px 5px;border-radius:4px;color:#f2d7a6}
+.amber{color:var(--amber)}.cyan{color:var(--cyan)}.red{color:var(--red)}.violet{color:var(--violet)}.green{color:var(--green)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:22px;align-items:start}
+.cols-2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media (max-width:860px){.cols-2{grid-template-columns:1fr}}
+
+/* ---------- instruments ---------- */
+.rig{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:18px 0 22px;box-shadow:inset 0 1px 0 #ffffff0d}
+.rig > .rig-title{font-weight:700;font-size:15px;margin:0 0 10px;color:var(--ink);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rig > .rig-title .muted{font-weight:400}
+.screen{position:relative;background:var(--screen);border-radius:7px;border:1px solid #0a1013;box-shadow:inset 0 0 0 1px #ffffff08, inset 0 6px 24px #0008;overflow:hidden}
+.screen canvas{display:block;width:100%;touch-action:none}
+.screen .tag{position:absolute;left:10px;top:7px;font:12px var(--mono);color:var(--muted);pointer-events:none}
+.screen .tag-r{left:auto;right:10px}
+.screens{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+@media (max-width:760px){.screens{grid-template-columns:1fr}}
+.controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:end;margin-top:12px}
+.ctl{display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 170px;max-width:300px}
+.ctl label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl label output{color:var(--ink);font:600 13px var(--mono);white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.readout{font:13px var(--mono);color:var(--muted);background:var(--screen);border:1px solid #0a1013;border-radius:6px;padding:8px 10px;line-height:1.6}
+.readout b{color:var(--ink);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:linear-gradient(90deg,var(--amber) var(--p,50%),#1a2329 var(--p,50%));border-radius:2px}
+input[type=range]::-moz-range-track{height:4px;background:#1a2329;border-radius:2px}
+input[type=range]::-moz-range-progress{height:4px;background:var(--amber);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;margin-top:-7px;box-shadow:0 1px 3px #0009}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#c9d2d8 60%,#8d999f);border:0;box-shadow:0 1px 3px #0009}
+
+button,.btn{font:600 15px var(--font);color:var(--ink);background:var(--bg-3);border:1px solid #556676;border-radius:8px;padding:8px 14px;cursor:pointer;line-height:1.2;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+button:hover,.btn:hover{background:#43535f}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--amber);border-color:var(--amber);color:#21180a}
+button.primary:hover{background:#ffc66d}
+button.playing{background:var(--cyan);border-color:var(--cyan);color:#06232a}
+button.small{font-size:13px;padding:5px 10px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #556676;border-radius:8px;overflow:hidden;background:#222c34}
+.seg button{border:0;border-radius:0;background:transparent;border-right:1px solid #44535f;font-size:14px;padding:7px 12px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#18212a}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px;cursor:pointer;user-select:none}
+.toggle input{appearance:none;width:38px;height:22px;border-radius:11px;background:#1a2329;border:1px solid #556676;position:relative;cursor:pointer;margin:0;flex:none}
+.toggle input::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#aab6be;top:2px;left:2px;transition:left .15s}
+.toggle input:checked{background:var(--cyan);border-color:var(--cyan)}
+.toggle input:checked::after{left:18px;background:#fff}
+select{font:15px var(--font);background:var(--bg-3);color:var(--ink);border:1px solid #556676;border-radius:8px;padding:7px 10px}
+
+
+/* ---------- code ---------- */
+pre{background:#161e23;border:1px solid #0d1417;border-radius:8px;padding:14px 16px;overflow:auto;font:14px/1.6 var(--mono);color:#d6e1e8;margin:12px 0 18px;tab-size:2}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.tk-c{color:#71828e;font-style:italic}.tk-s{color:#a8e0a0}.tk-k{color:#ff9e7a}.tk-n{color:#ffcf73}.tk-t{color:#7fd8ec}.tk-f{color:#e0c2ff}
+
+/* ---------- callouts ---------- */
+.game{border:1px solid #3e5a49;background:#26372f;border-radius:var(--radius);padding:14px 18px;margin:18px 0}
+.game > strong:first-child{color:var(--green);display:block;margin-bottom:4px}
+.warn{border:1px solid #6a4a2c;background:#3a2f25;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.figure{margin:18px 0}
+.figure figcaption{font-size:14px;color:var(--muted);margin-top:6px}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:12px 0 20px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
+
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:70px;border-top:1px solid var(--line);padding-top:20px;flex-wrap:wrap}
+.pager a{text-decoration:none;color:var(--ink);font-weight:600}
+.pager a span{display:block;font-size:13px;color:var(--muted);font-weight:400}
+.credits{font-size:13px;color:var(--muted);margin-top:30px;max-width:90ch}
+
+@media (max-width:700px){
+  .topbar{position:static;gap:8px}
+  .topbar nav{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+}
+@media (max-width:600px){
+  body{font-size:17px}
+  main{padding:24px 16px 60px}
+  .topbar{padding:8px 12px}
+  .rig{padding:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- unidad 9: extras ---------- */
+.topbar .tag9{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stat{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:6px 11px;min-width:110px}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+.stat b{font:600 17px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.stat.amber b{color:var(--amber)}.stat.cyan b{color:var(--cyan)}.stat.red b{color:var(--red)}.stat.green b{color:var(--green)}.stat.violet b{color:var(--violet)}
+.demo{display:flex;gap:14px;align-items:center;border:1px solid #3f5466;background:#263644;border-radius:var(--radius);padding:12px 16px;margin:18px 0;text-decoration:none;color:var(--ink)}
+.demo:hover{background:#2d4152;color:var(--ink)}
+.demo .ico{font:700 22px var(--mono);color:var(--cyan);flex:none}
+.demo b{display:block}
+.demo span{color:var(--muted);font-size:15px}
+.formula{font:600 17px var(--mono);background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 14px;margin:12px 0 16px;color:#f2d7a6;overflow:auto;white-space:nowrap}
+.formula small{color:var(--muted);font-weight:400}
+.screen .tag-b{top:auto;bottom:7px}
+.panel{background:var(--screen);border:1px solid #0a1013;border-radius:7px;padding:8px 10px;font:13px/1.55 var(--mono);color:var(--muted);overflow:auto}
+.panel .hi{color:var(--ink);background:#2b3a1f;border-radius:3px}
+.panel .ev{display:flex;gap:10px;white-space:nowrap;padding:1px 4px}
+.panel .ev .t{color:var(--amber);min-width:62px;text-align:right}
+.panel .ev .k-arr{color:var(--cyan)}.panel .ev .k-end{color:var(--green)}.panel .ev .k-x{color:var(--violet)}
+.side{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+@media (max-width:860px){.side{grid-template-columns:1fr}}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin:10px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--bg-3);border:1px solid #556676;font:700 14px/28px var(--font);text-align:center;color:var(--amber)}
+.timebox{display:inline-block;font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+
+p code,li code,td code{white-space:nowrap}
+.screen .tag{background:#0f171bb3;padding:1px 6px;border-radius:4px}
+/* ---------- tooltips y explicaciones ---------- */
+.term{border-bottom:1.5px dotted #9eadb8;cursor:help;outline:none}
+.term:hover,.term:focus{border-bottom-color:var(--amber);color:#fff}
+.ctl label > span:first-child,.stat > span{cursor:help;text-decoration:underline dotted #556676;text-underline-offset:3px}
+.tipbox{position:fixed;z-index:100;display:none;max-width:min(340px,90vw);background:#0b1215;color:var(--ink);border:1px solid #556676;border-radius:8px;padding:8px 11px;font:14px/1.45 var(--font);box-shadow:0 8px 24px #0009;pointer-events:none}
+details.how{margin:-4px 0 10px;font-size:15px;color:#cbd5dc}
+details.how summary{cursor:pointer;color:var(--cyan);font-weight:600;font-size:14px;list-style:none;display:inline-flex;gap:6px;align-items:center}
+details.how summary::-webkit-details-marker{display:none}
+details.how summary::before{content:"?";display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--cyan);color:#06232a;font:700 12px var(--font)}
+details.how[open] summary{margin-bottom:6px}
+details.how ul{margin:0 0 6px;padding-left:20px}
+details.how li{margin:3px 0}
+details.how p{margin:0 0 6px}
+
+/* ---------- unidad 10: extras ---------- */
+.topbar nav a.ed{color:var(--ink);background:#2f3f2b;border:1px solid #3e5a49}
+.topbar nav a.ed b{color:var(--green)}
+.topbar nav a.ed[aria-current]{background:#3e5a49}
+.ptitle{font:600 12px var(--font);color:var(--muted);margin:0 0 4px;text-transform:uppercase;letter-spacing:.06em}
+.screen canvas{cursor:grab}
+.keys{font:13px var(--mono);color:var(--muted)}
+.chip{display:inline-block;font:600 12px var(--mono);border-radius:999px;padding:2px 9px;border:1px solid var(--line);color:var(--muted);vertical-align:2px}
+.chip.on{color:#06232a;background:var(--cyan);border-color:var(--cyan)}
+.matrix{border-collapse:collapse;width:auto;margin:6px 0}
+.matrix td,.matrix th{padding:4px 8px;border:1px solid var(--line);text-align:center}
+.matrix input{width:18px;height:18px;accent-color:var(--amber)}
+.jt td:first-child{white-space:nowrap;font-weight:700}
+.api{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px 18px;margin:12px 0 18px}
+.api div{background:#1c252c;border:1px solid #0d1417;border-radius:8px;padding:10px 12px;font-size:15px}
+.api div b{display:block;font:600 13px var(--mono);color:#f2d7a6;margin-bottom:3px}
+.pad{display:flex;gap:6px;flex-wrap:wrap}
+.pad button{min-width:46px;justify-content:center}
+.bug{border:1px solid #6a2c2c;background:#3a2525;border-radius:var(--radius);padding:12px 16px;margin:16px 0;font-size:16px}
+.bug > strong:first-child{color:var(--red)}
+@media (max-width:700px){body{overflow-x:hidden}main table{display:block;overflow-x:auto}.matrix{display:table}.side{grid-template-columns:1fr}.cols-2{grid-template-columns:1fr!important}}
+@media (max-width:700px){p code,li code,td code{white-space:normal;overflow-wrap:anywhere}}
+
+</style>
+</head>
+<body>
+<main>
+  <h1>Formas y materiales</h1>
+  <p class="lead">Las formas son lo que choca. Cada una va pegada a un cuerpo, tiene una geometría en coordenadas locales de ese cuerpo y un material: densidad, fricción y rebote. Un cuerpo puede tener muchas formas, y así se arman objetos con cualquier silueta.</p>
+
+  <h2>Los tipos de forma</h2>
+  <table>
+    <tr><th>Forma</th><th>Cómo se crea</th><th>Notas</th></tr>
+    <tr><td><b>Círculo</b></td><td><code>b2CreateCircleShape(body, def, new b2Circle(centro, radio))</code></td><td>La más barata. Rueda perfecto.</td></tr>
+    <tr><td><b>Cápsula</b></td><td><code>b2CreateCapsuleShape(body, def, cápsula)</code> con <code>center1</code>, <code>center2</code>, <code>radius</code></td><td>Nueva en la v3. Ideal para personajes: no se traba en los escalones.</td></tr>
+    <tr><td><b>Polígono</b></td><td><code>b2CreatePolygonShape(body, def, b2MakeBox(hx, hy))</code>, <code>b2MakeOffsetBox</code>, <code>b2MakeRoundedBox</code>, <code>b2MakePolygon(hull, radio)</code></td><td>Convexo y de hasta <b>8</b> vértices. Puede tener un radio que redondea las esquinas.</td></tr>
+    <tr><td><b>Segmento</b></td><td><code>b2CreateSegmentShape(body, def, new b2Segment(p1, p2))</code></td><td>Una línea con dos caras. Para escenario estático.</td></tr>
+    <tr><td><b>Cadena</b></td><td><code>b2CreateChain(body, chainDef)</code></td><td>Muchos segmentos conectados y de una sola cara. Lo correcto para terrenos.</td></tr>
+  </table>
+  <div class="rig">
+    <div class="rig-title">Galería <span class="muted">· el piso es una cadena; arrastrá cualquier cosa</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Cada botón crea un cuerpo dinámico con una forma distinta. "Compuesta" es un solo cuerpo con tres formas (una mesa).</li>
+<li>Con "AABB" ves la caja alineada a los ejes que Box2D usa para descartar pares rápido (capítulo 5). Con "Centro de masa", dónde quedó el centro de cada cuerpo.</li></ul></details>
+    <div class="screen"><canvas id="cvgal" style="height:340px"></canvas></div>
+    <div class="controls" id="galctl"></div>
+  </div>
+  <pre><code>const sd = b2DefaultShapeDef();
+b2CreateCircleShape(body, sd, new b2Circle(new b2Vec2(0, 0), 0.5));
+
+const caps = new b2Capsule();
+caps.center1 = new b2Vec2(-0.5, 0); caps.center2 = new b2Vec2(0.5, 0); caps.radius = 0.25;
+b2CreateCapsuleShape(body, sd, caps);
+
+b2CreatePolygonShape(body, sd, b2MakeBox(0.5, 0.25));                          // medio-ancho, medio-alto
+b2CreatePolygonShape(body, sd, b2MakeRoundedBox(0.5, 0.25, 0.1));
+b2CreatePolygonShape(body, sd, b2MakeOffsetBox(0.1, 0.6, new b2Vec2(1, 0), 0)); // corrida y rotada: para armar compuestas
+
+const pts = [new b2Vec2(0, 0), new b2Vec2(1, 0), new b2Vec2(0.5, 1)];
+const hull = b2ComputeHull(pts, pts.length);                                    // envolvente convexa
+b2CreatePolygonShape(body, sd, b2MakePolygon(hull, 0));</code></pre>
+
+  <h2>Polígonos: convexos y de hasta 8 lados</h2>
+  <div class="prose">
+    <p>Box2D solo acepta polígonos <strong>convexos</strong> (sin "entradas"), porque los algoritmos de colisión rápidos (SAT, GJK) dependen de eso. Si le pasás puntos sueltos, <code>b2ComputeHull</code> calcula la <strong>envolvente convexa</strong>: el polígono más chico que los contiene a todos, como una gomita estirada alrededor de clavos. Los puntos que quedan adentro se descartan. Y el máximo es <code>B2_MAX_POLYGON_VERTICES = 8</code>.</p>
+    <p>Para algo cóncavo (una L, una estrella, un terreno) hay tres caminos: varias formas convexas en el mismo cuerpo, triangular el contorno (Phaser Box2D trae <code>CreatePolygonFromEarcut</code>, que usa la triangulación de la unidad de terreno destruible), o una cadena si es escenario estático.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Armá tu polígono <span class="muted">· hacé click en el área de arriba para poner puntos (hasta 8)</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Los puntos <span class="cyan">celestes</span> son los que usa la envolvente convexa; los <span class="red">rojos</span> quedaron adentro y se descartan.</li>
+<li>El contorno <span class="amber">ámbar</span> es el polígono que devuelve <code>b2MakePolygon(hull, radio)</code>. Con radio mayor que cero, las esquinas se redondean.</li>
+<li>"Crear cuerpo" lo suelta como cuerpo dinámico. Probá un triángulo muy finito, o uno redondeado que ruede.</li></ul></details>
+    <div class="screen"><canvas id="cvhull" style="height:340px"></canvas><span class="tag" id="hulltag"></span></div>
+    <div class="controls" id="hullctl"></div>
+  </div>
+
+  <h2>Cadenas y "colisiones fantasma"</h2>
+  <div class="prose">
+    <p>Si armás un piso con muchas cajas o segmentos sueltos, uno al lado del otro, un objeto que se desliza encima se traba en las uniones, aunque el piso sea perfectamente plano. Es la <strong>colisión fantasma</strong>: en la unión, el borde vertical de la caja siguiente genera un contacto que empuja para atrás. Las <strong>cadenas</strong> lo resuelven: cada segmento conoce a sus vecinos (los <em>vértices fantasma</em>) y descarta los contactos que vienen de una unión interna.</p>
+    <p>Las cadenas tienen <strong>una sola cara</strong>: solo chocan del lado derecho según el orden de los puntos (si recorrés los puntos en orden, el lado que choca te queda a la derecha). Desde el otro lado se atraviesan, lo que sirve para plataformas que se pasan desde abajo. En una cadena abierta, el primer y el último punto no forman segmento: son fantasmas que solo dicen hacia dónde sigue.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Tres pisos planos, misma caja <span class="muted">· sin fricción, a 8 m/s</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Abajo: un piso de 40 cajas de 1 m. En el medio: 40 segmentos sueltos. Arriba: una cadena con los mismos puntos.</li>
+<li>Una cajita sale desde la izquierda en cada piso con la misma velocidad y sin fricción. En las uniones de los dos primeros se engancha y da vueltas; en la cadena se desliza derecho.</li>
+<li>Los números marcan cuántas veces se trabó cada una.</li></ul></details>
+    <div class="screen"><canvas id="cvsnag" style="height:300px"></canvas></div>
+    <div class="controls" id="snagctl"></div>
+  </div>
+  <pre><code>const cd = b2DefaultChainDef();
+cd.points = [p0, p1, p2, … , pN];   // de derecha a izquierda para un piso: el lado que choca queda arriba
+cd.count = cd.points.length;
+cd.isLoop = false;                  // abierta: p0 y pN son fantasmas. En un loop no hay fantasmas
+cd.friction = 0.6;
+const chainId = b2CreateChain(groundId, cd);</code></pre>
+
+  <h2>Fricción</h2>
+  <div class="prose">
+    <p>La <strong>fricción</strong> de Box2D es la de Coulomb: la fuerza que se opone al deslizamiento es como mucho μ por la fuerza normal. Sobre una rampa, una caja se queda quieta si μ ≥ tan(ángulo). Cuando chocan dos formas, Box2D combina sus fricciones con la <strong>media geométrica</strong>: <code>μ = √(μA · μB)</code>. Si una de las dos tiene fricción 0, el contacto no tiene fricción.</p>
+  </div>
+  <div class="rig">
+    <div class="rig-title">Cinco cajas en una rampa <span class="muted">· la rampa tiene fricción 1</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Cinco cajas iguales salvo la fricción. Arriba de cada una, la fricción efectiva del contacto con la rampa (√(μ · 1)).</li>
+<li>La línea punteada marca tan(ángulo): las cajas con μ efectivo menor a ese valor se deslizan.</li>
+<li>Probá: con la rampa a 20° (tan ≈ 0,36), las dos primeras se van y las otras no.</li></ul></details>
+    <div class="screen"><canvas id="cvfric" style="height:300px"></canvas><span class="tag" id="frictag"></span></div>
+    <div class="controls" id="fricctl"></div>
+  </div>
+
+  <h2>Rebote (restitución)</h2>
+  <div class="prose">
+    <p>La <strong>restitución</strong> dice qué fracción de la velocidad de choque se devuelve: 0 es plastilina, 1 es un rebote perfecto. Se combina con el <strong>máximo</strong> de las dos formas, así que una pelota saltarina rebota igual en cualquier piso. Hay un <strong>umbral de rebote</strong> en el mundo (<code>restitutionThreshold</code>): por debajo de esa velocidad de choque no se rebota, para que las cosas terminen quietas en vez de vibrar para siempre.</p>
+  </div>
+  <div class="bug"><strong>Ojo con Phaser Box2D:</strong> el umbral viene en <b>10 m/s</b> (en el Box2D original es 1 m/s). Con 10, nada que choque a menos de 36 km/h rebota: una pelota que cae de 4 metros no pica. Si tu juego tiene rebotes, bajalo con <code>worldDef.restitutionThreshold = 1</code> o <code>b2World_SetRestitutionThreshold(worldId, 1)</code>. En esta demo lo arrancamos en 1.</div>
+  <div class="rig">
+    <div class="rig-title">Cinco pelotas <span class="muted">· misma altura, distinta restitución</span></div>
+    <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Las pelotas caen desde la misma altura. La rayita marca la altura máxima de cada rebote.</li>
+<li>La de restitución 1 vuelve casi a la altura original; la de 0 no rebota.</li>
+<li>Probá: subí el umbral de rebote a 5 m/s y mirá cómo dejan de rebotar antes.</li></ul></details>
+    <div class="screen"><canvas id="cvrest" style="height:380px"></canvas></div>
+    <div class="controls" id="restctl"></div>
+  </div>
+  <pre><code>sd.density = 1;        // kg/m². 0 en un dinámico = masa 0: Box2D le pone 1 kg y lo pinta de rojo en el debug
+sd.friction = 0.6;     // Coulomb; se combina con √(a·b)
+sd.restitution = 0.5;  // 0 a 1; se combina con max(a, b)
+b2World_SetRestitutionThreshold(worldId, 1);   // m/s
+// y en vivo:
+b2Shape_SetFriction(shapeId, 0.1); b2Shape_SetRestitution(shapeId, 0.9); b2Shape_SetDensity(shapeId, 3);</code></pre>
+  <div class="game"><strong>En juegos</strong>
+    Los materiales son diseño, no física: hielo es fricción 0,02, goma es fricción 1 y restitución 0,8, el barro es fricción alta con mucho drag. Un truco común: dejar la fricción del personaje en 0 y controlar el frenado a mano, así no se queda pegado a las paredes cuando salta contra ellas.
+  </div>
+</main>
+<script src="phaser-box2d.js"></script>
+<script>
+/* ---------------- glosario: patrón (regex sin bordes) y explicación ----------------
+   Se subraya la primera aparición de cada término en cada sección (h2). */
+const GLOSARIO = [
+  ['cuerpos? rígidos?', 'Un objeto que no se deforma: todos sus puntos se mueven juntos. Se describe con posición, ángulo y sus velocidades.'],
+  ['centro de masa', 'El punto "promedio" de la masa. Una fuerza aplicada ahí mueve el cuerpo sin hacerlo girar.'],
+  ['momento de inercia|inercia', 'Cuánto le cuesta a un cuerpo empezar o dejar de girar. Depende de la masa y de qué tan lejos del centro está.'],
+  ['torque', 'El "empuje de giro": fuerza por brazo de palanca. Cambia la velocidad angular.'],
+  ['impulsos?', 'Un cambio instantáneo de velocidad: una fuerza muy grande durante un instante (un golpe). Se mide en N·s.'],
+  ['velocidad angular', 'Cuánto gira un cuerpo por segundo, en radianes por segundo.'],
+  ['drag|damping', 'Freno proporcional a la velocidad. En Box2D: linearDamping y angularDamping.'],
+  ['integrar|integrador(?:es)?', 'Método para avanzar el tiempo: pasar de aceleraciones a velocidades y de velocidades a posiciones de a pasos chicos.'],
+  ['Euler explícito', 'Integrador que avanza la posición con la velocidad vieja. Simple pero inestable: gana energía.'],
+  ['Euler semi-implícito|semi-implícit[oa]', 'Integrador que primero actualiza la velocidad y después avanza la posición con la velocidad nueva. Estable y barato: el de Box2D.'],
+  ['simpléctico', 'Un integrador que no acumula error de energía: oscila alrededor del valor correcto en vez de alejarse.'],
+  ['Verlet', 'Integrador que usa la posición actual y la anterior en vez de la velocidad. Base de la dinámica basada en posiciones.'],
+  ['RK4|Runge-Kutta', 'Integrador de cuarto orden: cuatro evaluaciones por paso. Muy preciso, caro, y poco usado en juegos.'],
+  ['restricci(?:ón|ones)|constraints?', 'Una regla que el solver tiene que cumplir: no atravesarse, mantener una distancia, compartir un punto.'],
+  ['Baumgarte', 'Corregir el error de una restricción agregando una velocidad proporcional a ese error. Simple, pero mete energía.'],
+  ['PBD|dinámica basada en posiciones', 'Position-based dynamics: se mueven directamente las posiciones hasta cumplir las restricciones. Muy usado en tela y sogas.'],
+  ['iteraci(?:ón|ones)', 'Cada pasada del solver por todas las restricciones. Con más iteraciones, más preciso y más caro.'],
+  ['solver', 'La parte del motor que calcula los impulsos para cumplir todas las restricciones (contactos y joints).'],
+  ['soft step', 'El solver de Box2D v3: subpasos, restricciones blandas (resortes duros) y una pasada de relajación.'],
+  ['subpasos?', 'Cada paso de b2World_Step se parte en estos pedazos más chicos; en cada uno se integra y se resuelve.'],
+  ['paso fijo', 'Avanzar la física siempre con el mismo dt (por ejemplo 1/60 s), sin importar cuánto duró el cuadro.'],
+  ['acumulador', 'Variable donde se junta el tiempo real hasta que alcanza para dar uno o más pasos fijos.'],
+  ['determinista|determinismo', 'Que con la misma entrada da siempre exactamente el mismo resultado.'],
+  ['lockstep', 'Multijugador donde cada máquina simula todo y solo se mandan los inputs. Exige determinismo.'],
+  ['handle', 'Un número que identifica un objeto sin ser el objeto. Los ids de Box2D tienen índice, mundo y revisión.'],
+  ['estáticos?', 'Cuerpo que no se mueve nunca: masa infinita. Piso, paredes.'],
+  ['cinemáticos?', 'Cuerpo de masa infinita que se mueve con la velocidad que le pongas. No lo afectan fuerzas ni choques.'],
+  ['dinámicos?', 'Cuerpo que simula Box2D: tiene masa, lo afectan la gravedad, las fuerzas y los choques.'],
+  ['densidad', 'Masa por unidad de área (kg/m²). Box2D calcula la masa de cada forma multiplicando por su área.'],
+  ['islas?', 'Grupo de cuerpos conectados por contactos o joints. Se duermen y se despiertan juntos.'],
+  ['sleepThreshold|umbral de sueño', 'Velocidad debajo de la cual un cuerpo cuenta como quieto (5 cm/s por defecto).'],
+  ['envolvente convexa', 'El polígono convexo más chico que contiene a un conjunto de puntos.'],
+  ['convexos?', 'Sin entradas: el segmento entre dos puntos cualesquiera queda adentro. Box2D solo acepta polígonos convexos.'],
+  ['cápsulas?', 'Dos semicírculos unidos por un rectángulo: un segmento con radio.'],
+  ['cadenas?', 'Muchos segmentos conectados, de una sola cara, sin enganches en las uniones. Para terrenos estáticos.'],
+  ['colisi(?:ón|ones) fantasma', 'Contacto falso en la unión de dos piezas de piso: hace que algo que se desliza se trabe.'],
+  ['vértices fantasma', 'En una cadena, los vecinos de cada segmento: sirven para descartar contactos falsos en las uniones.'],
+  ['fricción', 'Fuerza que se opone a que dos superficies deslicen. En Box2D se combina con la media geométrica.'],
+  ['restitución', 'Qué fracción de la velocidad de choque se devuelve: 0 no rebota, 1 rebota perfecto.'],
+  ['media geométrica', 'La raíz del producto: √(a·b). Si una vale 0, el resultado es 0.'],
+  ['fase amplia|broadphase', 'Primera etapa de la detección: descarta rápido los pares que no pueden tocarse usando cajas.'],
+  ['fase fina|narrowphase', 'Segunda etapa: calcula los puntos de contacto exactos de los pares que pasaron la fase amplia.'],
+  ['AABB', 'Axis-aligned bounding box: la caja más chica, alineada con los ejes, que contiene a una forma.'],
+  ['OBB', 'Oriented bounding box: una caja que gira con el objeto.'],
+  ['BVH|jerarquía de volúmenes envolventes', 'Bounding volume hierarchy: árbol de cajas donde cada nodo contiene a sus hijos. Permite descartar ramas enteras.'],
+  ['árbol dinámico|b2DynamicTree', 'La BVH de Box2D: se actualiza mientras las formas se mueven y se rebalancea sola.'],
+  ['SAT|teorema del eje separador', 'Dos convexos no se tocan si y solo si hay un eje donde sus proyecciones no se superponen.'],
+  ['MTV', 'Minimum translation vector: el menor movimiento que separa dos formas que se superponen.'],
+  ['GJK', 'Algoritmo para medir la distancia entre dos formas convexas usando su diferencia de Minkowski.'],
+  ['manifold', 'El resultado de una colisión: una normal y uno o dos puntos de contacto con su separación.'],
+  ['especulativos?', 'Contactos que se crean antes de que las formas se toquen, para frenarlas a tiempo.'],
+  ['sensor(?:es)?', 'Forma que no choca: solo avisa cuando otras formas empiezan o dejan de superponerse con ella.'],
+  ['categoryBits|maskBits|groupIndex', 'Campos del filtro de colisión: a qué categoría pertenece la forma, con cuáles choca y su grupo.'],
+  ['pre-solve', 'Callback que se llama antes de resolver cada contacto. Si devuelve false, ese contacto se ignora en este paso.'],
+  ['callback', 'Una función tuya que la librería llama cuando pasa algo (un impacto de rayo, un contacto nuevo).'],
+  ['joints?', 'Restricción entre dos cuerpos: bisagra, riel, resorte, soldadura…'],
+  ['anclas?', 'El punto de cada cuerpo donde se engancha un joint, en coordenadas locales de ese cuerpo.'],
+  ['revolute', 'Joint que obliga a dos cuerpos a compartir un punto: una bisagra.'],
+  ['prismatic', 'Joint que deja deslizar un cuerpo por un eje del otro, sin girar.'],
+  ['weld', 'Joint que pega dos cuerpos. Puede ser blando.'],
+  ['wheel joint|wheel', 'Joint de rueda: riel con resorte (suspensión) más rotación libre con motor.'],
+  ['mouse joint', 'Resorte entre un punto de un cuerpo y un objetivo que se mueve. Así se arrastra con el mouse.'],
+  ['motor joint', 'Joint que lleva un cuerpo a una posición relativa con fuerza máxima limitada.'],
+  ['ragdolls?', 'Muñeco de trapo: cuerpos unidos por joints con límites, que cae de forma creíble.'],
+  ['raycast|rayos?', 'Consulta que tira un segmento y devuelve qué formas corta, dónde y con qué normal.'],
+  ['shape casts?', 'Como un rayo, pero barriendo una forma con volumen (círculo, cápsula, polígono).'],
+  ['fracción|fraction', 'Posición de un impacto a lo largo del rayo: 0 en el origen, 1 en la punta.'],
+  ['polígono de visibilidad', 'El área que se ve desde un punto, armada con los impactos de muchos rayos.'],
+  ['warm starting', 'Arrancar cada paso del solver con los impulsos del paso anterior, para converger más rápido.'],
+  ['coloreo|colorea', 'Asignar colores a las restricciones para que dos del mismo color no compartan cuerpo y se puedan resolver en paralelo.'],
+  ['SIMD', 'Instrucciones del procesador que hacen la misma cuenta sobre 4 u 8 números a la vez.'],
+  ['tunneling', 'Cuando algo rápido atraviesa una pared fina porque en ningún paso discreto llegó a tocarla.'],
+  ['CCD|colisión continua', 'Continuous collision detection: buscar el instante exacto del impacto a lo largo del movimiento.'],
+  ['tiempo de impacto|TOI', 'El momento, entre dos pasos, en que dos formas que se mueven empiezan a tocarse.'],
+  ['balas?|bullet', 'Cuerpo marcado con isBullet: hace colisión continua también contra otros dinámicos.'],
+  ['interpola(?:r|ción)', 'Dibujar una mezcla entre el estado anterior y el actual para que el movimiento se vea suave.'],
+  ['userData', 'Un dato tuyo guardado en un cuerpo, forma o joint, para encontrar tu objeto desde un id de Box2D.'],
+  ['MKS|metros, kilogramos y segundos', 'Las unidades de Box2D. Conviene que los objetos midan entre 10 cm y 10 m.'],
+];
+/* tooltips de los controles que se repiten en todas las páginas (cada página agrega los suyos en PAGE_TIPS) */
+const CONTROL_TIPS = {
+  'pausar': 'Detiene la simulación.', 'seguir': 'Retoma la simulación.', 'un paso': 'Avanza exactamente un b2World_Step y queda en pausa.', 'reiniciar': 'Vuelve a armar la escena desde cero.',
+  'cámara lenta': 'Simula a un quinto de la velocidad (el paso sigue siendo el mismo, solo se dan menos por segundo).',
+  'joints': 'Dibuja los joints como los dibuja Box2D.', 'aabb': 'Dibuja las cajas alineadas a los ejes (las gordas, del árbol).', 'centro de masa': 'Dibuja el centro de masa y la masa de cada cuerpo dinámico.',
+  'puntos de contacto': 'Puntos de contacto: verde = nuevo, azul = persistente, gris = especulativo.', 'normales': 'Normal de cada contacto.', 'impulsos': 'Impulso normal de cada contacto (magenta).', 'fricción': 'Impulso de fricción de cada contacto (amarillo).',
+  'colores del grafo': 'Pinta cada contacto con su color del grafo de restricciones.',
+  'cuerpos': 'Cuerpos dinámicos en el mundo.', 'despiertos': 'Cuerpos que Box2D está simulando ahora.', 'ms por paso': 'Tiempo promedio de cada b2World_Step en tu navegador.',
+};
+
+
+/* ====================================================================
+   Unidad 10 – Box2D · helpers compartidos (se inlinea en cada página)
+   ==================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+/* ---------------- azar con semilla ---------------- */
+/* mulberry32: 32 bits de estado, rápido y suficientemente bueno para juegos */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+class Rng {
+  constructor(seed = (Math.random() * 2 ** 32) >>> 0) { this.seed = seed >>> 0; this.next = mulberry32(this.seed); }
+  float(a = 0, b = 1) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }       // entero en [a, b]
+  exp(mean) { return -mean * Math.log(1 - this.next()); }                // exponencial (transformada inversa)
+  normal(mu = 0, sd = 1) {                                               // Box-Muller
+    const u1 = 1 - this.next(), u2 = this.next();
+    return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(this.next() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+}
+
+/* ---------------- min-heap (cola de prioridad) ---------------- */
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  get size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) >= 0) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a; if (!a.length) return undefined; const top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0; const n = a.length;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < n && this.cmp(a[l], a[m]) < 0) m = l; if (r < n && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top; }
+  clear() { this.a.length = 0; }
+  sorted() { return [...this.a].sort(this.cmp); }
+}
+
+/* ---------------- UI helpers ---------------- */
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') el.className = v; else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(k));
+  return el;
+}
+function paintRange(r) { const p = (r.value - r.min) / (r.max - r.min) * 100; r.style.setProperty('--p', p + '%'); }
+/* slider con label y valor. opts: {label,min,max,step,value,fmt,log,oninput,onchange} */
+function slider(parent, o) {
+  const id = 'r' + Math.random().toString(36).slice(2, 8);
+  const out = h('output', { for: id });
+  const r = h('input', { type: 'range', id, min: 0, max: 1000, step: 1 });
+  const toPos = v => o.log ? 1000 * Math.log(v / o.min) / Math.log(o.max / o.min) : 1000 * (v - o.min) / (o.max - o.min);
+  const fromPos = p => { let v = o.log ? o.min * Math.pow(o.max / o.min, p / 1000) : o.min + (o.max - o.min) * p / 1000; if (o.step) v = Math.round(v / o.step) * o.step; return clamp(+v.toFixed(6), o.min, o.max); };
+  const fmt = o.fmt || (v => v);
+  const wrap = h('div', { class: 'ctl' }, h('label', { for: id }, h('span', {}, o.label), out), r);
+  const api = {
+    el: wrap, input: r, value: o.value,
+    set(v, fire) { api.value = v; r.value = toPos(v); out.textContent = fmt(v); paintRange(r); if (fire) o.oninput && o.oninput(v); },
+  };
+  r.addEventListener('input', () => { api.value = fromPos(+r.value); out.textContent = fmt(api.value); paintRange(r); o.oninput && o.oninput(api.value); });
+  if (o.onchange) r.addEventListener('change', () => o.onchange(api.value));
+  api.set(o.value);
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return api;
+}
+/* grupo de botones excluyentes. options: [{v,label}] */
+function seg(parent, options, value, onchange) {
+  const el = h('div', { class: 'seg', role: 'group' });
+  const api = { el, value, set(v, fire) { api.value = v; for (const b of el.children) b.setAttribute('aria-pressed', b.dataset.v === String(v)); if (fire) onchange && onchange(v); } };
+  for (const op of options) {
+    const b = h('button', { type: 'button', 'data-v': op.v, title: op.title || null }, op.label);
+    b.addEventListener('click', () => api.set(op.v, true)); el.append(b);
+  }
+  api.set(value);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return api;
+}
+function toggle(parent, label, checked, onchange) {
+  const inp = h('input', { type: 'checkbox' }); inp.checked = !!checked;
+  inp.addEventListener('change', () => onchange && onchange(inp.checked));
+  const el = h('label', { class: 'toggle' }, inp, label);
+  (typeof parent === 'string' ? $(parent) : parent).append(el);
+  return inp;
+}
+function button(parent, label, onclick, cls = '') {
+  const b = h('button', { type: 'button', class: cls }, label); b.addEventListener('click', onclick);
+  (typeof parent === 'string' ? $(parent) : parent).append(b); return b;
+}
+/* fila de "stats": stats('#x', [['n','Dardos'],['pi','π estimado','amber']]) -> {n: el, pi: el} */
+function stats(parent, defs) {
+  const wrap = h('div', { class: 'stats' }), out = {};
+  for (const [k, label, cls] of defs) { const b = h('b', {}, '–'); wrap.append(h('div', { class: 'stat ' + (cls || '') }, h('span', {}, label), b)); out[k] = b; }
+  (typeof parent === 'string' ? $(parent) : parent).append(wrap);
+  return out;
+}
+const NF = {};
+const fmtNum = (v, d = 0) => { if (!isFinite(v)) return v > 0 ? '∞' : '–'; const k = d; return (NF[k] || (NF[k] = new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }))).format(v); };
+const fmtInt = v => fmtNum(Math.round(v), 0);
+const fmtPct = (v, d = 1) => fmtNum(v * 100, d) + '%';
+const fmtCompact = v => v >= 1e6 ? fmtNum(v / 1e6, v >= 1e7 ? 0 : 1) + ' M' : v >= 1e4 ? fmtNum(v / 1e3, 0) + ' k' : fmtInt(v);
+
+/* ---------------- canvas ---------------- */
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), hh = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+const COL = { amber: '#ffb23f', cyan: '#5ed0e6', red: '#ff6b5a', violet: '#b99cff', green: '#8fd694', ink: '#e9eef1', muted: '#9eadb8', dim: '#5d717b', grid: '#1b282d', grid2: '#25363d', screen: '#0f171b' };
+function clearScreen(g, w, h, gridX = 10, gridY = 4, mid = false) {
+  g.fillStyle = COL.screen; g.fillRect(0, 0, w, h);
+  g.strokeStyle = COL.grid; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < gridX; i++) { const x = Math.round(i * w / gridX) + .5; g.moveTo(x, 0); g.lineTo(x, h); }
+  for (let i = 1; i < gridY; i++) { const y = Math.round(i * h / gridY) + .5; g.moveTo(0, y); g.lineTo(w, y); }
+  g.stroke();
+  if (mid) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(h / 2) + .5); g.lineTo(w, Math.round(h / 2) + .5); g.stroke(); }
+}
+function glowLine(g, color, width = 2) { g.strokeStyle = color; g.lineWidth = width; g.shadowColor = color; g.shadowBlur = 6; g.lineJoin = 'round'; }
+function noGlow(g) { g.shadowBlur = 0; }
+function text(g, s, x, y, color = COL.muted, align = 'left', font = '12px JetBrains Mono, monospace') {
+  g.fillStyle = color; g.font = font; g.textAlign = align; g.fillText(s, x, y); g.textAlign = 'left';
+}
+/* histograma: counts[] dibujado en el rectángulo (x,y,w,h). opts: {max, color, fill, gap} */
+function drawHist(g, x, y, w, hh, counts, color, o = {}) {
+  const n = counts.length; if (!n) return;
+  const max = o.max || Math.max(1, ...counts), bw = w / n, gap = o.gap ?? (bw > 4 ? 1 : 0);
+  g.fillStyle = color; g.globalAlpha = o.alpha ?? 0.85;
+  for (let i = 0; i < n; i++) { const bh = Math.min(hh, counts[i] / max * hh); if (bh > 0) g.fillRect(x + i * bw + gap / 2, y + hh - bh, Math.max(1, bw - gap), bh); }
+  g.globalAlpha = 1;
+}
+/* curva: f(t) con t en [0,1] -> valor en [0,1] (0 abajo) */
+function drawCurve(g, x, y, w, hh, f, color, width = 2, steps = 200) {
+  glowLine(g, color, width); g.beginPath();
+  for (let i = 0; i <= steps; i++) { const t = i / steps, v = f(t); const px = x + t * w, py = y + hh - v * hh; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  g.stroke(); noGlow(g);
+}
+/* Loop de animación compartido: solo dibuja los canvas visibles */
+const _anims = [];
+function animate(canvas, fn) {
+  const a = { canvas, fn, visible: true }; _anims.push(a);
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => a.visible = e.isIntersecting)).observe(canvas);
+  return a;
+}
+let _lastT = performance.now();
+(function loop(now) { const dt = Math.min(0.1, ((now || performance.now()) - _lastT) / 1000); _lastT = now || performance.now();
+  for (const a of _anims) if (a.visible) { try { const c = fitCanvas(a.canvas); c.dt = dt; a.fn(c); } catch (e) { console.error(e); } }
+  requestAnimationFrame(loop); })();
+
+/* ---------------- resaltado de código JS ---------------- */
+function highlight(src) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = /(\/\/.*$|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\b(const|let|var|function|return|new|if|else|for|while|class|extends|this|async|await|of|in|true|false|null|undefined|super|static|import|export|from|break|continue|switch|case|default)\b|\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b|\b([A-Z][A-Za-z0-9]+)\b|(\.?[a-zA-Z_]\w*)(?=\()/gm;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'k' : m[4] ? 'n' : m[5] ? 't' : 'f';
+    out += `<span class="tk-${cls}">${esc(m[0])}</span>`; last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
+}
+function highlightAll() { $$('pre code').forEach(c => { if (!c.dataset.hl) { c.innerHTML = highlight(c.textContent.replace(/^\n/, '')); c.dataset.hl = 1; } }); }
+
+/* ---------------- barra superior / navegación ---------------- */
+const PAGES = [
+  ['index.html', 'Inicio'], ['01-cuerpo-rigido.html', 'Cuerpo rígido'], ['02-mundo.html', 'El mundo'],
+  ['03-cuerpos.html', 'Cuerpos'], ['04-formas.html', 'Formas'], ['05-colisiones.html', 'Colisiones'],
+  ['06-eventos.html', 'Eventos'], ['07-joints.html', 'Joints'], ['08-consultas.html', 'Consultas'],
+  ['09-solver.html', 'Solver'], ['10-juegos.html', 'En juegos'], ['editor.html', 'Editor']];
+function buildChrome(current) {
+  const nav = h('nav', { 'aria-label': 'Temas de la clase' });
+  PAGES.slice(1).forEach(([href, name], i) => nav.append(h('a', { href, 'aria-current': href === current ? 'page' : null, class: href === 'editor.html' ? 'ed' : null }, href === 'editor.html' ? h('b', {}, '✎') : h('b', {}, i + 1), name)));
+  const bar = h('header', { class: 'topbar' },
+    h('a', { class: 'home', href: 'index.html' }, 'Unidad 10: Box2D'), nav);
+  document.body.prepend(bar);
+  const idx = PAGES.findIndex(p => p[0] === current);
+  if (idx >= 0 && $('main') && current !== 'editor.html') {
+    const prev = PAGES[idx - 1], next = PAGES[idx + 1];
+    $('main').append(h('div', { class: 'pager' },
+      prev ? h('a', { href: prev[0] }, h('span', {}, 'Anterior'), prev[1]) : h('span'),
+      next ? h('a', { href: next[0], style: { textAlign: 'right' } }, h('span', {}, 'Siguiente'), next[1]) : h('span')));
+  }
+  highlightAll(); if (typeof markTerms === 'function') markTerms();
+}
+
+/* ---------------- tooltips ---------------- */
+const _tip = (() => { const el = document.createElement('div'); el.className = 'tipbox'; el.setAttribute('role', 'tooltip'); return el; })();
+let _tipFor = null;
+function tipShow(target, html) {
+  if (!_tip.isConnected) document.body.append(_tip);
+  _tip.innerHTML = html; _tip.style.display = 'block'; _tipFor = target;
+  const r = target.getBoundingClientRect(), tw = _tip.offsetWidth, th = _tip.offsetHeight;
+  let x = clamp(r.left + r.width / 2 - tw / 2, 8, innerWidth - tw - 8), y = r.bottom + 8;
+  if (y + th > innerHeight - 8) y = r.top - th - 8;
+  _tip.style.left = x + 'px'; _tip.style.top = y + 'px';
+}
+function tipHide() { _tip.style.display = 'none'; _tipFor = null; }
+const _normKey = s => s.replace(/[▶■▸🎲↗✓]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+function controlTip(el) {
+  let key = null;
+  if (el.matches('.ctl label')) key = el.querySelector('span')?.textContent;
+  else if (el.matches('.stat')) key = el.querySelector('span')?.textContent;
+  else if (el.matches('.toggle')) key = el.textContent;
+  else if (el.matches('button')) key = el.textContent;
+  if (!key) return null; key = _normKey(key);
+  const P = window.PAGE_TIPS || {}; return P[key] || CONTROL_TIPS[key] || null;
+}
+function tipTargetOf(node) {
+  const el = node.closest && node.closest('.term, .ctl label, .stat, .toggle, main button'); if (!el) return null;
+  const html = el.dataset.tip || controlTip(el); return html ? [el, html] : null;
+}
+document.addEventListener('pointerover', e => { const t = tipTargetOf(e.target); if (t) { if (t[0] !== _tipFor) tipShow(t[0], t[1]); } else if (_tipFor && !_tipFor.contains(e.target)) tipHide(); });
+document.addEventListener('focusin', e => { const t = tipTargetOf(e.target); if (t) tipShow(t[0], t[1]); });
+document.addEventListener('focusout', tipHide);
+document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('.term'); if (t) { _tipFor === t ? tipHide() : tipShow(t, t.dataset.tip); } });
+addEventListener('scroll', tipHide, { passive: true });
+/* marca los términos del glosario: primera aparición en cada sección (h2) */
+function markTerms() {
+  const main = $('main'); if (!main) return;
+  const items = GLOSARIO.map(([pat, def]) => ({ re: new RegExp(`(?<![\\p{L}\\d])(?:${pat})(?![\\p{L}\\d])`, 'iu'), def }));
+  let used = new Set();
+  const skip = n => n.closest('pre, code, .formula, a, h1, h2, h3, h4, button, label, .tag, .stat, .panel, .readout, .rig-title, .tipbox, .term, summary, th, .topics, .seg, .plan, .noterm');
+  const walker = document.createTreeWalker(main, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  const texts = []; let n;
+  while ((n = walker.nextNode())) { if (n.nodeType === 1 && n.tagName === 'H2') texts.push('H2'); else if (n.nodeType === 3 && n.nodeValue.trim() && !skip(n.parentElement)) texts.push(n); }
+  for (const t of texts) {
+    if (t === 'H2') { used = new Set(); continue; }
+    let node = t;
+    for (;;) {
+      let best = null;
+      items.forEach((it, i) => { if (used.has(i)) return; const m = it.re.exec(node.nodeValue); if (m && (!best || m.index < best.m.index)) best = { m, i, it }; });
+      if (!best) break;
+      used.add(best.i);
+      const before = node.splitText(best.m.index), after = before.splitText(best.m[0].length);
+      const span = h('span', { class: 'term', tabindex: 0, 'data-tip': best.it.def }, before.nodeValue);
+      before.replaceWith(span); node = after;
+    }
+  }
+}
+
+
+/* ====================================================================
+   Unidad 10 – Box2D · lab.js: un mundo de Phaser Box2D dentro de un canvas
+   (se inlinea en cada página; usa el global B2 de phaser-box2d.js)
+   ==================================================================== */
+const B = window.B2;
+B.b2CreateWorldArray();
+const V2 = (x, y) => new B.b2Vec2(x, y);
+const DYN = B.b2BodyType.b2_dynamicBody, STA = B.b2BodyType.b2_staticBody, KIN = B.b2BodyType.b2_kinematicBody;
+const HC = B.b2HexColor;
+const hexCss = (c, a = 1) => { c &= 0xffffff; const r = c >> 16, g = (c >> 8) & 255, b = c & 255; return a >= 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`; };
+/* colores de la paleta, como enteros para customColor */
+const PC = { amber: 0xffb23f, cyan: 0x5ed0e6, red: 0xff6b5a, violet: 0xb99cff, green: 0x8fd694, ink: 0xe9eef1, muted: 0x9eadb8, blue: 0x6f9bff, pink: 0xff8fc7, sand: 0xd9b77e };
+/* b2World_Draw pinta cada forma con un color que codifica el estado del cuerpo: lo traducimos a la estética de la clase */
+const STATE = new Map([
+  [HC.b2_colorPink, 'awake'], [HC.b2_colorSalmon, 'awake'], [HC.b2_colorYellow, 'awake'], [HC.b2_colorGray, 'sleep'],
+  [HC.b2_colorPaleGreen, 'static'], [HC.b2_colorRoyalBlue, 'kin'], [HC.b2_colorWheat, 'sensor'], [HC.b2_colorTurquoise, 'bullet'],
+  [HC.b2_colorRed, 'bad'], [HC.b2_colorSlateGray, 'disabled'],
+  [HC.b2_colorAqua, 'static']]);   // las cadenas no tienen customColor y heredan el aqua por defecto de b2ShapeDef
+const LOOK = {
+  awake: ['rgba(255,178,63,.16)', '#ffb23f'], sleep: ['rgba(110,128,138,.14)', '#6b7f89'], static: ['#1f2d34', '#7d8f99'],
+  kin: ['rgba(94,208,230,.16)', '#5ed0e6'], sensor: ['rgba(185,156,255,.08)', '#b99cff'], bullet: ['rgba(94,208,230,.3)', '#9fefff'],
+  bad: ['rgba(255,107,90,.3)', '#ff6b5a'], disabled: ['rgba(70,86,99,.2)', '#465663'],
+};
+const LABS = [];
+
+class Lab {
+  /* o: {view:[xmin,xmax,ymin], gravity:[x,y], hz, sub, setup(lab), preStep(lab,h), onStep(lab,h), under(lab,g), over(lab,g),
+         pointer(type,p,e,lab)->true si lo consume, drag:true, flags:{}, sleep:true, continuous:true, tag:'' , autoStart:true} */
+  constructor(sel, o = {}) {
+    this.cv = typeof sel === 'string' ? $(sel) : sel;
+    this.o = o; this.view = o.view || [-10, 10, -1];
+    this.hz = o.hz || 60; this.sub = o.sub || 4; this.timeScale = 1; this.paused = !!o.paused;
+    this.flags = Object.assign({ shapes: true, joints: true, aabbs: false, mass: false, contacts: false, normals: false, impulses: false, friction: false, graph: false }, o.flags || {});
+    this.world = null; this.acc = 0; this.time = 0; this.steps = 0; this.stepMs = 0; this.drag = null;
+    this.pointer = null; this.hover = false; this.w = 300; this.h = 200; this.scale = 20; this.state = {};
+    this.dd = this._makeDraw();
+    this._bindPointer();
+    LABS.push(this);
+    animate(this.cv, c => this.frame(c));
+  }
+  /* ---------- ciclo de vida ---------- */
+  reset() {
+    if (this.drag) this.drag = null;
+    if (this.world) { try { B.b2DestroyWorld(this.world); } catch (e) { console.warn(e); } }
+    const wd = B.b2DefaultWorldDef();
+    const g = this.o.gravity || [0, -10]; wd.gravity = V2(g[0], g[1]);
+    if (this.o.sleep === false) wd.enableSleep = false;
+    if (this.o.continuous === false) wd.enableContinuous = false;
+    if (this.o.worldDef) this.o.worldDef(wd);
+    this.world = B.b2CreateWorld(wd);
+    this.bodies = []; this.joints = []; this.acc = 0; this.time = 0; this.steps = 0; this.state = {};
+    this.anchor = this.body(0, 0, { type: STA, track: false });   // cuerpo estático invisible: ancla del mouse joint
+    if (this.o.setup) this.o.setup(this);
+    return this;
+  }
+  ensure() { if (!this.world) this.reset(); return this; }
+  /* ---------- cámara ---------- */
+  fit(w, h) {
+    this.w = w; this.h = h; const [x0, x1, y0] = this.view;
+    this.scale = w / (x1 - x0); this.x0 = x0; this.y0 = y0;
+  }
+  sx(x) { return (x - this.x0) * this.scale; }
+  sy(y) { return this.h - (y - this.y0) * this.scale; }
+  wx(px) { return px / this.scale + this.x0; }
+  wy(py) { return (this.h - py) / this.scale + this.y0; }
+  get ytop() { return this.wy(0); }
+  /* ---------- crear cosas (todo en metros) ---------- */
+  body(x, y, o = {}) {
+    const bd = B.b2DefaultBodyDef();
+    bd.type = o.type ?? DYN; bd.position = V2(x, y);
+    if (o.angle) bd.rotation = B.b2MakeRot(o.angle);
+    if (o.vel) bd.linearVelocity = V2(o.vel[0], o.vel[1]);
+    if (o.angVel) bd.angularVelocity = o.angVel;
+    if (o.linDamp) bd.linearDamping = o.linDamp;
+    if (o.angDamp) bd.angularDamping = o.angDamp;
+    if (o.gravityScale != null) bd.gravityScale = o.gravityScale;
+    if (o.fixedRotation) bd.fixedRotation = true;
+    if (o.bullet) bd.isBullet = true;
+    if (o.sleep === false) bd.enableSleep = false;
+    if (o.awake === false) bd.isAwake = false;
+    if (o.sleepThreshold != null) bd.sleepThreshold = o.sleepThreshold;
+    bd.userData = o.data ?? null;
+    const id = B.b2CreateBody(this.world, bd);
+    if (o.track !== false) this.bodies.push(id);
+    return id;
+  }
+  sdef(o = {}) {
+    const sd = B.b2DefaultShapeDef();
+    sd.density = o.density ?? 1; sd.friction = o.friction ?? 0.6; sd.restitution = o.restitution ?? 0;
+    sd.customColor = o.color ?? 0;
+    if (o.sensor) sd.isSensor = true;
+    if (o.hit) sd.enableHitEvents = true;
+    if (o.preSolve) sd.enablePreSolveEvents = true;
+    if (o.contactEvents === false) sd.enableContactEvents = false;
+    if (o.sensorEvents === false) sd.enableSensorEvents = false;
+    if (o.cat != null) sd.filter.categoryBits = o.cat;
+    if (o.mask != null) sd.filter.maskBits = o.mask;
+    if (o.group != null) sd.filter.groupIndex = o.group;
+    sd.userData = o.shapeData ?? null;
+    return sd;
+  }
+  _b(x, y, o) { return o.body || this.body(x, y, o); }
+  box(x, y, hw, hh, o = {}) {
+    const b = this._b(x, y, o);
+    const poly = o.offset ? B.b2MakeOffsetBox(hw, hh, V2(o.offset[0], o.offset[1]), o.offAngle || 0)
+      : o.radius ? B.b2MakeRoundedBox(hw, hh, o.radius) : B.b2MakeBox(hw, hh);
+    o.shape = B.b2CreatePolygonShape(b, this.sdef(o), poly); return b;
+  }
+  circle(x, y, r, o = {}) {
+    const b = this._b(x, y, o);
+    o.shape = B.b2CreateCircleShape(b, this.sdef(o), new B.b2Circle(V2(...(o.offset || [0, 0])), r)); return b;
+  }
+  /* cápsula horizontal de largo total 2*(hl+r), o con centros locales c1, c2 */
+  capsule(x, y, hl, r, o = {}) {
+    const b = this._b(x, y, o); const c = new B.b2Capsule();
+    c.center1 = V2(...(o.c1 || [-hl, 0])); c.center2 = V2(...(o.c2 || [hl, 0])); c.radius = r;
+    o.shape = B.b2CreateCapsuleShape(b, this.sdef(o), c); return b;
+  }
+  /* polígono convexo a partir de puntos locales (se calcula la envolvente convexa, máx. 8 vértices) */
+  poly(x, y, pts, o = {}) {
+    const hull = B.b2ComputeHull(pts.map(p => V2(p[0], p[1])), pts.length);
+    if (!hull || hull.count < 3) return null;
+    const b = this._b(x, y, o);
+    o.shape = B.b2CreatePolygonShape(b, this.sdef(o), B.b2MakePolygon(hull, o.radius || 0)); return b;
+  }
+  ngon(x, y, n, r, o = {}) { const pts = []; for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + (o.rot || 0); pts.push([Math.cos(a) * r, Math.sin(a) * r]); } return this.poly(x, y, pts, o); }
+  segment(x1, y1, x2, y2, o = {}) {
+    const b = o.body || this.body(0, 0, Object.assign({ type: STA }, o));
+    o.shape = B.b2CreateSegmentShape(b, this.sdef(o), new B.b2Segment(V2(x1, y1), V2(x2, y2))); return b;
+  }
+  /* cadena: lista de puntos [[x,y],...] en coordenadas de mundo (o locales si o.body) */
+  chain(pts, o = {}) {
+    const b = o.body || this.body(0, 0, Object.assign({ type: STA }, o));
+    const cd = B.b2DefaultChainDef();
+    cd.points = pts.map(p => V2(p[0], p[1])); cd.count = pts.length; cd.isLoop = !!o.loop;
+    cd.friction = o.friction ?? 0.6; cd.restitution = o.restitution ?? 0;
+    if (o.cat != null) cd.filter.categoryBits = o.cat;
+    if (o.mask != null) cd.filter.maskBits = o.mask;
+    o.chain = B.b2CreateChain(b, cd); return b;
+  }
+  /* piso y paredes estáticas que siguen la vista */
+  ground(o = {}) {
+    const [x0, x1, y0] = this.view, b = this.body(0, 0, { type: STA });
+    const y = o.y ?? y0 + 0.5, top = y0 + (x1 - x0) * 2;
+    const sd = this.sdef(o);
+    B.b2CreatePolygonShape(b, sd, B.b2MakeOffsetBox((x1 - x0) / 2 + 1, 0.5, V2((x0 + x1) / 2, y - 0.5), 0));
+    if (o.walls !== false) {
+      B.b2CreatePolygonShape(b, sd, B.b2MakeOffsetBox(0.5, (top - y) / 2, V2(x0 - 0.5, (y + top) / 2), 0));
+      B.b2CreatePolygonShape(b, sd, B.b2MakeOffsetBox(0.5, (top - y) / 2, V2(x1 + 0.5, (y + top) / 2), 0));
+    }
+    return b;
+  }
+  joint(kind, def) {
+    const fn = { revolute: B.b2CreateRevoluteJoint, weld: B.b2CreateWeldJoint, distance: B.b2CreateDistanceJoint, prismatic: B.b2CreatePrismaticJoint,
+      wheel: B.b2CreateWheelJoint, motor: B.b2CreateMotorJoint, mouse: B.b2CreateMouseJoint }[kind];
+    const id = fn(this.world, def); this.joints.push(id); return id;
+  }
+  /* definiciones de joints con anclas en coordenadas de MUNDO (como hace Box2D en sus samples) */
+  jdef(kind, bA, bB, anchor, o = {}) {
+    const mk = { revolute: B.b2DefaultRevoluteJointDef, weld: B.b2DefaultWeldJointDef, distance: B.b2DefaultDistanceJointDef, prismatic: B.b2DefaultPrismaticJointDef,
+      wheel: B.b2DefaultWheelJointDef, motor: B.b2DefaultMotorJointDef }[kind];
+    // si el joint va al "fondo", usamos un cuerpo estático propio en el pivote: así el dibujo de Box2D
+    // no traza una línea desde el origen del mundo hasta el ancla
+    if (bA === this.anchor && anchor) bA = this.body(anchor[0], anchor[1], { type: STA, track: false });
+    const d = mk(); d.bodyIdA = bA; d.bodyIdB = bB;
+    if (anchor && 'localAnchorA' in d) {
+      const a = V2(anchor[0], anchor[1]), b = o.anchorB ? V2(o.anchorB[0], o.anchorB[1]) : a;
+      d.localAnchorA = B.b2Body_GetLocalPoint(bA, a); d.localAnchorB = B.b2Body_GetLocalPoint(bB, b);
+    }
+    if ('referenceAngle' in d) d.referenceAngle = B.b2RelativeAngle(B.b2Body_GetRotation(bB), B.b2Body_GetRotation(bA));
+    if (o.axis && 'localAxisA' in d) d.localAxisA = B.b2Body_GetLocalVector(bA, B.b2Normalize(V2(o.axis[0], o.axis[1])));
+    for (const k in o) if (k in d && !['anchorB', 'axis'].includes(k)) d[k] = o[k];
+    return d;
+  }
+  /* ---------- consultas ---------- */
+  pick(p, onlyDynamic = true) {
+    let found = null; const P = V2(p.x, p.y);
+    const aabb = new B.b2AABB(p.x - 0.01, p.y - 0.01, p.x + 0.01, p.y + 0.01);
+    B.b2World_OverlapAABB(this.world, aabb, B.b2DefaultQueryFilter(), (shapeId) => {
+      const body = B.b2Shape_GetBody(shapeId);
+      if (onlyDynamic && B.b2Body_GetType(body) !== DYN) return true;
+      if (B.b2Shape_TestPoint(shapeId, P)) { found = { shapeId, body }; return false; }
+      return true;
+    }, null);
+    return found;
+  }
+  awakeCount() { let n = 0; for (const b of this.bodies) if (B.b2Body_IsValid(b) && B.b2Body_GetType(b) === DYN && B.b2Body_IsAwake(b)) n++; return n; }
+  dynCount() { let n = 0; for (const b of this.bodies) if (B.b2Body_IsValid(b) && B.b2Body_GetType(b) === DYN) n++; return n; }
+  /* ---------- simulación ---------- */
+  stepOnce() {
+    const h = 1 / this.hz;
+    if (this.o.preStep) this.o.preStep(this, h);
+    const t0 = performance.now();
+    B.b2World_Step(this.world, h, this.sub);
+    const ms = performance.now() - t0; this.stepMs = this.stepMs ? this.stepMs * 0.9 + ms * 0.1 : ms;
+    this.time += h; this.steps++;
+    if (this.o.onStep) this.o.onStep(this, h);
+  }
+  frame({ g, w, h, dt }) {
+    this.fit(w, h);
+    if (!this.world) { this.reset(); }
+    if (!this.paused && this.o.stepper) this.o.stepper(this, dt * this.timeScale);
+    else if (!this.paused) {
+      this.acc = Math.min(this.acc + dt * this.timeScale, 0.2);
+      const hs = 1 / this.hz; let n = 0;
+      while (this.acc >= hs && n < 8) { this.stepOnce(); this.acc -= hs; n++; }
+    }
+    this.draw(g);
+  }
+  /* ---------- dibujo ---------- */
+  grid(g) {
+    g.fillStyle = COL.screen; g.fillRect(0, 0, this.w, this.h);
+    const s = this.scale, step = s < 9 ? 5 : 1;
+    g.lineWidth = 1; g.strokeStyle = COL.grid; g.beginPath();
+    for (let x = Math.ceil(this.x0 / step) * step; this.sx(x) < this.w; x += step) { const X = Math.round(this.sx(x)) + .5; g.moveTo(X, 0); g.lineTo(X, this.h); }
+    for (let y = Math.ceil(this.y0 / step) * step; this.sy(y) > 0; y += step) { const Y = Math.round(this.sy(y)) + .5; g.moveTo(0, Y); g.lineTo(this.w, Y); }
+    g.stroke();
+    if (this.o.axes !== false && this.sy(0) < this.h && this.sy(0) > 0) { g.strokeStyle = COL.grid2; g.beginPath(); g.moveTo(0, Math.round(this.sy(0)) + .5); g.lineTo(this.w, Math.round(this.sy(0)) + .5); g.stroke(); }
+  }
+  draw(g) {
+    this.g = g;
+    this.grid(g);
+    if (this.o.under) this.o.under(this, g);
+    const d = this.dd, f = this.flags;
+    d.drawShapes = f.shapes; d.drawJoints = f.joints; d.drawAABBs = f.aabbs; d.drawMass = false;
+    d.drawContacts = f.contacts || f.graph; d.drawContactNormals = f.normals; d.drawContactImpulses = f.impulses; d.drawFrictionImpulses = f.friction; d.drawGraphColors = f.graph;
+    if (this.o.drawWorld !== false) B.b2World_Draw(this.world, d);
+    if (f.mass) for (const b of this.bodies) {   // centro de masa y masa de los dinámicos (el de Box2D también dibuja los estáticos)
+      if (!B.b2Body_IsValid(b) || B.b2Body_GetType(b) !== DYN) continue;
+      const c = B.b2Body_GetWorldCenterOfMass(b); d.DrawTransform(new B.b2Transform(c, B.b2Body_GetRotation(b)));
+      text(g, fmtNum(B.b2Body_GetMass(b), 2) + ' kg', this.sx(c.x) + 6, this.sy(c.y) - 6, '#cfd8de', 'left', '11px JetBrains Mono, monospace');
+    }
+    if (this.o.over) this.o.over(this, g);
+    if (this.drag && B.b2Joint_IsValid(this.drag.joint)) {
+      const t = this.drag.target, b = B.b2Body_GetWorldPoint(this.drag.body, this.drag.local);
+      g.strokeStyle = '#e9eef1aa'; g.setLineDash([4, 4]); g.lineWidth = 1.2; g.beginPath(); g.moveTo(this.sx(b.x), this.sy(b.y)); g.lineTo(this.sx(t.x), this.sy(t.y)); g.stroke(); g.setLineDash([]);
+      g.fillStyle = COL.ink; g.beginPath(); g.arc(this.sx(t.x), this.sy(t.y), 3.5, 0, 7); g.fill();
+    }
+    if (this.paused && !this.o.hidePause) text(g, 'EN PAUSA', this.w - 10, 18, COL.amber, 'right', '600 12px JetBrains Mono, monospace');
+  }
+  /* trazos auxiliares en coordenadas de mundo */
+  line(x1, y1, x2, y2, color = COL.ink, width = 1.5, dash) {
+    const g = this.g; g.strokeStyle = color; g.lineWidth = width; if (dash) g.setLineDash(dash);
+    g.beginPath(); g.moveTo(this.sx(x1), this.sy(y1)); g.lineTo(this.sx(x2), this.sy(y2)); g.stroke(); if (dash) g.setLineDash([]);
+  }
+  arrow(x, y, dx, dy, color = COL.ink, width = 2) {
+    const g = this.g, X1 = this.sx(x), Y1 = this.sy(y), X2 = this.sx(x + dx), Y2 = this.sy(y + dy);
+    const L = Math.hypot(X2 - X1, Y2 - Y1); if (L < 1) return; const ux = (X2 - X1) / L, uy = (Y2 - Y1) / L, hl = Math.min(10, L * 0.4);
+    g.strokeStyle = color; g.fillStyle = color; g.lineWidth = width; g.beginPath(); g.moveTo(X1, Y1); g.lineTo(X2 - ux * hl * 0.6, Y2 - uy * hl * 0.6); g.stroke();
+    g.beginPath(); g.moveTo(X2, Y2); g.lineTo(X2 - ux * hl - uy * hl * 0.5, Y2 - uy * hl + ux * hl * 0.5); g.lineTo(X2 - ux * hl + uy * hl * 0.5, Y2 - uy * hl - ux * hl * 0.5); g.closePath(); g.fill();
+  }
+  dot(x, y, r = 3, color = COL.ink) { const g = this.g; g.fillStyle = color; g.beginPath(); g.arc(this.sx(x), this.sy(y), r, 0, 7); g.fill(); }
+  ring(x, y, rm, color = COL.ink, width = 1.5, dash) { const g = this.g; g.strokeStyle = color; g.lineWidth = width; if (dash) g.setLineDash(dash); g.beginPath(); g.arc(this.sx(x), this.sy(y), rm * this.scale, 0, 7); g.stroke(); if (dash) g.setLineDash([]); }
+  label(s, x, y, color = COL.muted, align = 'center', font) { text(this.g, s, this.sx(x), this.sy(y), color, align, font); }
+  _makeDraw() {
+    const d = new B.b2DebugDraw(), lab = this;
+    const look = c => { const st = STATE.get(c); return st ? LOOK[st].concat(st) : [hexCss(c, 0.2), hexCss(c), 'custom']; };
+    const finish = (g, L) => { g.fillStyle = L[0]; g.fill(); g.strokeStyle = L[1]; g.lineWidth = 1.5; if (L[2] === 'sensor') g.setLineDash([5, 4]); g.stroke(); g.setLineDash([]); };
+    d.DrawSolidPolygon = (xf, vs, n, radius, color) => {
+      const g = lab.g, L = look(color), c = xf.q.c, s = xf.q.s, px = xf.p.x, py = xf.p.y;
+      g.beginPath();
+      if (radius > 0) {   // polígono redondeado: cada vértice se reemplaza por un arco de radio r
+        const W = vs.slice(0, n).map(v => [px + c * v.x - s * v.y, py + s * v.x + c * v.y]);
+        let first = true;
+        for (let i = 0; i < n; i++) {
+          const a = W[(i + n - 1) % n], b = W[i], d = W[(i + 1) % n];
+          let a0 = Math.atan2(-(b[0] - a[0]), b[1] - a[1]), a1 = Math.atan2(-(d[0] - b[0]), d[1] - b[1]);
+          while (a1 < a0) a1 += Math.PI * 2;
+          for (let k = 0; k <= 5; k++) { const t = a0 + (a1 - a0) * k / 5, X = lab.sx(b[0] + Math.cos(t) * radius), Y = lab.sy(b[1] + Math.sin(t) * radius); first ? g.moveTo(X, Y) : g.lineTo(X, Y); first = false; }
+        }
+      } else for (let i = 0; i < n; i++) { const v = vs[i], X = lab.sx(px + c * v.x - s * v.y), Y = lab.sy(py + s * v.x + c * v.y); i ? g.lineTo(X, Y) : g.moveTo(X, Y); }
+      g.closePath(); g.lineJoin = 'round'; finish(g, L);
+    };
+    d.DrawSolidCircle = (xf, r, color) => {
+      const g = lab.g, L = look(color), X = lab.sx(xf.p.x), Y = lab.sy(xf.p.y), R = r * lab.scale;
+      g.beginPath(); g.arc(X, Y, R, 0, Math.PI * 2); finish(g, L);
+      g.strokeStyle = L[1]; g.beginPath(); g.moveTo(X, Y); g.lineTo(X + xf.q.c * R, Y - xf.q.s * R); g.stroke();
+    };
+    d.DrawSolidCapsule = (p1, p2, r, color) => {
+      const g = lab.g, L = look(color), X1 = lab.sx(p1.x), Y1 = lab.sy(p1.y), X2 = lab.sx(p2.x), Y2 = lab.sy(p2.y), R = r * lab.scale;
+      const a = Math.atan2(Y2 - Y1, X2 - X1);
+      g.beginPath(); g.arc(X1, Y1, R, a + Math.PI / 2, a + Math.PI * 1.5); g.arc(X2, Y2, R, a - Math.PI / 2, a + Math.PI / 2); g.closePath(); finish(g, L);
+      g.strokeStyle = L[1]; g.beginPath(); g.moveTo(X1, Y1); g.lineTo(X2, Y2); g.globalAlpha = 0.4; g.stroke(); g.globalAlpha = 1;
+    };
+    d.DrawSegment = (p1, p2, color) => {
+      const g = lab.g, st = STATE.get(color), col = st ? LOOK[st][1] : hexCss(color);
+      g.strokeStyle = st === 'static' ? '#9fb0ba' : col; g.lineWidth = st ? 2.5 : 1.5; g.beginPath(); g.moveTo(lab.sx(p1.x), lab.sy(p1.y)); g.lineTo(lab.sx(p2.x), lab.sy(p2.y)); g.stroke();
+    };
+    d.DrawPolygon = (xf, vs, n, color) => {
+      const g = lab.g; g.strokeStyle = hexCss(color, 0.55); g.lineWidth = 1; g.beginPath();
+      for (let i = 0; i < n; i++) { const v = xf ? B.b2TransformPoint(xf, vs[i]) : vs[i]; i ? g.lineTo(lab.sx(v.x), lab.sy(v.y)) : g.moveTo(lab.sx(v.x), lab.sy(v.y)); }
+      g.closePath(); g.stroke();
+    };
+    d.DrawCircle = (p, r, color) => { const g = lab.g; g.strokeStyle = hexCss(color, 0.8); g.lineWidth = 1; g.beginPath(); g.arc(lab.sx(p.x), lab.sy(p.y), Math.max(2, r * lab.scale), 0, 7); g.stroke(); };
+    d.DrawPoint = (x, y, size, color) => { const g = lab.g; g.fillStyle = hexCss(color); g.beginPath(); g.arc(lab.sx(x), lab.sy(y), Math.max(1.5, size * 0.45), 0, 7); g.fill(); };
+    d.DrawTransform = (xf) => {
+      const g = lab.g, X = lab.sx(xf.p.x), Y = lab.sy(xf.p.y), L = 14;
+      g.lineWidth = 1.5; g.strokeStyle = COL.red; g.beginPath(); g.moveTo(X, Y); g.lineTo(X + xf.q.c * L, Y - xf.q.s * L); g.stroke();
+      g.strokeStyle = COL.green; g.beginPath(); g.moveTo(X, Y); g.lineTo(X - xf.q.s * L, Y - xf.q.c * L); g.stroke();
+      g.fillStyle = COL.ink; g.beginPath(); g.arc(X, Y, 2.5, 0, 7); g.fill();
+    };
+    d.DrawString = (p, s) => { text(lab.g, String(s).trim(), lab.sx(p.x) + 4, lab.sy(p.y) - 4, '#cfd8de', 'left', '11px JetBrains Mono, monospace'); };
+    d.DrawImagePolygon = d.DrawImageCircle = d.DrawImageCapsule = () => {};
+    return d;
+  }
+  /* ---------- mouse: arrastrar con un mouse joint ---------- */
+  _bindPointer() {
+    const cv = this.cv;
+    const P = e => { const r = cv.getBoundingClientRect(); return { x: this.wx(e.clientX - r.left), y: this.wy(e.clientY - r.top) }; };
+    cv.addEventListener('pointerdown', e => {
+      if (!this.world) return; const p = P(e); this.pointer = p;
+      if (this.o.pointer && this.o.pointer('down', p, e, this)) { cv.setPointerCapture(e.pointerId); return; }
+      if (this.o.drag === false) return;
+      const hit = this.pick(p); if (!hit) return;
+      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      const md = B.b2DefaultMouseJointDef();
+      md.bodyIdA = this.anchor; md.bodyIdB = hit.body; md.target = V2(p.x, p.y);
+      md.hertz = this.o.dragHz || 5; md.dampingRatio = 0.7;
+      md.maxForce = (this.o.dragForce || 1000) * Math.max(0.5, B.b2Body_GetMass(hit.body)) * 10;
+      const joint = B.b2CreateMouseJoint(this.world, md);
+      B.b2Body_SetAwake(hit.body, true);
+      this.drag = { joint, body: hit.body, target: V2(p.x, p.y), local: B.b2Body_GetLocalPoint(hit.body, V2(p.x, p.y)) };
+    });
+    cv.addEventListener('pointermove', e => {
+      if (!this.world) return; const p = P(e); this.pointer = p; this.hover = true;
+      if (this.o.pointer && this.o.pointer('move', p, e, this)) return;
+      if (this.drag && B.b2Joint_IsValid(this.drag.joint)) { this.drag.target = V2(p.x, p.y); B.b2MouseJoint_SetTarget(this.drag.joint, this.drag.target); B.b2Body_SetAwake(this.drag.body, true); }
+    });
+    const up = e => {
+      if (!this.world) return; const p = P(e);
+      if (this.o.pointer) this.o.pointer('up', p, e, this);
+      if (this.drag) { if (B.b2Joint_IsValid(this.drag.joint)) B.b2DestroyJoint(this.drag.joint); this.drag = null; }
+    };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('pointerleave', () => { this.hover = false; });
+    cv.style.cursor = this.o.cursor || 'grab';
+  }
+  /* ---------- controles estándar ---------- */
+  controls(parent, opts = {}) {
+    const row = h('div', { class: 'row' });
+    const bp = button(row, this.paused ? 'Seguir' : 'Pausar', () => { this.paused = !this.paused; bp.textContent = this.paused ? 'Seguir' : 'Pausar'; });
+    this._pauseBtn = bp;
+    button(row, 'Un paso', () => { this.ensure(); if (!this.paused) { this.paused = true; bp.textContent = 'Seguir'; } this.stepOnce(); });
+    button(row, 'Reiniciar', () => { this.reset(); if (opts.onReset) opts.onReset(); }, 'primary');
+    if (opts.slow !== false) toggle(row, 'Cámara lenta', false, v => this.timeScale = v ? 0.2 : 1);
+    (typeof parent === 'string' ? $(parent) : parent).append(row);
+    return row;
+  }
+  setPaused(v) { this.paused = v; if (this._pauseBtn) this._pauseBtn.textContent = v ? 'Seguir' : 'Pausar'; }
+}
+
+/* toggles de "qué dibujar": flagToggles('#ctl', lab, ['aabbs','mass','contacts']) */
+const FLAG_NAMES = { joints: 'Joints', aabbs: 'AABB', mass: 'Centro de masa', contacts: 'Puntos de contacto', normals: 'Normales', impulses: 'Impulsos', friction: 'Fricción', graph: 'Colores del grafo' };
+function flagToggles(parent, lab, keys) {
+  const row = h('div', { class: 'row' });
+  for (const k of keys) toggle(row, FLAG_NAMES[k], lab.flags[k], v => lab.flags[k] = v);
+  (typeof parent === 'string' ? $(parent) : parent).append(row); return row;
+}
+/* leer posición/ángulo cómodo */
+const pos = b => B.b2Body_GetPosition(b);
+const ang = b => B.b2Rot_GetAngle(B.b2Body_GetRotation(b));
+const vel = b => B.b2Body_GetLinearVelocity(b);
+/* identidad de ids (los ids son objetos nuevos en cada llamada) */
+const idKey = id => id ? id.index1 * 65536 + id.revision : -1;
+const sameId = (a, b) => a && b && a.index1 === b.index1 && a.revision === b.revision && a.world0 === b.world0;
+/* rayo al más cercano con b2World_CastRay y el callback clásico: devolver fraction recorta el rayo hasta ese impacto
+   (es lo que hace b2World_CastRayClosest por dentro; ver los parches del capítulo 8) */
+function rayClosest(world, o, t, filter = B.b2DefaultQueryFilter()) {
+  let best = null;
+  B.b2World_CastRay(world, V2(o.x, o.y), V2(t.x, t.y), filter, (shapeId, point, normal, fraction) => {
+    best = { shapeId, point: V2(point.x, point.y), normal: V2(normal.x, normal.y), fraction }; return fraction;
+  }, null);
+  return best;
+}
+/* formas de un cuerpo (b2Body_GetShapes llena un array y devuelve la cantidad) */
+function shapesOf(b) { const a = []; B.b2Body_GetShapes(b, a); return a; }
+/* contactos que están tocando a un cuerpo (b2Body_GetContactData necesita un array ya lleno de b2ContactData) */
+function contactsOf(b) { const n = B.b2Body_GetContactCapacity(b); if (!n) return []; const a = Array.from({ length: n }, () => new B.b2ContactData()); const c = B.b2Body_GetContactData(b, a, n); return a.slice(0, c); }
+
+</script>
+<script>
+window.PAGE_TIPS = {
+  'círculo': 'Crea un círculo dinámico.', 'cápsula': 'Crea una cápsula: dos semicírculos unidos.', 'caja': 'Crea una caja (b2MakeBox).', 'caja redondeada': 'Crea una caja con las esquinas redondeadas (b2MakeRoundedBox).',
+  'polígono al azar': 'Crea un polígono convexo con puntos al azar (b2ComputeHull).', 'compuesta': 'Un cuerpo con tres formas: una mesa.', 'lluvia mixta': 'Tira 20 formas variadas.',
+  'aabb': 'Dibuja las cajas alineadas a los ejes (AABB) de cada forma.', 'centro de masa': 'Dibuja el centro de masa y la masa de cada cuerpo dinámico.',
+  'crear cuerpo': 'Suelta el polígono armado como un cuerpo dinámico.', 'borrar puntos': 'Empieza un polígono nuevo.', 'radio': 'Radio de redondeo de las esquinas, en metros.',
+  'lanzar de nuevo': 'Vuelve a tirar las tres cajitas.', 'ángulo de la rampa': 'Inclinación de la rampa en grados.',
+  'umbral de rebote': 'restitutionThreshold del mundo: debajo de esta velocidad de choque no se rebota.', 'soltar de nuevo': 'Vuelve a soltar las pelotas desde arriba.',
+};
+/* ---------- galería ---------- */
+const gal = new Lab('#cvgal', { view: [-10, 10, -0.6], setup(L) {
+  const pts = []; for (let x = 10.5; x >= -10.5; x -= 0.5) pts.push([x, 0.6 + 0.5 * Math.sin(x * 0.6) + 0.25 * Math.sin(x * 1.7)]);
+  L.chain(pts, {}); L.ground({ y: -0.5 });
+  ['circle', 'capsule', 'box', 'rbox', 'poly', 'table'].forEach((k, i) => spawn(L, k, -7.5 + i * 3, 3.5));
+}});
+function spawn(L, k, x = -8 + Math.random() * 16, y = L.ytop - 0.8) {
+  const a = Math.random() * 3;
+  if (k === 'circle') return L.circle(x, y, 0.35 + Math.random() * 0.25, { color: PC.cyan });
+  if (k === 'capsule') return L.capsule(x, y, 0.45, 0.25, { angle: a, color: PC.violet });
+  if (k === 'box') return L.box(x, y, 0.45, 0.35, { angle: a });
+  if (k === 'rbox') return L.box(x, y, 0.4, 0.3, { angle: a, radius: 0.15, color: PC.green });
+  if (k === 'poly') { const n = 3 + Math.floor(Math.random() * 6), p = []; for (let i = 0; i < n; i++) { const t = Math.random() * 6.283, r = 0.3 + Math.random() * 0.5; p.push([Math.cos(t) * r, Math.sin(t) * r]); } return L.poly(x, y, p, { angle: a, color: PC.pink }) || spawn(L, 'box', x, y); }
+  if (k === 'table') { const b = L.body(x, y, { angle: a * 0.2 }); L.box(0, 0, 0.9, 0.1, { body: b, offset: [0, 0.4], color: PC.sand }); L.box(0, 0, 0.08, 0.35, { body: b, offset: [-0.75, 0], color: PC.sand }); L.box(0, 0, 0.08, 0.35, { body: b, offset: [0.75, 0], color: PC.sand }); return b; }
+}
+gal.controls('#galctl');
+const gc = $('#galctl'), grow = h('div', { class: 'row' }); gc.append(grow);
+[['circle', 'Círculo'], ['capsule', 'Cápsula'], ['box', 'Caja'], ['rbox', 'Caja redondeada'], ['poly', 'Polígono al azar'], ['table', 'Compuesta']].forEach(([k, l]) => button(grow, l, () => { gal.ensure(); spawn(gal, k); }));
+button(grow, 'Lluvia mixta', () => { gal.ensure(); for (let i = 0; i < 20; i++) spawn(gal, ['circle', 'capsule', 'box', 'rbox', 'poly'][i % 5], undefined, gal.ytop + Math.random() * 4); });
+flagToggles(gc, gal, ['aabbs', 'mass']);
+
+/* ---------- envolvente convexa ---------- */
+const HULL = { pts: [[-1.2, 4.6], [0.9, 5.3], [1.4, 3.6], [-0.3, 3.1], [0.1, 4.3]], r: 0, msg: '' };
+function hullOf() { if (HULL.pts.length < 3) return null; return B.b2ComputeHull(HULL.pts.map(p => V2(p[0], p[1])), HULL.pts.length); }
+const hull = new Lab('#cvhull', { view: [-10, 10, -0.6], setup(L) { L.ground(); },
+  pointer(type, p, e, L) { if (type !== 'down' || p.y < 2.2 || L.pick(p)) return false;
+    if (HULL.pts.length >= 8) { HULL.msg = 'máximo 8 puntos: B2_MAX_POLYGON_VERTICES'; return true; }
+    HULL.pts.push([p.x, p.y]); HULL.msg = ''; return true; },
+  over(L) { const g = L.g; g.fillStyle = '#ffffff06'; g.fillRect(0, 0, L.w, L.sy(2.2)); L.line(L.x0, 2.2, L.wx(L.w), 2.2, '#465663', 1, [4, 4]);
+    const hl = hullOf();
+    if (hl && hl.count >= 3) { const poly = B.b2MakePolygon(hl, HULL.r); L.dd.DrawSolidPolygon(new B.b2Transform(V2(0, 0), new B.b2Rot(1, 0)), poly.vertices, poly.count, poly.radius, PC.amber); }
+    const keep = new Set(); if (hl) for (let i = 0; i < hl.count; i++) keep.add(hl.points[i].x.toFixed(5) + ',' + hl.points[i].y.toFixed(5));
+    HULL.pts.forEach(p => L.dot(p[0], p[1], 4.5, keep.has(p[0].toFixed(5) + ',' + p[1].toFixed(5)) ? COL.cyan : COL.red));
+    $('#hulltag').textContent = `${HULL.pts.length} puntos → envolvente de ${hl ? hl.count : 0} vértices${HULL.msg ? ' · ' + HULL.msg : ''}`; } });
+hull.o.cursor = 'crosshair'; hull.cv.style.cursor = 'crosshair';
+const hc = $('#hullctl');
+button(hc, 'Crear cuerpo', () => { hull.ensure(); const hl = hullOf(); if (!hl || hl.count < 3) return; let cx = 0, cy = 0; for (let i = 0; i < hl.count; i++) { cx += hl.points[i].x; cy += hl.points[i].y; } cx /= hl.count; cy /= hl.count;
+  hull.poly(cx, cy, HULL.pts.map(p => [p[0] - cx, p[1] - cy]), { radius: HULL.r, color: PC.amber }); HULL.pts = []; }, 'primary');
+button(hc, 'Borrar puntos', () => { HULL.pts = []; HULL.msg = ''; });
+slider(hc, { label: 'Radio', min: 0, max: 0.5, step: 0.01, value: 0, fmt: v => fmtNum(v, 2) + ' m', oninput: v => HULL.r = v });
+button(hc, 'Reiniciar', () => hull.reset());
+
+/* ---------- colisiones fantasma ---------- */
+const SNAG = { counts: [0, 0, 0], boxes: [] };
+const LANES = [{ y: 0, name: '40 cajas sueltas' }, { y: 3.2, name: '40 segmentos sueltos' }, { y: 6.4, name: 'una cadena' }];
+const snag = new Lab('#cvsnag', { view: [-21, 21, -1.2], drag: false, setup(L) {
+  const g = L.body(0, 0, { type: STA });
+  for (let i = -20; i < 20; i++) L.box(0, 0, 0.5, 0.5, { body: g, offset: [i + 0.5, -0.5], friction: 0 });
+  for (let i = -20; i < 20; i++) L.segment(i, 3.2, i + 1, 3.2, { body: g, friction: 0 });
+  const pts = []; for (let x = 21; x >= -21; x--) pts.push([x, 6.4]); L.chain(pts, { body: g, friction: 0 });
+  SNAG.counts = [0, 0, 0]; SNAG.boxes = LANES.map((ln, i) => ({ b: L.box(-19.5, ln.y + 0.25, 0.25, 0.25, { vel: [8, 0], friction: 0, color: [PC.red, PC.violet, PC.green][i] }), stuck: false }));
+}, onStep(L) { SNAG.boxes.forEach((s, i) => { const v = vel(s.b), a = Math.abs(ang(s.b)); const bad = Math.abs(v.y) > 0.5 || a > 0.2;
+    if (bad && !s.stuck) SNAG.counts[i]++; s.stuck = bad;
+    const p = pos(s.b); if (p.x > 19.6 || p.x < -20.5 || p.y < LANES[i].y - 2) { B.b2Body_SetTransform(s.b, V2(-19.5, LANES[i].y + 0.25), B.b2MakeRot(0)); B.b2Body_SetLinearVelocity(s.b, V2(8, 0)); B.b2Body_SetAngularVelocity(s.b, 0); } }); },
+  over(L) { LANES.forEach((ln, i) => { L.label(`${ln.name} · trabadas: ${SNAG.counts[i]}`, -20.5, ln.y + 2.2, [COL.red, COL.violet, COL.green][i], 'left', '600 13px JetBrains Mono, monospace'); }); } });
+button('#snagctl', 'Lanzar de nuevo', () => snag.reset(), 'primary');
+
+/* ---------- fricción ---------- */
+const FR = { deg: 20 }, MUS = [0, 0.05, 0.2, 0.5, 0.9];
+const fric = new Lab('#cvfric', { view: [-10, 10, -0.6], setup(L) {
+  L.ground(); const a = FR.deg * Math.PI / 180, len = 9, cx = 0, cy = 0.2 + Math.sin(a) * len / 2;
+  const ramp = L.body(cx, cy, { type: STA, angle: -a }); L.box(0, 0, len / 2, 0.15, { body: ramp, friction: 1 });
+  L.state.boxes = MUS.map((mu, i) => { const t = -len / 2 + 1 + i * 1.6; const x = cx + Math.cos(-a) * t - Math.sin(-a) * 0.5, y = cy + Math.sin(-a) * t + Math.cos(-a) * 0.5;
+    return L.box(x, y, 0.32, 0.32, { angle: -a, friction: mu, color: [PC.red, PC.amber, PC.sand, PC.green, PC.cyan][i] }); });
+}, over(L) { L.state.boxes.forEach((b, i) => { const p = pos(b); L.label('μ ' + fmtNum(Math.sqrt(MUS[i]), 2), p.x, p.y + 0.75, '#cfd8de'); }); } });
+fric.controls('#fricctl');
+slider($('#fricctl'), { label: 'Ángulo de la rampa', min: 5, max: 45, step: 1, value: FR.deg, fmt: v => v + '°', oninput: v => { FR.deg = v; fric.reset(); } });
+setInterval(() => { $('#frictag').textContent = `tan(${FR.deg}°) = ${fmtNum(Math.tan(FR.deg * Math.PI / 180), 2)}: se deslizan las que tienen μ menor`; }, 300);
+
+/* ---------- restitución ---------- */
+const RS = [0, 0.25, 0.5, 0.75, 1], RES = { th: 1, peaks: [] };
+const rest = new Lab('#cvrest', { view: [-9, 9, -1.3], setup(L) {
+  L.ground({ restitution: 0 }); B.b2World_SetRestitutionThreshold(L.world, RES.th);
+  RES.peaks = RS.map(() => []); L.state.balls = RS.map((r, i) => L.circle(-6 + i * 3, 4.5, 0.35, { restitution: r, color: [PC.muted, PC.green, PC.amber, PC.violet, PC.cyan][i] }));
+  L.state.prevVy = RS.map(() => 0);
+}, onStep(L) { L.state.balls.forEach((b, i) => { const vy = vel(b).y; if (L.state.prevVy[i] > 0 && vy <= 0) { RES.peaks[i].push(pos(b).y); if (RES.peaks[i].length > 6) RES.peaks[i].shift(); } L.state.prevVy[i] = vy; }); },
+  over(L) { L.state.balls.forEach((b, i) => { const x = -6 + i * 3; L.label('e = ' + fmtNum(RS[i], 2), x, -1.05, '#cfd8de');
+    L.line(x - 0.6, 4.5, x + 0.6, 4.5, '#e9eef140', 1, [3, 3]); RES.peaks[i].forEach((y, k) => L.line(x - 0.45, y, x + 0.45, y, hexCss([PC.muted, PC.green, PC.amber, PC.violet, PC.cyan][i], 0.35 + 0.1 * k), 2)); }); } });
+const rc = $('#restctl');
+button(rc, 'Soltar de nuevo', () => rest.reset(), 'primary');
+slider(rc, { label: 'Umbral de rebote', min: 0, max: 8, step: 0.1, value: RES.th, fmt: v => fmtNum(v, 1) + ' m/s', oninput: v => { RES.th = v; rest.ensure(); B.b2World_SetRestitutionThreshold(rest.world, v); } });
+buildChrome('04-formas.html');
+</script>
+</body>
+</html>
