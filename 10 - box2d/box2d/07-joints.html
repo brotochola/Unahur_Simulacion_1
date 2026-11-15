@@ -294,7 +294,7 @@ d.enableSpring = true; d.hertz = 0; d.enableLimit = true; d.minLength = 0; d.max
     <div class="rig-title">Un trampolín de cajas soldadas <span class="muted">· 0 Hz = rígido</span></div>
     <details class="how"><summary>¿Qué estoy viendo?</summary><ul><li>Diez cajas unidas por weld joints, la primera a la pared. Con frecuencia angular baja la viga se dobla bajo su peso; por debajo de unos 10 Hz se cae como una soga.</li>
 <li>"Tirar peso" deja caer una caja pesada en la punta.</li></ul></details>
-    <div class="screen"><canvas id="cvweld" style="height:300px"></canvas></div>
+    <div class="screen"><canvas id="cvweld" style="height:420px"></canvas></div>
     <div class="controls" id="weldctl"></div>
   </div>
 
@@ -1182,10 +1182,10 @@ button(dsc, 'Sacudir', () => { dist.ensure(); dist.state.w.forEach(w => B.b2Body
 
 /* ---------- weld ---------- */
 const WLD = { ah: 120, lh: 0 };
-const weld = new Lab('#cvweld', { view: [-9, 9, -0.6], setup(L) {
-  L.ground(); const wall = L.box(-8.2, 2.5, 0.3, 2.5, { type: STA }); L.state.j = []; let prev = wall;
-  for (let i = 0; i < 10; i++) { const b = L.box(-7.4 + i * 0.8, 4.4, 0.4, 0.15, { density: 2, color: PC.sand });
-    L.state.j.push(L.joint('weld', L.jdef('weld', prev, b, [-7.8 + i * 0.8, 4.4], { angularHertz: WLD.ah, linearHertz: WLD.lh, angularDampingRatio: 0.5, linearDampingRatio: 0.5 }))); prev = b; }
+const weld = new Lab('#cvweld', { view: [-9, 9, -0.8], setup(L) {
+  L.ground(); const wall = L.box(-8.2, 2.2, 0.3, 2.2, { type: STA }); L.state.j = []; let prev = wall;
+  for (let i = 0; i < 10; i++) { const b = L.box(-7.4 + i * 0.8, 4.0, 0.4, 0.15, { density: 2, color: PC.sand });
+    L.state.j.push(L.joint('weld', L.jdef('weld', prev, b, [-7.8 + i * 0.8, 4.0], { angularHertz: WLD.ah, linearHertz: WLD.lh, angularDampingRatio: 0.5, linearDampingRatio: 0.5 }))); prev = b; }
 }});
 weld.flags.joints = false;
 weld.controls('#weldctl');
