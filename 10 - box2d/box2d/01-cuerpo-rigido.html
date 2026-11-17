@@ -1225,7 +1225,9 @@ const ropeA = { ps: ropeMake(), kind: 'imp', drag: false }, ropeB = { ps: ropeMa
 function ropeStep(R, dt) {
   if (!(dt > 1e-5)) return;
   const ps = R.ps, g = -10, L = ROPE.L;
+  const end = ps[ps.length - 1], held = R.drag && R.target, wEnd = end.w;
   if (R.kind === 'imp') {
+    if (held) { end.vx = (R.target.x - end.x) * 20; end.vy = (R.target.y - end.y) * 20; }   // un resorte duro hacia el mouse
     for (const p of ps) if (p.w) p.vy += g * dt;
     const C = []; for (let i = 0; i < ps.length - 1; i++) { const a = ps[i], b = ps[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1e-9; C.push([dx / d, dy / d, d - L]); }
     for (let k = 0; k < ROPE.it; k++) for (let i = 0; i < ps.length - 1; i++) { const a = ps[i], b = ps[i + 1], [nx, ny, err] = C[i], ws = a.w + b.w; if (!ws) continue;
@@ -1233,20 +1235,27 @@ function ropeStep(R, dt) {
     for (const p of ps) { p.vx *= 0.999; p.vy *= 0.999; p.x += p.vx * dt; p.y += p.vy * dt; }
   } else {
     for (const p of ps) if (p.w) { const vx = (p.x - p.px) * 0.999, vy = (p.y - p.py) * 0.999; p.px = p.x; p.py = p.y; p.x += vx; p.y += vy + g * dt * dt; }
+    // agarrado: el peso va justo adonde está el mouse y, mientras tanto, cuenta como clavado (w = 0)
+    if (held) { end.x = R.target.x; end.y = R.target.y; end.w = 0; }
     for (let k = 0; k < ROPE.it; k++) for (let i = 0; i < ps.length - 1; i++) { const a = ps[i], b = ps[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1e-9, ws = a.w + b.w; if (!ws) continue;
       const c = (d - L) / d; a.x += dx * c * a.w / ws; a.y += dy * c * a.w / ws; b.x -= dx * c * b.w / ws; b.y -= dy * c * b.w / ws; }
+    end.w = wEnd;
   }
 }
 function ropeLen(R) { let s = 0; for (let i = 0; i < R.ps.length - 1; i++) s += Math.hypot(R.ps[i + 1].x - R.ps[i].x, R.ps[i + 1].y - R.ps[i].y); return s; }
 function ropeCanvas(cv, R) {
   let V = { S: 50, w: 300, h: 300 };
   const tw = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left - V.w / 2) / V.S, y: (40 - (e.clientY - r.top)) / V.S }; };
-  cv.addEventListener('pointerdown', e => { const p = tw(e), e2 = R.ps[R.ps.length - 1]; if (Math.hypot(p.x - e2.x, p.y - e2.y) < 0.6) { R.drag = true; cv.setPointerCapture(e.pointerId); } });
-  cv.addEventListener('pointermove', e => { if (!R.drag) return; const p = tw(e), e2 = R.ps[R.ps.length - 1]; if (R.kind === 'imp') { e2.vx = (p.x - e2.x) * 20; e2.vy = (p.y - e2.y) * 20; } else { e2.x = p.x; e2.y = p.y; } });
-  cv.addEventListener('pointerup', () => R.drag = false);
+  cv.addEventListener('pointerdown', e => { const p = tw(e), e2 = R.ps[R.ps.length - 1]; if (Math.hypot(p.x - e2.x, p.y - e2.y) < 0.6) { R.drag = true; R.target = p; cv.setPointerCapture(e.pointerId); } });
+  cv.addEventListener('pointermove', e => { if (R.drag) R.target = tw(e); });
+  const release = () => { if (!R.drag) return; R.drag = false;
+    if (R.kind === 'pbd') { const e2 = R.ps[R.ps.length - 1], vx = e2.x - e2.px, vy = e2.y - e2.py, v = Math.hypot(vx, vy), mx = 0.08;   // al soltar, limitamos el "latigazo"
+      if (v > mx) { e2.px = e2.x - vx * mx / v; e2.py = e2.y - vy * mx / v; } } };
+  cv.addEventListener('pointerup', release); cv.addEventListener('pointercancel', release);
   animate(cv, ({ g, w, h, dt }) => {
     V = { S: Math.min(w / 6.5, h / 6), w, h }; const S = V.S, X = x => w / 2 + x * S, Y = y => 40 - y * S;
-    const n = 4; for (let i = 0; i < n; i++) { ropeStep(R, dt / n); if (R.drag && R.kind === 'pbd') { /* el punto agarrado queda donde está el mouse */ } }
+    // paso fijo de 1/240 s: Verlet asume que todos los pasos duran lo mismo
+    R.acc = Math.min((R.acc || 0) + dt, 0.1); const hs = 1 / 240; while (R.acc >= hs) { ropeStep(R, hs); R.acc -= hs; }
     clearScreen(g, w, h, 6, 6);
     g.lineWidth = 3; g.lineCap = 'round';
     for (let i = 0; i < R.ps.length - 1; i++) { const a = R.ps[i], b = R.ps[i + 1], st = clamp((Math.hypot(b.x - a.x, b.y - a.y) - ROPE.L) / ROPE.L / 0.5, 0, 1);
